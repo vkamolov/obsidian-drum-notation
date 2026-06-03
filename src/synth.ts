@@ -3,10 +3,11 @@ import { DrumHit, DrumPlaybackKind } from "./types";
 export class DrumSynth {
   // The AudioContext is owned and shared by the plugin (browsers cap the number
   // of live contexts), so a synth never creates or closes it. Each synth instead
-  // routes through its own master gain and tracks the source nodes it schedules,
+  // routes through its own master gain and tracks the node chains it schedules,
   // so stop() can silence just this synth without tearing down the context.
   private master: GainNode | null = null;
-  private nodes: AudioScheduledSourceNode[] = [];
+  private sources: AudioScheduledSourceNode[] = [];
+  private nodes: AudioNode[] = [];
 
   constructor(private readonly audioContext: AudioContext) {}
 
@@ -25,13 +26,16 @@ export class DrumSynth {
   }
 
   stop(): void {
-    this.nodes.forEach((node) => {
+    this.sources.forEach((source) => {
       try {
-        node.stop();
+        source.stop();
       } catch {
-        // A node that was never started throws on stop(); ignore it.
+        // A source that already ended throws on stop(); ignore it.
       }
+    });
+    this.sources = [];
 
+    this.nodes.forEach((node) => {
       try {
         node.disconnect();
       } catch {
@@ -145,7 +149,7 @@ export class DrumSynth {
     oscillator.connect(gain).connect(this.target());
     oscillator.start(time);
     oscillator.stop(time + 0.18);
-    this.track(oscillator);
+    this.track(oscillator, gain);
   }
 
   private scheduleSnare(time: number, velocity: number): void {
@@ -188,7 +192,7 @@ export class DrumSynth {
     source.connect(bandpass).connect(highpass).connect(gain).connect(this.target());
     source.start(time);
     source.stop(time + clippedDuration + 0.02);
-    this.track(source);
+    this.track(source, bandpass, highpass, gain);
   }
 
   private scheduleSnareBody(time: number, velocity: number): void {
@@ -205,7 +209,7 @@ export class DrumSynth {
     oscillator.connect(gain).connect(this.target());
     oscillator.start(time);
     oscillator.stop(time + 0.14);
-    this.track(oscillator);
+    this.track(oscillator, gain);
   }
 
   private scheduleSnareWires(time: number, velocity: number): void {
@@ -236,7 +240,7 @@ export class DrumSynth {
     source.connect(bandpass).connect(highpass).connect(gain).connect(this.target());
     source.start(time);
     source.stop(time + duration + 0.02);
-    this.track(source);
+    this.track(source, bandpass, highpass, gain);
   }
 
   private scheduleTom(time: number, frequency: number, velocity: number): void {
@@ -253,7 +257,7 @@ export class DrumSynth {
     oscillator.connect(gain).connect(this.target());
     oscillator.start(time);
     oscillator.stop(time + 0.3);
-    this.track(oscillator);
+    this.track(oscillator, gain);
   }
 
   private scheduleCowbell(time: number, velocity: number): void {
@@ -289,7 +293,7 @@ export class DrumSynth {
     oscillator.connect(gain).connect(this.target());
     oscillator.start(time);
     oscillator.stop(time + duration + 0.02);
-    this.track(oscillator);
+    this.track(oscillator, gain);
   }
 
   private scheduleNoise(time: number, duration: number, frequency: number, velocity: number): void {
@@ -327,15 +331,16 @@ export class DrumSynth {
     source.connect(filter).connect(gain).connect(this.target());
     source.start(time);
     source.stop(time + duration + 0.02);
-    this.track(source);
+    this.track(source, filter, gain);
   }
 
   private target(): AudioNode {
     return this.master ?? this.audioContext.destination;
   }
 
-  private track<T extends AudioScheduledSourceNode>(node: T): T {
-    this.nodes.push(node);
-    return node;
+  private track<T extends AudioScheduledSourceNode>(source: T, ...nodes: AudioNode[]): T {
+    this.sources.push(source);
+    this.nodes.push(source, ...nodes);
+    return source;
   }
 }

@@ -25,8 +25,10 @@ interface RenderState {
 export default class DrumNotationPlugin extends Plugin {
   private activePlayer: DrumPlayer | null = null;
   private activePlaybackReset: (() => void) | null = null;
+  private activePlaybackOwner: symbol | null = null;
   private activePreview: DrumSynth | null = null;
   private activePreviewTimer: number | null = null;
+  private activePreviewOwner: symbol | null = null;
   private audioContext: AudioContext | null = null;
 
   async onload(): Promise<void> {
@@ -100,6 +102,7 @@ export default class DrumNotationPlugin extends Plugin {
     // than accumulating on the plugin until it unloads.
     const child = new MarkdownRenderChild(el);
     ctx.addChild(child);
+    const renderOwner = Symbol("drum-notation-render");
 
     const state: RenderState = {
       cursorPositions: [],
@@ -119,7 +122,7 @@ export default class DrumNotationPlugin extends Plugin {
         state.cursor = block.showCursor ? notation.createEl("div", { cls: "drum-notation__cursor" }) : null;
         state.noteElements = makeRenderedNotesInteractive(block, notation, (slot) => {
           currentSlotIndex = slot.index;
-          void this.previewSlot(block, slot);
+          void this.previewSlot(block, slot, renderOwner);
         });
         if (!legendRendered) {
           renderInstrumentLegend(block, root);
@@ -176,20 +179,26 @@ export default class DrumNotationPlugin extends Plugin {
         window.clearTimeout(resizeTimer);
         resizeTimer = null;
       }
-      this.stopActivePlayer();
-      this.stopActivePreview();
+      this.stopActivePlayer(renderOwner);
+      this.stopActivePreview(renderOwner);
     });
 
     playButton.addEventListener("click", () => {
       this.stopActivePlayer();
 
       isLoopingBar = false;
+      this.activePlaybackOwner = renderOwner;
       this.activePlayer = new DrumPlayer(this.getAudioContext(), block, () => {
+        if (this.activePlaybackOwner !== renderOwner) {
+          return;
+        }
+
         playButton.removeClass("is-playing");
         loopButton.removeClass("is-playing");
         visuals.clearCursor();
         this.activePlayer = null;
         this.activePlaybackReset = null;
+        this.activePlaybackOwner = null;
       }, handleSlotChange, { repeatCount: block.repeatCount });
       this.activePlaybackReset = () => {
         playButton.removeClass("is-playing");
@@ -223,12 +232,18 @@ export default class DrumNotationPlugin extends Plugin {
       isLoopingBar = true;
       loopButton.addClass("is-playing");
       playButton.removeClass("is-playing");
+      this.activePlaybackOwner = renderOwner;
       this.activePlayer = new DrumPlayer(this.getAudioContext(), block, () => {
+        if (this.activePlaybackOwner !== renderOwner) {
+          return;
+        }
+
         loopButton.removeClass("is-playing");
         visuals.clearCursor();
         isLoopingBar = false;
         this.activePlayer = null;
         this.activePlaybackReset = null;
+        this.activePlaybackOwner = null;
       }, handleSlotChange, {
         startSlot: barRange.startSlot,
         endSlot: barRange.endSlot,
@@ -244,35 +259,55 @@ export default class DrumNotationPlugin extends Plugin {
     });
   }
 
-  private stopActivePlayer(): void {
+  private stopActivePlayer(owner?: symbol): void {
+    if (owner && this.activePlaybackOwner !== owner) {
+      return;
+    }
+
+    const reset = this.activePlaybackReset;
+
     this.activePlayer?.stop();
     this.activePlayer = null;
-    this.activePlaybackReset?.();
     this.activePlaybackReset = null;
+    this.activePlaybackOwner = null;
+    reset?.();
   }
 
-  private async previewSlot(block: DrumBlock, slot: DrumSlot): Promise<void> {
+  private async previewSlot(block: DrumBlock, slot: DrumSlot, owner: symbol): Promise<void> {
     this.stopActivePreview();
 
     if (slot.hits.length === 0) {
       return;
     }
 
-    this.activePreview = new DrumSynth(this.getAudioContext());
-    await this.activePreview.start();
-    this.activePreview.scheduleHits(
+    const preview = new DrumSynth(this.getAudioContext());
+
+    this.activePreview = preview;
+    this.activePreviewOwner = owner;
+    await preview.start();
+
+    if (this.activePreview !== preview || this.activePreviewOwner !== owner) {
+      preview.stop();
+      return;
+    }
+
+    preview.scheduleHits(
       slot.hits,
-      this.activePreview.currentTime + 0.03,
+      preview.currentTime + 0.03,
       getSecondsPerSlot(block),
       getSlotVisualDurationSeconds(block, slot)
     );
 
     this.activePreviewTimer = window.setTimeout(() => {
-      this.stopActivePreview();
+      this.stopActivePreview(owner);
     }, 950);
   }
 
-  private stopActivePreview(): void {
+  private stopActivePreview(owner?: symbol): void {
+    if (owner && this.activePreviewOwner !== owner) {
+      return;
+    }
+
     if (this.activePreviewTimer !== null) {
       window.clearTimeout(this.activePreviewTimer);
       this.activePreviewTimer = null;
@@ -280,6 +315,7 @@ export default class DrumNotationPlugin extends Plugin {
 
     this.activePreview?.stop();
     this.activePreview = null;
+    this.activePreviewOwner = null;
   }
 
   // A single AudioContext is shared across every block and every preview. Browsers

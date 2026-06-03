@@ -22,15 +22,21 @@ export class DrumPlayer {
   ) {}
 
   async play(): Promise<void> {
-    this.synth = new DrumSynth(this.audioContext);
-    await this.synth.start();
+    const synth = new DrumSynth(this.audioContext);
+
+    this.synth = synth;
+    await synth.start();
+
+    if (this.stopped || this.synth !== synth) {
+      return;
+    }
 
     this.playStartSlot = this.options.startSlot ?? 0;
     this.playEndSlot = Math.min(this.options.endSlot ?? this.block.slots.length, this.block.slots.length);
     this.playSlots = this.block.slots.slice(this.playStartSlot, this.playEndSlot);
     this.secondsPerSlot = getSecondsPerSlot(this.block);
     this.passDurationSeconds = this.playSlots.length * this.secondsPerSlot;
-    this.playbackStartTime = this.synth.currentTime + 0.08;
+    this.playbackStartTime = synth.currentTime + 0.08;
 
     if (this.playSlots.length === 0) {
       this.stop();
