@@ -132,6 +132,9 @@ type DrumPlaybackKind =
   | "hatFoot"
   | "ride"
   | "crash"
+  | "splash"
+  | "china"
+  | "stack"
   | "cowbell"
   | "click";
 
@@ -176,7 +179,7 @@ const DRUM_KIT: DrumInstrument[] = [
     vexKey: "b/5/X",
     midi: 55,
     color: "#f59e0b",
-    playback: "crash"
+    playback: "splash"
   },
   {
     id: "china",
@@ -185,7 +188,7 @@ const DRUM_KIT: DrumInstrument[] = [
     vexKey: "c/6/X",
     midi: 52,
     color: "#ea580c",
-    playback: "crash"
+    playback: "china"
   },
   {
     id: "stack",
@@ -194,7 +197,7 @@ const DRUM_KIT: DrumInstrument[] = [
     vexKey: "d/6/X",
     midi: 52,
     color: "#c2410c",
-    playback: "crash"
+    playback: "stack"
   },
   {
     id: "ride",
@@ -1959,6 +1962,20 @@ class DrumSynth {
         this.scheduleNoise(time, 0.8, 4200, velocity * 0.55);
         this.scheduleMetal(time, 0.8, 900, velocity * 0.35);
         break;
+      case "splash":
+        this.scheduleFilteredNoise(time, 0.36, "highpass", 6200, velocity * 0.46, 0.65);
+        this.scheduleMetal(time, 0.32, 1450, velocity * 0.22);
+        break;
+      case "china":
+        this.scheduleFilteredNoise(time, 0.95, "bandpass", 1900, velocity * 0.62, 1.1);
+        this.scheduleFilteredNoise(time, 0.62, "highpass", 3600, velocity * 0.24, 0.55);
+        this.scheduleMetal(time, 0.78, 650, velocity * 0.26);
+        break;
+      case "stack":
+        this.scheduleFilteredNoise(time, 0.18, "bandpass", 3100, velocity * 0.58, 2.2);
+        this.scheduleFilteredNoise(time, 0.12, "highpass", 7600, velocity * 0.28, 0.8);
+        this.scheduleMetal(time, 0.14, 1200, velocity * 0.18);
+        break;
       case "cowbell":
         this.scheduleCowbell(time, velocity);
         break;
@@ -2124,6 +2141,17 @@ class DrumSynth {
   }
 
   private scheduleNoise(time: number, duration: number, frequency: number, velocity: number): void {
+    this.scheduleFilteredNoise(time, duration, "highpass", frequency, velocity, 1);
+  }
+
+  private scheduleFilteredNoise(
+    time: number,
+    duration: number,
+    filterType: BiquadFilterType,
+    frequency: number,
+    velocity: number,
+    q = 1
+  ): void {
     const context = this.requireContext();
     const bufferSize = Math.max(1, Math.floor(context.sampleRate * duration));
     const buffer = context.createBuffer(1, bufferSize, context.sampleRate);
@@ -2138,8 +2166,9 @@ class DrumSynth {
     const gain = context.createGain();
 
     source.buffer = buffer;
-    filter.type = "highpass";
+    filter.type = filterType;
     filter.frequency.setValueAtTime(frequency, time);
+    filter.Q.setValueAtTime(q, time);
     gain.gain.setValueAtTime(velocity, time);
     gain.gain.exponentialRampToValueAtTime(0.001, time + duration);
 
