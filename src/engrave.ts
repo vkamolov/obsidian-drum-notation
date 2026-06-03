@@ -11,9 +11,9 @@ import {
   largestPowerOfTwoAtMost,
   shouldBeamSubdivision
 } from "./music";
-import { DrumBlock, DrumHit, DrumInstrument, DrumSlot, EngravingStyle, GridResolution, ScoreRenderResult } from "./types";
+import { DrumBlock, DrumHit, DrumInstrument, DrumSlot, GridResolution, ScoreRenderResult } from "./types";
 
-interface EngravingLayout {
+interface NotationLayout {
   systemHeight: number;
   renderScale: number;
   staveY: number;
@@ -61,10 +61,9 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
   container.empty();
 
   const cssWidth = getScoreWidth(container);
-  const layout = getEngravingLayout(block.engravingStyle);
+  const layout = getNotationLayout();
   const width = cssWidth / layout.renderScale;
   const height = layout.systemHeight;
-  const useTidyStyle = block.engravingStyle === "tidy";
   const cursorPositions: Array<ScoreRenderResult["cursorPositions"][number]> = [];
 
   container.style.width = "100%";
@@ -81,11 +80,9 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
     const context = renderer.getContext();
     context.scale(layout.renderScale, layout.renderScale);
 
-    if (useTidyStyle) {
-      context.setFillStyle("currentColor");
-      context.setStrokeStyle("currentColor");
-      context.setLineWidth(layout.strokeWidth);
-    }
+    context.setFillStyle("currentColor");
+    context.setStrokeStyle("currentColor");
+    context.setLineWidth(layout.strokeWidth);
 
     const systemSlots = scoreSystem.bars.flatMap((bar) => bar.slots);
     const totalSlots = Math.max(1, systemSlots.length);
@@ -107,18 +104,16 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
         ...(layout.staveLineSpacing !== undefined ? { spacingBetweenLinesPx: layout.staveLineSpacing } : {}),
         ...(layout.verticalBarWidth !== undefined ? { verticalBarWidth: layout.verticalBarWidth } : {})
       });
-      if (useTidyStyle) {
-        stave.setStyle({ fillStyle: "currentColor", strokeStyle: "currentColor", lineWidth: layout.strokeWidth });
-        stave.setDefaultLedgerLineStyle({ fillStyle: "currentColor", strokeStyle: "currentColor", lineWidth: layout.ledgerLineWidth });
-      }
+      stave.setStyle({ fillStyle: "currentColor", strokeStyle: "currentColor", lineWidth: layout.strokeWidth });
+      stave.setDefaultLedgerLineStyle({ fillStyle: "currentColor", strokeStyle: "currentColor", lineWidth: layout.ledgerLineWidth });
 
       if (isFirstBarInSystem) {
-        stave.addClef("percussion", useTidyStyle ? "small" : undefined);
+        stave.addClef("percussion", "small");
 
         if (systemIndex === 0) {
-          const timeSignature = new TimeSignature(block.timeSignature, useTidyStyle ? 6 : undefined);
+          const timeSignature = new TimeSignature(block.timeSignature, 6);
 
-          if (useTidyStyle && layout.signatureFontSize !== undefined) {
+          if (layout.signatureFontSize !== undefined) {
             slimTimeSignature(timeSignature, block.timeSignature, layout.signatureFontSize);
           }
 
@@ -131,19 +126,17 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
 
       const visualBar = buildVisualBarNotes(bar.slots, block.timeSignature, block.gridResolution, block.legendMode !== "off");
       const notes = visualBar.notes;
-      if (useTidyStyle) {
-        notes.forEach((note) => {
-          if (layout.noteFontSize !== undefined) {
-            note.setFontSize(layout.noteFontSize);
-            note.noteHeads.forEach((noteHead) => {
-              noteHead.setFontSize(layout.noteFontSize);
-            });
-          }
+      notes.forEach((note) => {
+        if (layout.noteFontSize !== undefined) {
+          note.setFontSize(layout.noteFontSize);
+          note.noteHeads.forEach((noteHead) => {
+            noteHead.setFontSize(layout.noteFontSize);
+          });
+        }
 
-          note.setStyle({ fillStyle: "currentColor", strokeStyle: "currentColor", lineWidth: layout.strokeWidth });
-          note.setLedgerLineStyle({ fillStyle: "currentColor", strokeStyle: "currentColor", lineWidth: layout.ledgerLineWidth });
-        });
-      }
+        note.setStyle({ fillStyle: "currentColor", strokeStyle: "currentColor", lineWidth: layout.strokeWidth });
+        note.setLedgerLineStyle({ fillStyle: "currentColor", strokeStyle: "currentColor", lineWidth: layout.ledgerLineWidth });
+      });
       const voice = new Voice({
         numBeats: Math.max(1, Math.ceil(bar.slots.length / getSlotsPerBeat(block.timeSignature, block.gridResolution))),
         beatValue: getBeatValue(block.timeSignature)
@@ -160,15 +153,11 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
         beam.renderOptions.maxSlope = layout.beamMaxSlope;
         beam.renderOptions.minSlope = -layout.beamMaxSlope;
         beam.renderOptions.slopeIterations = 12;
-        if (useTidyStyle) {
-          beam.setStyle({ fillStyle: "currentColor", strokeStyle: "currentColor", lineWidth: layout.strokeWidth });
-        }
+        beam.setStyle({ fillStyle: "currentColor", strokeStyle: "currentColor", lineWidth: layout.strokeWidth });
         beam.setContext(context).draw();
       });
       visualBar.tuplets.forEach((tuplet) => {
-        if (useTidyStyle) {
-          tuplet.setStyle({ fillStyle: "currentColor", strokeStyle: "currentColor", lineWidth: layout.strokeWidth });
-        }
+        tuplet.setStyle({ fillStyle: "currentColor", strokeStyle: "currentColor", lineWidth: layout.strokeWidth });
         tuplet.setContext(context).draw();
       });
       drawOpenHatMarks(system, visualBar.hitNotes, visualBar.noteSlots, layout);
@@ -322,7 +311,7 @@ function getScoreWidth(container: HTMLElement): number {
   return Math.max(320, Math.floor((parentWidth || 720) - 16));
 }
 
-function drawOpenHatMarks(system: HTMLElement, notes: StaveNote[], noteSlots: DrumSlot[], layout: EngravingLayout): void {
+function drawOpenHatMarks(system: HTMLElement, notes: StaveNote[], noteSlots: DrumSlot[], layout: NotationLayout): void {
   const svg = system.querySelector<SVGSVGElement>("svg");
 
   if (!svg) {
@@ -356,7 +345,7 @@ function drawOpenHatMarks(system: HTMLElement, notes: StaveNote[], noteSlots: Dr
   });
 }
 
-function drawAccentMarks(system: HTMLElement, notes: StaveNote[], noteSlots: DrumSlot[], layout: EngravingLayout): void {
+function drawAccentMarks(system: HTMLElement, notes: StaveNote[], noteSlots: DrumSlot[], layout: NotationLayout): void {
   const svg = system.querySelector<SVGSVGElement>("svg");
 
   if (!svg) {
@@ -391,7 +380,7 @@ function drawAccentMarks(system: HTMLElement, notes: StaveNote[], noteSlots: Dru
   });
 }
 
-function drawDiddleMarks(system: HTMLElement, notes: StaveNote[], noteSlots: DrumSlot[], layout: EngravingLayout): void {
+function drawDiddleMarks(system: HTMLElement, notes: StaveNote[], noteSlots: DrumSlot[], layout: NotationLayout): void {
   const svg = system.querySelector<SVGSVGElement>("svg");
 
   if (!svg) {
@@ -440,7 +429,7 @@ function drawBuzzRollMarks(
   system: HTMLElement,
   notes: StaveNote[],
   noteSlots: DrumSlot[],
-  layout: EngravingLayout
+  layout: NotationLayout
 ): void {
   const svg = system.querySelector<SVGSVGElement>("svg");
 
@@ -509,43 +498,7 @@ function getStemMarkMiddleY(note: StaveNote, markHeight: number, markThickness: 
   return Math.min(defaultMiddleY, lowestAllowedMiddleY);
 }
 
-function getEngravingLayout(style: EngravingStyle): EngravingLayout {
-  if (style === "classic") {
-    return {
-      systemHeight: 180,
-      renderScale: 1,
-      staveY: 36,
-      staveX: 16,
-      staveRightPadding: 16,
-      barMinWidth: 80,
-      noteStartPadding: 0,
-      noteEndPadding: 0,
-      formatPadding: 28,
-      maxSlotFormatWidth: Number.POSITIVE_INFINITY,
-      beamWidth: 5,
-      beamMaxSlope: 0.25,
-      strokeWidth: 1,
-      ledgerLineWidth: 1,
-      noteFontSize: undefined,
-      signatureFontSize: undefined,
-      accentGap: 13,
-      accentWidth: 11,
-      accentHeight: 7,
-      accentStrokeWidth: 1,
-      diddleWidth: 12,
-      diddleHeight: 7,
-      diddleThickness: 4.2,
-      diddleFill: "#000000",
-      diddleNoteheadClearance: 7,
-      buzzWidth: 10,
-      buzzHeight: 13,
-      buzzStrokeWidth: 1.6,
-      openHatRadius: 4,
-      openHatGap: 8,
-      openHatStrokeWidth: 1.2
-    };
-  }
-
+function getNotationLayout(): NotationLayout {
   return {
     systemHeight: 112,
     renderScale: 0.9,
@@ -587,7 +540,7 @@ function slimTimeSignature(timeSignature: TimeSignature, timeSpec: string, fontS
   // NOTE: VexFlow does not expose the time-signature glyph text objects publicly,
   // so we reach into topText/botText to shrink the font. The optional chaining
   // means a future VexFlow that renames these will silently skip the slimming
-  // rather than throw — revisit this if the tidy time signature stops shrinking.
+  // rather than throw; revisit this if the time signature stops shrinking.
   const signatureParts = timeSignature as unknown as {
     topText?: { setFontSize: (size: number) => unknown };
     botText?: { setFontSize: (size: number) => unknown };

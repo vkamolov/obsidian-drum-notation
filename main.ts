@@ -58,7 +58,6 @@ export default class DrumNotationPlugin extends Plugin {
     el.empty();
 
     const root = el.createEl("div", { cls: "drum-notation" });
-    root.addClass(`drum-notation--${block.engravingStyle}`);
     if (block.legendMode !== "off") {
       root.addClass("drum-notation--legend-color");
     }

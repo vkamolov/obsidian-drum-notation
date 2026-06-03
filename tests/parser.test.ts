@@ -19,7 +19,6 @@ describe("parseDrumBlock - defaults and basic structure", () => {
     expect(block.repeatCount).toBe(1);
     expect(block.gridResolution).toBe(16);
     expect(block.legendMode).toBe("off");
-    expect(block.engravingStyle).toBe("tidy");
     expect(block.showCursor).toBe(true);
     expect(block.showHighlight).toBe(true);
   });
@@ -49,7 +48,6 @@ Time: 6/8
 Repeat: 4
 Grid: 32
 Legend: all
-Engraving: classic
 Cursor: off
 Highlight: no
 HH | x-x-x-x-x-x-x-x-`);
@@ -60,9 +58,18 @@ HH | x-x-x-x-x-x-x-x-`);
     expect(block.repeatCount).toBe(4);
     expect(block.gridResolution).toBe(32);
     expect(block.legendMode).toBe("all");
-    expect(block.engravingStyle).toBe("classic");
     expect(block.showCursor).toBe(false);
     expect(block.showHighlight).toBe(false);
+  });
+});
+
+describe("parseDrumBlock - removed settings", () => {
+  it("treats old Engraving lines as metadata instead of rendering options", () => {
+    const block = parseDrumBlock(`Engraving: classic
+HH | x---`);
+
+    expect(block.metadata).toContain("Engraving: classic");
+    expect(block.rows).toHaveLength(1);
   });
 });
 

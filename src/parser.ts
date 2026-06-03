@@ -1,6 +1,5 @@
 import { getArticulation, getVelocity, INSTRUMENTS_BY_ALIAS, isRest } from "./kit";
 import {
-  DEFAULT_ENGRAVING_STYLE,
   DEFAULT_GRID_RESOLUTION,
   DEFAULT_LEGEND_MODE,
   DEFAULT_REPEAT_COUNT,
@@ -13,7 +12,6 @@ import {
   DrumRow,
   DrumSlot,
   DrumSystem,
-  EngravingStyle,
   GridResolution,
   LegendMode
 } from "./types";
@@ -35,7 +33,6 @@ export function parseDrumBlock(source: string): DrumBlock {
   let showCursor = DEFAULT_SHOW_CURSOR;
   let showHighlight = DEFAULT_SHOW_HIGHLIGHT;
   let legendMode = DEFAULT_LEGEND_MODE;
-  let engravingStyle = DEFAULT_ENGRAVING_STYLE;
   let gridResolution = DEFAULT_GRID_RESOLUTION;
 
   const pushCurrentBar = () => {
@@ -72,8 +69,6 @@ export function parseDrumBlock(source: string): DrumBlock {
           showHighlight = parseBooleanSetting(setting.value, DEFAULT_SHOW_HIGHLIGHT);
         } else if (setting.key === "legend" || setting.key === "instrumentlegend" || setting.key === "kitlegend" || setting.key === "colorlegend") {
           legendMode = parseLegendMode(setting.value);
-        } else if (setting.key === "engraving" || setting.key === "style" || setting.key === "renderstyle") {
-          engravingStyle = parseEngravingStyle(setting.value);
         } else if (setting.key === "grid" || setting.key === "subdivision" || setting.key === "resolution") {
           gridResolution = parseGridResolution(setting.value);
         } else {
@@ -105,7 +100,6 @@ export function parseDrumBlock(source: string): DrumBlock {
     showCursor,
     showHighlight,
     legendMode,
-    engravingStyle,
     gridResolution,
     metadata,
     systems,
@@ -129,7 +123,7 @@ function parseSettingLine(line: string): { key: string; originalKey: string; val
   const originalKey = match[1].trim();
   const key = normalizeLabel(originalKey);
   const value = match[2].trim();
-  const settingKeys = new Set(["title", "author", "comment", "tempo", "bpm", "time", "timesignature", "meter", "count", "repeat", "repeats", "cursor", "playbackcursor", "highlight", "notehighlight", "playbackhighlight", "legend", "instrumentlegend", "kitlegend", "colorlegend", "engraving", "style", "renderstyle", "grid", "subdivision", "resolution"]);
+  const settingKeys = new Set(["title", "author", "comment", "tempo", "bpm", "time", "timesignature", "meter", "count", "repeat", "repeats", "cursor", "playbackcursor", "highlight", "notehighlight", "playbackhighlight", "legend", "instrumentlegend", "kitlegend", "colorlegend", "grid", "subdivision", "resolution"]);
 
   if (!settingKeys.has(key)) {
     return null;
@@ -280,20 +274,6 @@ function parseLegendMode(value: string): LegendMode {
   }
 
   return DEFAULT_LEGEND_MODE;
-}
-
-function parseEngravingStyle(value: string): EngravingStyle {
-  const normalized = normalizeLabel(value);
-
-  if (["classic", "legacy", "old", "original", "rollback", "default"].includes(normalized)) {
-    return "classic";
-  }
-
-  if (["tidy", "neat", "compact", "abc", "abcstyle", "modern"].includes(normalized)) {
-    return "tidy";
-  }
-
-  return DEFAULT_ENGRAVING_STYLE;
 }
 
 function parseGridResolution(value: string): GridResolution {

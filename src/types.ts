@@ -5,7 +5,6 @@ export interface DrumBlock {
   showCursor: boolean;
   showHighlight: boolean;
   legendMode: LegendMode;
-  engravingStyle: EngravingStyle;
   gridResolution: GridResolution;
   metadata: string[];
   systems: DrumSystem[];
@@ -86,7 +85,6 @@ export type DrumPlaybackKind =
   | "click";
 
 export type DrumArticulation = "normal" | "accent" | "ghost" | "flam" | "diddle" | "buzz";
-export type EngravingStyle = "tidy" | "classic";
 export type GridResolution = 16 | 32;
 export type LegendMode = "off" | "used" | "all";
 
@@ -96,5 +94,4 @@ export const DEFAULT_REPEAT_COUNT = 1;
 export const DEFAULT_SHOW_CURSOR = true;
 export const DEFAULT_SHOW_HIGHLIGHT = true;
 export const DEFAULT_LEGEND_MODE: LegendMode = "off";
-export const DEFAULT_ENGRAVING_STYLE: EngravingStyle = "tidy";
 export const DEFAULT_GRID_RESOLUTION: GridResolution = 16;

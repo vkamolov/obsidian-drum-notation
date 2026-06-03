@@ -34,7 +34,6 @@ Repeat: 4
 Cursor: on
 Highlight: on
 Legend: off
-Engraving: tidy
 Grid: 16
 ```
 
@@ -49,7 +48,6 @@ Supported settings:
 | `Cursor:` or `Playback Cursor:` | `Cursor: off` | Shows or hides the blinking playback cursor. Defaults to `on`. |
 | `Highlight:`, `Note Highlight:`, or `Playback Highlight:` | `Highlight: off` | Highlights the note/chord that is currently sounding. Defaults to `on`. |
 | `Legend:`, `Instrument Legend:`, or `Kit Legend:` | `Legend: all` | Shows a compact color key. Use `on`/`used` for instruments in the current block, `all` for the full supported kit, or `off` to hide it. Defaults to `off`. |
-| `Engraving:`, `Style:`, or `Render Style:` | `Engraving: classic` | `tidy` is the default trial style. Use `classic` to roll back to the previous spacing for any block. |
 | `Grid:`, `Subdivision:`, or `Resolution:` | `Grid: 32` | Sets one source character to a sixteenth note (`16`, default) or thirty-second note (`32`). |
 | `Author:` | `Author: Test Author` | Stored as metadata. |
 | `Comment:` | `Comment: Test Comment` | Stored as metadata. |
@@ -90,7 +88,7 @@ The pattern is one character per grid slot. By default one character is a sixtee
 
 ## Color Legend
 
-The legend is hidden by default. Add `Legend: on` to show a color key for only the instruments used in the block, or `Legend: all` to show every supported instrument. When the legend is visible, noteheads are colored to match the legend while staff lines, stems, beams, and notation marks keep the selected engraving style.
+The legend is hidden by default. Add `Legend: on` to show a color key for only the instruments used in the block, or `Legend: all` to show every supported instrument. When the legend is visible, noteheads are colored to match the legend while staff lines, stems, beams, and notation marks keep the notation color scheme.
 
 ````
 ```drums

@@ -5,66 +5,22 @@
   --drum-text: var(--text-normal);
   --drum-muted: var(--text-muted);
   --drum-accent: var(--interactive-accent);
-  --drum-theme-ink: var(--text-normal, rgb(77, 79, 102));
   --drum-dark-ink: var(--text-normal, rgb(199, 208, 242));
-  --drum-tidy-ink: rgb(77, 79, 102);
-  --drum-buzz-center-lift: -7px;
+  --drum-notation-ink: rgb(77, 79, 102);
+  --drum-ink-line: var(--drum-notation-ink);
+  --drum-ink-stem: var(--drum-notation-ink);
+  --drum-ink-note: var(--drum-notation-ink);
+  --drum-ink-symbol: var(--drum-notation-ink);
+  --drum-buzz-center-lift: -5px;
 
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 0.55rem;
   max-width: 100%;
-  padding: 0.85rem;
+  padding: 0.65rem;
   border: 1px solid var(--drum-border);
   border-radius: 8px;
   background: var(--drum-panel);
-}
-
-.drum-notation--tidy {
-  --drum-ink-line: var(--drum-tidy-ink);
-  --drum-ink-stem: var(--drum-tidy-ink);
-  --drum-ink-note: var(--drum-tidy-ink);
-  --drum-ink-symbol: var(--drum-tidy-ink);
-  --drum-buzz-center-lift: -5px;
-
-  gap: 0.55rem;
-  padding: 0.65rem;
-}
-
-.drum-notation--tidy .drum-notation__title {
-  font-weight: 560;
-}
-
-.drum-notation--tidy .drum-notation__title small {
-  font-weight: 430;
-}
-
-.drum-notation--tidy .drum-notation__button {
-  min-width: auto;
-  height: 1.6rem;
-  padding: 0 0.35rem;
-  border-color: transparent;
-  border-radius: 4px;
-  color: var(--drum-ink-symbol);
-  background: transparent;
-  box-shadow: none;
-  font-size: 0.78rem;
-  font-weight: 400;
-  letter-spacing: 0;
-}
-
-.drum-notation--tidy .drum-notation__button:hover,
-.drum-notation--tidy .drum-notation__button:focus-visible {
-  border-color: transparent;
-  color: var(--interactive-accent);
-  background: transparent;
-  box-shadow: none;
-}
-
-.drum-notation--tidy .drum-notation__button.is-playing {
-  color: var(--interactive-accent);
-  background: transparent;
-  box-shadow: inset 0 -1px 0 var(--interactive-accent);
 }
 
 .drum-notation__toolbar {
@@ -80,13 +36,13 @@
   gap: 0.15rem;
   min-width: 0;
   color: var(--drum-text);
-  font-weight: 650;
+  font-weight: 560;
 }
 
 .drum-notation__title small {
   color: var(--drum-muted);
   font-size: var(--font-smallest);
-  font-weight: 500;
+  font-weight: 430;
 }
 
 .drum-notation__controls {
@@ -96,24 +52,32 @@
 }
 
 .drum-notation__button {
-  min-width: 4.25rem;
-  height: 2rem;
-  padding: 0 0.75rem;
-  border: 1px solid var(--drum-border);
-  border-radius: 6px;
-  color: var(--drum-text);
-  background: var(--drum-panel-alt);
-  font-size: var(--font-small);
+  min-width: auto;
+  height: 1.6rem;
+  padding: 0 0.35rem;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--drum-ink-symbol);
+  background: transparent;
+  box-shadow: none;
+  font-size: 0.78rem;
+  font-weight: 400;
   line-height: 1;
+  letter-spacing: 0;
 }
 
-.drum-notation__button:hover {
-  border-color: var(--drum-accent);
+.drum-notation__button:hover,
+.drum-notation__button:focus-visible {
+  border-color: transparent;
+  color: var(--interactive-accent);
+  background: transparent;
+  box-shadow: none;
 }
 
 .drum-notation__button.is-playing {
-  color: var(--text-on-accent);
-  background: var(--drum-accent);
+  color: var(--interactive-accent);
+  background: transparent;
+  box-shadow: inset 0 -1px 0 var(--interactive-accent);
 }
 
 .drum-notation__button:disabled {
@@ -132,60 +96,59 @@
   position: relative;
   box-sizing: border-box;
   width: 100%;
-  padding: 0.5rem;
+  padding: 0.35rem;
   background: transparent;
 }
 
-.drum-notation--tidy .drum-notation__score {
-  padding: 0.35rem;
-}
-
-.drum-notation--tidy .drum-notation__score svg {
+.drum-notation__score svg {
+  display: block;
+  width: 100%;
+  max-width: 100%;
   color: var(--drum-ink-line);
 }
 
-.drum-notation--tidy .drum-notation__score svg text {
+.drum-notation__score svg text {
   fill: var(--drum-ink-symbol);
   font-weight: 400;
 }
 
-.drum-notation--tidy .drum-notation__score svg .vf-stave path,
-.drum-notation--tidy .drum-notation__score svg .vf-barline path,
-.drum-notation--tidy .drum-notation__score svg .vf-ledger path,
-.drum-notation--tidy .drum-notation__score svg .vf-ledger-line path {
+.drum-notation__score svg .vf-stave path,
+.drum-notation__score svg .vf-barline path,
+.drum-notation__score svg .vf-ledger path,
+.drum-notation__score svg .vf-ledger-line path {
   stroke: var(--drum-ink-line);
   fill: var(--drum-ink-line);
   stroke-width: 0.68;
   opacity: 0.55;
 }
 
-.drum-notation--tidy .drum-notation__score svg .vf-stem path {
+.drum-notation__score svg .vf-stem path {
   stroke: var(--drum-ink-stem);
   fill: var(--drum-ink-stem);
   stroke-width: 0.68;
   opacity: 0.72;
 }
 
-.drum-notation--tidy .drum-notation__score svg .vf-beam path {
+.drum-notation__score svg .vf-beam path {
   fill: var(--drum-ink-stem);
   opacity: 0.72;
 }
 
-.drum-notation--tidy .drum-notation__score svg .drum-notation__accent {
+.drum-notation__score svg .drum-notation__accent {
   color: var(--drum-ink-stem);
 }
 
-.drum-notation--tidy .drum-notation__score svg .vf-notehead path {
+.drum-notation__score svg .vf-notehead path {
   stroke: var(--drum-ink-note);
   fill: var(--drum-ink-note);
 }
 
-.drum-notation--tidy .drum-notation__score svg .vf-clef path,
-.drum-notation--tidy .drum-notation__score svg .vf-timesignature path,
-.drum-notation--tidy .drum-notation__score svg .vf-articulation path,
-.drum-notation--tidy .drum-notation__score svg .vf-parenthesis path,
-.drum-notation--tidy .drum-notation__score svg .vf-gracenote path,
-.drum-notation--tidy .drum-notation__score svg .vf-tuplet path {
+.drum-notation__score svg .vf-clef path,
+.drum-notation__score svg .vf-timesignature path,
+.drum-notation__score svg .vf-articulation path,
+.drum-notation__score svg .vf-parenthesis path,
+.drum-notation__score svg .vf-gracenote path,
+.drum-notation__score svg .vf-tuplet path {
   stroke: var(--drum-ink-symbol);
   fill: var(--drum-ink-symbol);
 }
@@ -193,23 +156,15 @@
 .theme-dark .drum-notation,
 .drum-notation.theme-dark {
   --drum-dark-ink: var(--text-normal, rgb(199, 208, 242));
-  --drum-theme-ink: var(--drum-dark-ink);
-}
-
-.theme-dark .drum-notation--tidy,
-.drum-notation.theme-dark.drum-notation--tidy {
-  --drum-tidy-ink: var(--drum-dark-ink);
-}
-
-.theme-dark .drum-notation--tidy {
+  --drum-notation-ink: var(--drum-dark-ink);
   --drum-ink-line: var(--drum-dark-ink);
   --drum-ink-stem: var(--drum-dark-ink);
   --drum-ink-note: var(--drum-dark-ink);
   --drum-ink-symbol: var(--drum-dark-ink);
 }
 
-.theme-dark .drum-notation--tidy .drum-notation__button,
-.drum-notation.theme-dark.drum-notation--tidy .drum-notation__button {
+.theme-dark .drum-notation__button,
+.drum-notation.theme-dark .drum-notation__button {
   color: var(--drum-dark-ink);
 }
 
@@ -234,10 +189,7 @@
 
 .theme-dark .drum-notation__score svg .drum-notation__accent,
 .theme-dark .drum-notation__score svg .drum-notation__open-hat,
-.drum-notation.theme-dark .drum-notation__score svg .drum-notation__accent {
-  fill: none;
-}
-
+.drum-notation.theme-dark .drum-notation__score svg .drum-notation__accent,
 .drum-notation.theme-dark .drum-notation__score svg .drum-notation__open-hat {
   fill: none;
 }
@@ -258,16 +210,10 @@
   width: 100%;
 }
 
-.drum-notation__score svg {
-  display: block;
-  width: 100%;
-  max-width: 100%;
-}
-
 .drum-notation__legend {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
-  gap: 0.35rem 0.55rem;
+  gap: 0.25rem 0.5rem;
   padding: 0.1rem 0.15rem;
 }
 
@@ -276,8 +222,8 @@
   align-items: center;
   min-width: 0;
   gap: 0.35rem;
-  color: var(--drum-text);
-  font-size: var(--font-small);
+  color: var(--drum-ink-symbol);
+  font-size: 0.78rem;
   line-height: 1.2;
 }
 
@@ -294,32 +240,18 @@
   flex: 0 0 auto;
   min-width: 2.25rem;
   padding: 0;
-  color: var(--drum-muted);
+  color: var(--drum-ink-symbol);
   background: transparent;
   font-size: 0.78em;
-  font-weight: 600;
+  font-weight: 430;
 }
 
 .drum-notation__legend-label {
   overflow: hidden;
-  color: var(--drum-text);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.drum-notation--tidy .drum-notation__legend {
-  gap: 0.25rem 0.5rem;
-}
-
-.drum-notation--tidy .drum-notation__legend-item {
-  color: var(--drum-ink-symbol);
-  font-size: 0.78rem;
-}
-
-.drum-notation--tidy .drum-notation__legend-code,
-.drum-notation--tidy .drum-notation__legend-label {
   color: var(--drum-ink-symbol);
   font-weight: 430;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .drum-notation__cursor {
@@ -356,12 +288,6 @@
 
 .drum-notation__interactive-note.is-playing path,
 .drum-notation__interactive-note.is-playing text {
-  stroke: var(--drum-accent);
-  fill: var(--drum-accent);
-}
-
-.drum-notation--tidy .drum-notation__interactive-note.is-playing path,
-.drum-notation--tidy .drum-notation__interactive-note.is-playing text {
   stroke: var(--drum-accent) !important;
   fill: var(--drum-accent) !important;
 }
