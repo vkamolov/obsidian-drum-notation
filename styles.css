@@ -52,32 +52,34 @@
 }
 
 .drum-notation__button {
+  appearance: none;
   min-width: auto;
   height: 1.6rem;
   padding: 0 0.35rem;
-  border: 1px solid transparent;
+  border: 1px solid transparent !important;
   border-radius: 4px;
-  color: var(--drum-ink-symbol);
-  background: transparent;
-  box-shadow: none;
+  color: var(--drum-ink-symbol) !important;
+  background: transparent !important;
+  box-shadow: none !important;
   font-size: 0.78rem;
   font-weight: 400;
   line-height: 1;
   letter-spacing: 0;
+  cursor: pointer;
 }
 
 .drum-notation__button:hover,
 .drum-notation__button:focus-visible {
-  border-color: transparent;
-  color: var(--interactive-accent);
-  background: transparent;
-  box-shadow: none;
+  border-color: transparent !important;
+  color: var(--interactive-accent) !important;
+  background: transparent !important;
+  box-shadow: none !important;
 }
 
 .drum-notation__button.is-playing {
-  color: var(--interactive-accent);
-  background: transparent;
-  box-shadow: inset 0 -1px 0 var(--interactive-accent);
+  color: var(--interactive-accent) !important;
+  background: transparent !important;
+  box-shadow: inset 0 -1px 0 var(--interactive-accent) !important;
 }
 
 .drum-notation__button:disabled {
@@ -165,7 +167,7 @@
 
 .theme-dark .drum-notation__button,
 .drum-notation.theme-dark .drum-notation__button {
-  color: var(--drum-dark-ink);
+  color: var(--drum-dark-ink) !important;
 }
 
 .theme-dark .drum-notation__score svg,
