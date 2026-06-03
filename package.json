@@ -1,0 +1,28 @@
+{
+  "name": "obsidian-drum-notation",
+  "version": "0.8.28",
+  "description": "Render and play drum kit notation blocks in Obsidian notes.",
+  "main": "main.js",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production"
+  },
+  "keywords": [
+    "obsidian",
+    "obsidian-plugin",
+    "drums",
+    "notation"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "builtin-modules": "^5.0.0",
+    "esbuild": "^0.25.0",
+    "obsidian": "^1.8.7",
+    "typescript": "^5.8.0"
+  },
+  "dependencies": {
+    "vexflow": "^5.0.0"
+  }
+}
