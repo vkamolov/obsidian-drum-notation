@@ -5,7 +5,11 @@
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",
-    "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production"
+    "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+    "typecheck": "tsc -noEmit -skipLibCheck",
+    "typecheck:watch": "tsc -noEmit -skipLibCheck --watch",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "keywords": [
     "obsidian",
@@ -13,14 +17,15 @@
     "drums",
     "notation"
   ],
-  "author": "",
+  "author": "vkamolov",
   "license": "MIT",
   "devDependencies": {
     "@types/node": "^24.0.0",
     "builtin-modules": "^5.0.0",
     "esbuild": "^0.25.0",
     "obsidian": "^1.8.7",
-    "typescript": "^5.8.0"
+    "typescript": "^5.8.0",
+    "vitest": "^3.0.0"
   },
   "dependencies": {
     "vexflow": "^5.0.0"
