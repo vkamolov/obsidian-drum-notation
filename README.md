@@ -71,6 +71,7 @@ The pattern is one character per grid slot. By default one character is a sixtee
 | `RS`, `Rim`, `Cross`, `Cross-stick` | Rim/cross-stick |
 | `HH`, `CH`, `Close`, `Hat`, `Hi-hat` | Closed hi-hat |
 | `OH`, `Open Hat` | Open hi-hat |
+| `HO`, `HHO`, `Half-open Hat`, `Half-open Hi-hat` | Half-open hi-hat |
 | `RD`, `Ride` | Ride |
 | `RB`, `Ride Bell`, `Bell` | Ride bell |
 | `CR`, `Crash` | Crash |
@@ -84,7 +85,7 @@ The pattern is one character per grid slot. By default one character is a sixtee
 | `LFT`, `Low Floor Tom` | Low floor tom |
 | `CB`, `Cowbell` | Cowbell |
 
-`SD` uses a fuller synthesized snare sound. `RS` / cross-stick stays shorter and clickier. `CR`, `SP`, `China`, and `Stack` use separate synthesized cymbal voices so their playback is distinguishable. `OH` / open hi-hat renders with the standard open-circle mark above the note.
+`SD` uses a fuller synthesized snare sound. `RS` / cross-stick stays shorter and clickier. `CR`, `SP`, `China`, and `Stack` use separate synthesized cymbal voices so their playback is distinguishable. `OH` / open hi-hat renders with the standard open-circle mark above the note. `HO` / half-open hi-hat renders the open circle with a vertical line through it.
 
 ## Color Legend
 
@@ -105,17 +106,18 @@ Stack | ---x------------ | ----------------
 RD    | ----x----------- | ----------------
 RB    | -----x---------- | ----------------
 OH    | ------x--------- | ----------------
-HH    | -------x-------- | ----------------
-HF    | --------x------- | ----------------
-SD    | ---------o------ | ----------------
-RS    | ----------x----- | ----------------
-HT    | -----------o---- | ----------------
-MT    | ------------o--- | ----------------
-LT    | -------------o-- | ----------------
-FT    | --------------o- | ----------------
-LFT   | ---------------o | ----------------
-CB    | ---------------- | x---------------
-BD    | ---------------- | -o--------------
+HO    | -------x-------- | ----------------
+HH    | --------x------- | ----------------
+HF    | ---------x------ | ----------------
+SD    | ----------o----- | ----------------
+RS    | -----------x---- | ----------------
+HT    | ------------o--- | ----------------
+MT    | -------------o-- | ----------------
+LT    | --------------o- | ----------------
+FT    | ---------------o | ----------------
+LFT   | ---------------- | x---------------
+CB    | ---------------- | -x--------------
+BD    | ---------------- | --o-------------
 ```
 ````
 
@@ -276,22 +278,23 @@ Time: 4/4
 Count: 1 e & a 2 e & a 3 e & a 4 e & a 5 e & a 6 e & a 7 e & a 8 e & a
 HH    | x-------------------------------
 OH    | -o------------------------------
-CR    | -->-----------------------------
-SP    | ---x----------------------------
-China | ----x---------------------------
-Stack | -----x--------------------------
-RD    | ------x-------------------------
-RB    | -------x------------------------
-CB    | --------x-----------------------
-SD    | ---------g-----------f----------
-RS    | ---------->---------------------
-HT    | -----------o--------------------
-MT    | ------------o-------------------
-LT    | -------------o------------------
-FT    | --------------o-----------------
-LFT   | ---------------o----------------
-BD    | ----------------o--------------X
-HF    | -----------------x-------------X
+HO    | --x-----------------------------
+CR    | --->----------------------------
+SP    | ----x---------------------------
+China | -----x--------------------------
+Stack | ------x-------------------------
+RD    | -------x------------------------
+RB    | --------x-----------------------
+CB    | ---------x----------------------
+SD    | ----------g-----------f---------
+RS    | ----------->--------------------
+HT    | ------------o-------------------
+MT    | -------------o------------------
+LT    | --------------o-----------------
+FT    | ---------------o----------------
+LFT   | ----------------o---------------
+BD    | -----------------o-------------X
+HF    | ------------------x------------X
 ```
 ````
 

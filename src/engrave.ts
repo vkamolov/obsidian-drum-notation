@@ -47,6 +47,7 @@ interface NotationLayout {
   openHatRadius: number;
   openHatGap: number;
   openHatStrokeWidth: number;
+  halfOpenHatLineExtension: number;
 }
 
 interface VisualBarNotes {
@@ -159,7 +160,7 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
         tuplet.setStyle({ fillStyle: "currentColor", strokeStyle: "currentColor", lineWidth: layout.strokeWidth });
         tuplet.setContext(context).draw();
       });
-      drawOpenHatMarks(system, visualBar.hitNotes, visualBar.noteSlots, layout);
+      drawHatOpennessMarks(system, visualBar.hitNotes, visualBar.noteSlots, layout);
       drawAccentMarks(system, visualBar.hitNotes, visualBar.noteSlots, layout);
       drawDiddleMarks(system, visualBar.hitNotes, visualBar.noteSlots, layout);
       drawBuzzRollMarks(system, visualBar.hitNotes, visualBar.noteSlots, layout);
@@ -320,7 +321,7 @@ function getScoreWidth(container: HTMLElement): number {
   return Math.max(320, Math.floor((parentWidth || 720) - 16));
 }
 
-function drawOpenHatMarks(system: HTMLElement, notes: StaveNote[], noteSlots: DrumSlot[], layout: NotationLayout): void {
+function drawHatOpennessMarks(system: HTMLElement, notes: StaveNote[], noteSlots: DrumSlot[], layout: NotationLayout): void {
   const svg = system.querySelector<SVGSVGElement>("svg");
 
   if (!svg) {
@@ -328,7 +329,10 @@ function drawOpenHatMarks(system: HTMLElement, notes: StaveNote[], noteSlots: Dr
   }
 
   noteSlots.forEach((slot, noteIndex) => {
-    if (!slot.hits.some((hit) => hit.instrument.id === "open-hat")) {
+    const hasOpenHat = slot.hits.some((hit) => hit.instrument.id === "open-hat");
+    const hasHalfOpenHat = slot.hits.some((hit) => hit.instrument.id === "half-open-hat");
+
+    if (!hasOpenHat && !hasHalfOpenHat) {
       return;
     }
 
@@ -351,6 +355,20 @@ function drawOpenHatMarks(system: HTMLElement, notes: StaveNote[], noteSlots: Dr
     circle.setAttribute("stroke", "currentColor");
     circle.setAttribute("stroke-width", String(layout.openHatStrokeWidth));
     svg.appendChild(circle);
+
+    if (hasHalfOpenHat) {
+      const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+
+      line.classList.add("drum-notation__half-open-hat-line");
+      line.setAttribute("x1", String(x));
+      line.setAttribute("y1", String(y - layout.openHatRadius - layout.halfOpenHatLineExtension));
+      line.setAttribute("x2", String(x));
+      line.setAttribute("y2", String(y + layout.openHatRadius + layout.halfOpenHatLineExtension));
+      line.setAttribute("stroke", "currentColor");
+      line.setAttribute("stroke-width", String(layout.openHatStrokeWidth));
+      line.setAttribute("stroke-linecap", "round");
+      svg.appendChild(line);
+    }
   });
 }
 
@@ -541,7 +559,8 @@ function getNotationLayout(): NotationLayout {
     buzzStrokeWidth: 1.05,
     openHatRadius: 3.4,
     openHatGap: 7,
-    openHatStrokeWidth: 0.85
+    openHatStrokeWidth: 0.85,
+    halfOpenHatLineExtension: 2.4
   };
 }
 

@@ -54,6 +54,8 @@ describe("INSTRUMENTS_BY_ALIAS", () => {
     expect(INSTRUMENTS_BY_ALIAS.get("bass")?.id).toBe("kick");
     expect(INSTRUMENTS_BY_ALIAS.get("kick")?.id).toBe("kick");
     expect(INSTRUMENTS_BY_ALIAS.get("hh")?.id).toBe("closed-hat");
+    expect(INSTRUMENTS_BY_ALIAS.get("ho")?.id).toBe("half-open-hat");
+    expect(INSTRUMENTS_BY_ALIAS.get("hho")?.id).toBe("half-open-hat");
     expect(INSTRUMENTS_BY_ALIAS.get("sd")?.id).toBe("snare");
   });
 

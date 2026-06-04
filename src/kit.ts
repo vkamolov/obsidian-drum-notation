@@ -66,6 +66,15 @@ export const DRUM_KIT: DrumInstrument[] = [
     playback: "hatOpen"
   },
   {
+    id: "half-open-hat",
+    label: "Half-open hat",
+    aliases: ["ho", "hho", "halfopenhat", "half-openhat", "half open hat", "half-open hat", "half open hi-hat", "half-open hi-hat"],
+    vexKey: "g/5/X",
+    midi: 46,
+    color: "#d4a017",
+    playback: "hatHalfOpen"
+  },
+  {
     id: "closed-hat",
     label: "Hi-hat",
     aliases: ["hh", "ch", "close", "closed", "hat", "hihat", "hi-hat", "closedhat", "closed-hat"],

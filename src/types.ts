@@ -74,6 +74,7 @@ export type DrumPlaybackKind =
   | "tomMid"
   | "tomLow"
   | "hatClosed"
+  | "hatHalfOpen"
   | "hatOpen"
   | "hatFoot"
   | "ride"

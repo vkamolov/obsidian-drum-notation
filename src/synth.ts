@@ -98,6 +98,10 @@ export class DrumSynth {
       case "hatClosed":
         this.scheduleNoise(time, 0.045, 7000, velocity * 0.55);
         break;
+      case "hatHalfOpen":
+        this.scheduleFilteredNoise(time, 0.14, "highpass", 6600, velocity * 0.5, 0.9);
+        this.scheduleClick(time, velocity * 0.12);
+        break;
       case "hatOpen":
         this.scheduleNoise(time, 0.24, 6200, velocity * 0.5);
         break;
