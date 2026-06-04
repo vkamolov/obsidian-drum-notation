@@ -8,20 +8,16 @@ import {
   DEFAULT_TEMPO,
   DEFAULT_TIME_SIGNATURE,
   DrumBlock,
+  DrumBlockHeader,
   DrumHit,
   DrumRow,
+  DrumRowInput,
   DrumSlot,
   DrumSystem,
   GridResolution,
   LegendMode
 } from "./types";
 import { normalizeLabel } from "./util";
-
-interface DrumRowInput {
-  label: string;
-  patterns: string[];
-  instrument: DrumRow["instrument"];
-}
 
 export function parseDrumBlock(source: string): DrumBlock {
   const metadata: string[] = [];
@@ -89,19 +85,23 @@ export function parseDrumBlock(source: string): DrumBlock {
 
   pushCurrentBar();
 
+  return finalizeDrumBlock(
+    { tempo, timeSignature, repeatCount, showCursor, showHighlight, legendMode, gridResolution, metadata },
+    rowSections
+  );
+}
+
+// Assembles the structural model (systems -> bars -> rows -> slots) from a
+// header plus per-system row inputs. parseDrumBlock builds the inputs from
+// text; the editor builds them from an existing block. Routing both through
+// one builder keeps slots, patterns, and bar widths consistent by construction.
+export function finalizeDrumBlock(header: DrumBlockHeader, rowSections: DrumRowInput[][]): DrumBlock {
   const systems = buildSystems(rowSections);
   const bars = systems.flatMap((system) => system.bars);
   const rows = bars.flatMap((bar) => bar.rows);
 
   return {
-    tempo,
-    timeSignature,
-    repeatCount,
-    showCursor,
-    showHighlight,
-    legendMode,
-    gridResolution,
-    metadata,
+    ...header,
     systems,
     bars,
     rows,

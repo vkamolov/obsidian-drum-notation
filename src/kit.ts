@@ -220,3 +220,44 @@ export function getVelocity(value: string): number {
 export function isRest(value: string): boolean {
   return REST_CHARS.has(value);
 }
+
+// Cross noteheads (cymbals, hi-hats, cross-stick) are written with x/X by
+// convention; drum voices use o/O. The notehead lives in the vexKey suffix.
+export function isCrossNotehead(instrument: DrumInstrument): boolean {
+  return instrument.vexKey.includes("/X");
+}
+
+// The canonical character the serializer emits for a hit. Several input
+// characters share one articulation (e.g. >, !, #, X, O are all accents); this
+// picks one deterministic representative so output is normalized but still
+// re-parses to the same articulation. Inverse of ARTICULATION_BY_CHAR.
+export function getHitChar(instrument: DrumInstrument, articulation: DrumArticulation): string {
+  const cross = isCrossNotehead(instrument);
+
+  switch (articulation) {
+    case "accent":
+      return cross ? "X" : "O";
+    case "ghost":
+      return "g";
+    case "flam":
+      return "f";
+    case "diddle":
+      return "d";
+    case "buzz":
+      return "z";
+    case "normal":
+    default:
+      return cross ? "x" : "o";
+  }
+}
+
+// Rewrites one source character into its canonical form for the given
+// instrument: rests collapse to "-", hits map through their articulation.
+export function normalizeHitChar(instrument: DrumInstrument, value: string): string {
+  return isRest(value) ? "-" : getHitChar(instrument, getArticulation(value));
+}
+
+// Normalizes a whole pattern string, one character at a time.
+export function normalizePattern(instrument: DrumInstrument, pattern: string): string {
+  return Array.from(pattern, (char) => normalizeHitChar(instrument, char)).join("");
+}

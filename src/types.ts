@@ -1,4 +1,4 @@
-export interface DrumBlock {
+export interface DrumBlockHeader {
   tempo: number;
   timeSignature: string;
   repeatCount: number;
@@ -7,10 +7,23 @@ export interface DrumBlock {
   legendMode: LegendMode;
   gridResolution: GridResolution;
   metadata: string[];
+}
+
+export interface DrumBlock extends DrumBlockHeader {
   systems: DrumSystem[];
   bars: DrumBar[];
   rows: DrumRow[];
   slots: DrumSlot[];
+}
+
+// The pre-structure form of a row: a label, the instrument it resolved to,
+// and one pattern string per bar segment it spans. Both the parser (text ->
+// model) and the editor/serializer (model -> text) build the model from this
+// shape, so it is the single hand-off point between notation text and slots.
+export interface DrumRowInput {
+  label: string;
+  patterns: string[];
+  instrument: DrumInstrument;
 }
 
 export interface DrumSystem {
