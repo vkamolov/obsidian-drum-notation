@@ -48,6 +48,7 @@ interface NotationLayout {
   openHatGap: number;
   openHatStrokeWidth: number;
   halfOpenHatLineExtension: number;
+  noteHitTargetPadding: number;
 }
 
 interface VisualBarNotes {
@@ -165,7 +166,10 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
       drawDiddleMarks(system, visualBar.hitNotes, visualBar.noteSlots, layout);
       drawBuzzRollMarks(system, visualBar.hitNotes, visualBar.noteSlots, layout);
       visualBar.noteSlots.forEach((slot, noteIndex) => {
-        tagRenderedNoteSlot(visualBar.hitNotes[noteIndex], slot);
+        const note = visualBar.hitNotes[noteIndex];
+
+        tagRenderedNoteSlot(note, slot);
+        drawNoteHitTargets(system, note, slot, layout);
       });
 
       const cursorHeight = (stave.getYForLine(stave.getNumLines() - 1) - stave.getYForLine(0)) * layout.renderScale;
@@ -285,6 +289,30 @@ function tagRenderedNoteSlot(note: StaveNote | undefined, slot: DrumSlot): void 
   }
 
   noteElement.setAttribute("data-slot-index", String(slot.index));
+}
+
+function drawNoteHitTargets(system: HTMLElement, note: StaveNote | undefined, slot: DrumSlot, layout: NotationLayout): void {
+  const svg = system.querySelector<SVGSVGElement>("svg");
+
+  if (!svg || !note) {
+    return;
+  }
+
+  note.noteHeads.forEach((noteHead) => {
+    const box = noteHead.getBoundingBox();
+    const target = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+    const padding = layout.noteHitTargetPadding;
+
+    target.classList.add("drum-notation__hit-target");
+    target.setAttribute("data-preview-slot-index", String(slot.index));
+    target.setAttribute("x", String(box.getX() - padding));
+    target.setAttribute("y", String(box.getY() - padding));
+    target.setAttribute("width", String(box.getW() + padding * 2));
+    target.setAttribute("height", String(box.getH() + padding * 2));
+    target.setAttribute("fill", "transparent");
+    target.setAttribute("stroke", "none");
+    svg.appendChild(target);
+  });
 }
 
 function getMainRenderedNoteheadGroups(group: SVGGElement): SVGGElement[] {
@@ -560,7 +588,8 @@ function getNotationLayout(): NotationLayout {
     openHatRadius: 3.4,
     openHatGap: 7,
     openHatStrokeWidth: 0.85,
-    halfOpenHatLineExtension: 2.4
+    halfOpenHatLineExtension: 2.4,
+    noteHitTargetPadding: 3
   };
 }
 
@@ -726,16 +755,25 @@ function makeRenderedNotesInteractive(
     group.setAttribute("tabindex", "0");
     group.setAttribute("role", "button");
     group.setAttribute("aria-label", `Preview ${instrumentList} at slot ${slot.index + 1}`);
-    group.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      onPreview(slot);
-    });
     group.addEventListener("keydown", (event) => {
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
         onPreview(slot);
       }
+    });
+  });
+
+  container.querySelectorAll<SVGRectElement>("svg .drum-notation__hit-target[data-preview-slot-index]").forEach((target) => {
+    const slot = slotByIndex.get(Number(target.dataset.previewSlotIndex));
+
+    if (!slot || slot.hits.length === 0) {
+      return;
+    }
+
+    target.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      onPreview(slot);
     });
   });
 

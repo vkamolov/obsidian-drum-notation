@@ -274,11 +274,11 @@
   animation: drum-notation-cursor-blink 0.7s steps(2, start) infinite;
 }
 
-.drum-notation__interactive-note {
+.drum-notation__hit-target {
   cursor: pointer;
+  pointer-events: all;
 }
 
-.drum-notation__interactive-note:hover,
 .drum-notation__interactive-note:focus-visible {
   outline: none;
   filter: drop-shadow(0 0 3px color-mix(in srgb, var(--drum-accent) 55%, transparent));
