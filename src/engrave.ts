@@ -89,7 +89,6 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
     const staveX = layout.staveX;
     const staveWidth = width - layout.staveX - layout.staveRightPadding;
     const systemTop = systemIndex * height;
-    const systemNoteSlots: DrumSlot[] = [];
 
     let currentX = staveX;
 
@@ -164,6 +163,9 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
       drawAccentMarks(system, visualBar.hitNotes, visualBar.noteSlots, layout);
       drawDiddleMarks(system, visualBar.hitNotes, visualBar.noteSlots, layout);
       drawBuzzRollMarks(system, visualBar.hitNotes, visualBar.noteSlots, layout);
+      visualBar.noteSlots.forEach((slot, noteIndex) => {
+        tagRenderedNoteSlot(visualBar.hitNotes[noteIndex], slot);
+      });
 
       const cursorHeight = (stave.getYForLine(stave.getNumLines() - 1) - stave.getYForLine(0)) * layout.renderScale;
       const cursorY = systemTop + stave.getYForLine(0) * layout.renderScale;
@@ -176,18 +178,7 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
         };
       });
 
-      systemNoteSlots.push(...visualBar.noteSlots);
-
       currentX += barWidth;
-    });
-
-    // Stamp each rendered hit notehead group with its source slot index. Within a
-    // system the drawn StaveNote groups appear in creation order (rests are not
-    // drawn), so this is a 1:1 map that downstream passes can use by lookup rather
-    // than re-deriving the order by counting.
-    const renderedGroups = Array.from(system.querySelectorAll<SVGGElement>(".vf-stavenote"));
-    systemNoteSlots.forEach((slot, noteIndex) => {
-      renderedGroups[noteIndex]?.setAttribute("data-slot-index", String(slot.index));
     });
   });
 
@@ -251,7 +242,7 @@ export function colorRenderedNoteheads(block: DrumBlock, container: HTMLElement)
     }
 
     group.classList.add("drum-notation__colored-note");
-    const noteheadGroups = Array.from(group.querySelectorAll<SVGGElement>(".vf-notehead"));
+    const noteheadGroups = getMainRenderedNoteheadGroups(group);
     const coloredHits = getUniqueHitsForRenderedNoteheads(slot.hits);
     const fallbackColor = coloredHits[0]?.instrument.color;
 
@@ -283,6 +274,24 @@ function getUniqueHitsForRenderedNoteheads(hits: DrumHit[]): DrumHit[] {
   });
 
   return Array.from(hitsByVexKey.values()).sort((left, right) => compareVexKeys(left.instrument.vexKey, right.instrument.vexKey));
+}
+
+function tagRenderedNoteSlot(note: StaveNote | undefined, slot: DrumSlot): void {
+  const noteElement = note?.getSVGElement();
+
+  if (!noteElement) {
+    return;
+  }
+
+  noteElement.setAttribute("data-slot-index", String(slot.index));
+}
+
+function getMainRenderedNoteheadGroups(group: SVGGElement): SVGGElement[] {
+  return Array.from(group.querySelectorAll<SVGGElement>(".vf-notehead")).filter((notehead) => !isInGraceNoteGroup(notehead));
+}
+
+function isInGraceNoteGroup(element: Element): boolean {
+  return element.closest(".vf-gracenote") !== null;
 }
 
 function colorSvgShape(element: SVGElement, color: string): void {
