@@ -1,0 +1,237 @@
+# Drum Notation Format
+
+The canonical artifact of this plugin is the **text** inside a ` ```drums ` code
+block. That text is the source of truth: it is what gets saved, diffed, shared,
+and re-parsed. The parsed `DrumBlock` is an in-memory working model derived from
+the text and serialized back to it.
+
+This document specifies the format as implemented by `src/parser.ts`,
+`src/kit.ts`, and (for the model → text direction) `src/serializer.ts`. It is the
+reference for hand-authoring, for the future visual editor, and for importers
+that emit `drums` text.
+
+---
+
+## 1. Document structure
+
+A block is a sequence of lines. Each non-empty line is one of:
+
+| Line kind        | Recognized by                                              | Effect |
+|------------------|------------------------------------------------------------|--------|
+| **Setting**      | `Key: value` where `Key` is a known setting                | Sets a header field |
+| **Metadata**     | `Key: value` with an unknown key, or any other free line   | Preserved verbatim (e.g. `Title`, `Count`, comments) |
+| **Bar separator**| A line matching `[new] bar|measure [N][:...]`               | Starts a new system (line of music) |
+| **Row**          | `LABEL \| pattern[ \| pattern…]`                            | One instrument voice |
+
+Leading/trailing whitespace is ignored. Blank lines are ignored. Unknown lines
+never break parsing — they are retained as metadata, so hand-written notes
+survive a round-trip.
+
+A minimal block:
+
+```drums
+HH | x-x-x-x-x-x-x-x-
+SD | ----o-------o---
+BD | o-------o-o-----
+```
+
+---
+
+## 2. Settings (header)
+
+Settings may appear anywhere in the block (conventionally at the top). Keys are
+case-insensitive and ignore spaces/hyphens (`Time Signature` == `timesignature`).
+
+| Setting | Aliases | Value | Default | Notes |
+|---------|---------|-------|---------|-------|
+| `Tempo` | `BPM` | integer | `100` | Clamped to 30–260 |
+| `Time` | `Time Signature`, `Meter` | `n/n` | `4/4` | 1–2 digits each |
+| `Repeat` | `Repeats` | integer | `1` | Clamped to 1–64 |
+| `Grid` | `Subdivision`, `Resolution` | `16` or `32` | `16` | One character = one grid slot |
+| `Legend` | `Instrument Legend`, `Kit Legend`, `Color Legend` | `off` / `used` / `all` | `off` | Color key visibility |
+| `Cursor` | `Playback Cursor` | boolean | `off` | Blinking playback cursor |
+| `Highlight` | `Note Highlight`, `Playback Highlight` | boolean | `on` | Highlight the playing note |
+
+**Boolean values** — true: `on`, `true`, `yes`, `y`, `1`, `show`, `visible`;
+false: `off`, `false`, `no`, `n`, `0`, `hide`, `hidden`.
+
+**Legend values** — `used` (instruments present in the block) also accepts
+`on`/`true`/`yes`/`current`/`present`; `all` (full kit) also accepts
+`full`/`kit`/`complete`/`supported`/`everything`; `off` also accepts
+`none`/`hide`/`no`.
+
+### Metadata-only keys
+
+`Title`, `Author`, `Comment`, and `Count` are recognized as setting-shaped lines
+but are **stored as metadata**, not interpreted (aside from `Title`, which names
+the rendered block). `Count` is commonly used to annotate the beat grid:
+
+```drums
+Title: Basic rock groove
+Count: 1 e & a 2 e & a 3 e & a 4 e & a
+HH | x-x-x-x-x-x-x-x-
+```
+
+Any other `Key: value` line is preserved verbatim too. The removed `Engraving`
+setting, for example, is now retained as plain metadata.
+
+---
+
+## 3. Rows and instruments
+
+A row is `LABEL | pattern`. The label is matched (case-insensitively, ignoring
+non-alphanumerics) against the instrument alias table below. **A label that does
+not resolve to a known instrument causes the whole line to be treated as
+metadata**, not a row — there are no unknown instruments.
+
+One character maps to one grid slot. Align characters in the same column across
+rows to stack simultaneous hits (e.g. kick + hi-hat foot).
+
+### Instrument map
+
+| Label (canonical) | Aliases | Notehead | MIDI |
+|-------------------|---------|----------|------|
+| Crash | `cr`, `cc`, `crash cymbal` | × | 49 |
+| Splash | `sp`, `splash cymbal` | × | 55 |
+| China | `chna`, `china cymbal` | × | 52 |
+| Stack | `st`, `stack cymbal` | × | 52 |
+| Ride | `rd`, `rc` | × | 51 |
+| Ride bell | `rb`, `bell`, `ride bell` | × | 53 |
+| Open hat | `oh`, `open hh`, `open-hat` | × | 46 |
+| Half-open hat | `ho`, `hho`, `half-open hi-hat` | × | 46 |
+| Hi-hat (closed) | `hh`, `ch`, `hat`, `hihat`, `closed` | × | 42 |
+| Hi-hat foot | `hf`, `hhf`, `fh`, `hat foot` | × | 44 |
+| Snare | `sd`, `sn`, `snare` | ● | 38 |
+| Rim / cross-stick | `rs`, `rim`, `rimshot`, `xstick`, `cross`, `cross-stick` | × | 37 |
+| High rack tom | `ht`, `rt`, `t1`, `tom1`, `rack` | ● | 50 |
+| Mid rack tom | `mt`, `t2`, `tom2` | ● | 47 |
+| Low rack tom | `lt`, `t3`, `tom3` | ● | 45 |
+| Floor tom | `ft`, `floor` | ● | 41 |
+| Low floor tom | `lft`, `ft2`, `low floor` | ● | 43 |
+| Kick | `bd`, `kd`, `kick`, `bass` | ● | 36 |
+| Cowbell | `cb`, `cowbell` | × | 56 |
+
+> "Cross-stick" is **not** a separate instrument — it is the existing `rim`
+> voice (aliases include `xstick`/`cross`). See `src/kit.ts` for the complete,
+> authoritative alias lists.
+
+---
+
+## 4. Hit characters (the alphabet)
+
+Every pattern character is either a **rest** or a **hit with an articulation**.
+
+| Character(s) | Meaning | Playback velocity |
+|--------------|---------|-------------------|
+| `x`, `o` | Normal hit | 0.75 |
+| `X`, `O`, `>`, `!`, `#` | Accent | 1.0 |
+| `g` | Ghost note (parenthesized, quieter) | 0.4 |
+| `f` | Flam (grace note + connector) | 0.75 |
+| `d` | Diddle (two hits inside the slot) | 0.75 |
+| `z`, `Z` | Buzz / press roll | 0.68 |
+| `-`, `.`, `_`, space | Rest (no hit) | — |
+
+**The model stores the articulation, not the exact character.** `>`, `!`, `#`,
+`X`, and `O` all parse to `accent`; `x` and `o` both parse to a normal hit. This
+is intentional and is why round-tripping is defined at the model level, not as
+byte equality (see §7).
+
+By convention, cross-notehead voices (cymbals, hats, cross-stick) are written
+with `x`/`X` and drum voices with `o`/`O`. The parser does not enforce this, but
+the serializer emits the convention-correct character per voice.
+
+---
+
+## 5. Bars and systems
+
+Two independent groupings exist:
+
+1. **Bars within a row** — split a single row's pattern with ` | `:
+
+   ```drums
+   HH | x-x-x-x-x-x-x-x- | x-x-x-x-x-x-x-x-
+   SD | ----o-------o--- | ----o---o---o---
+   ```
+
+   Each segment is one bar. Empty segments are discarded, so a row's bars are
+   always a contiguous run starting from the first. Rows in the same system may
+   span different numbers of bars.
+
+2. **Systems (new staff lines)** — separate row groups with a bar-separator
+   line. `Bar`, `Measure`, `Bar 2:`, `New bar` all work:
+
+   ```drums
+   HH | x-x-x-x-x-x-x-x-
+   SD | ----o-------o---
+   Bar
+   HH | x-x-x-x-x-x-x-x-
+   SD | o---o---o---o---
+   ```
+
+Bar/measure numbering and trailing text on the separator line are not modeled;
+the serializer normalizes the separator to a bare `Bar`.
+
+---
+
+## 6. Grid resolution
+
+`Grid: 16` (default) means one character is a sixteenth note. `Grid: 32` means
+one character is a thirty-second note. In `Grid: 32`, note values are derived
+from the distance to the next hit within each beat, so `x---x---` renders as
+beamed eighths while `xxxxxxxx` renders as thirty-seconds. Slots-per-bar is
+`beats × (grid ÷ beat-value)`; e.g. 4/4 at grid 16 = 16 slots per bar.
+
+```drums
+Grid: 32
+HH | xxxxxxxxxxxxxxxx
+SD | ----------------
+BD | o-------o-------
+```
+
+---
+
+## 7. Round-trip and serialization contract
+
+The serializer (`serializeDrumBlock`) is the model → text inverse of the parser.
+Its contract is **model-level**, not textual:
+
+- `parse(text)` is structurally equal to `parse(serialize(parse(text)))` —
+  parsing then serializing then parsing yields the same model.
+- `serialize` is **idempotent**: `serialize(parse(x))` equals
+  `serialize(parse(serialize(parse(x))))`.
+- Byte-for-byte fidelity with the input is **not** a goal.
+
+To stay deterministic and diff-friendly, serialization **normalizes**:
+
+- Hit characters collapse to the canonical glyph for their articulation and
+  notehead (`x`/`X` for cross voices, `o`/`O` for drums; `g`, `f`, `d`, `z`).
+- Rests collapse to `-`.
+- Settings left at their default are **omitted** (they re-parse to the default).
+- Unknown/metadata lines are preserved verbatim and in order.
+- Bar separators normalize to `Bar`; row patterns are joined with ` | `.
+
+This means a hand-authored block that uses `>` for accents or `.` for rests will
+come back from a serialize pass using `X`/`O` and `-`. That is expected. (A
+future minimal-diff serializer for the Obsidian hand-edit case may preserve more
+of the original formatting; it is not implemented yet.)
+
+---
+
+## 8. Forward compatibility
+
+The format has no explicit version field today. Guidelines for evolving it:
+
+- **Adding instruments / aliases** is backward compatible: old blocks keep
+  parsing, new aliases simply resolve.
+- **Adding settings** is backward compatible as long as the default preserves
+  prior behavior; unknown settings already degrade to metadata.
+- **Adding articulation characters** must not reuse an existing character's
+  meaning, and should round-trip to a stable canonical glyph.
+- A `Version:` setting may be introduced once a second producer exists (web app,
+  visual editor, or importer), at which point the format becomes a shared
+  contract and needs explicit schema-evolution rules. Until then a single
+  producer (the plugin) keeps churn low.
+
+See also: the architecture direction recorded in the project memory, and the
+pure model/edit/serialize modules in `src/parser.ts`, `src/serializer.ts`, and
+`src/edit.ts`.
