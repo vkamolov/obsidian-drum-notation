@@ -18,7 +18,7 @@ BD | o-------o-o-----
 ```
 ````
 
-In reading view, the plugin renders the block as page-width percussion staff notation and adds **Play**, **Stop**, and **Loop Bar** controls. While playing, a blinking cursor follows the current note across the score. Click a rendered note to preview that hit or stacked chord.
+In reading view, the plugin renders the block as page-width percussion staff notation and adds **Play**, **Stop**, and **Loop Bar** controls. Add `Cursor: on` if you want a blinking cursor to follow playback. Click a rendered note to preview that hit or stacked chord.
 
 ## Settings
 
@@ -45,7 +45,7 @@ Supported settings:
 | `Tempo:` or `BPM:` | `Tempo: 96` | Playback tempo, clamped between 30 and 260 BPM. |
 | `Time:`, `Meter:`, or `Time Signature:` | `Time: 6/8` | Drawn on the staff. |
 | `Repeat:` or `Repeats:` | `Repeat: 4` | Plays the whole block this many times when pressing **Play**. |
-| `Cursor:` or `Playback Cursor:` | `Cursor: off` | Shows or hides the blinking playback cursor. Defaults to `on`. |
+| `Cursor:` or `Playback Cursor:` | `Cursor: on` | Shows or hides the blinking playback cursor. Defaults to `off`. |
 | `Highlight:`, `Note Highlight:`, or `Playback Highlight:` | `Highlight: off` | Highlights the note/chord that is currently sounding. Defaults to `on`. |
 | `Legend:`, `Instrument Legend:`, or `Kit Legend:` | `Legend: all` | Shows a compact color key. Use `on`/`used` for instruments in the current block, `all` for the full supported kit, or `off` to hide it. Defaults to `off`. |
 | `Grid:`, `Subdivision:`, or `Resolution:` | `Grid: 32` | Sets one source character to a sixteenth note (`16`, default) or thirty-second note (`32`). |

@@ -19,7 +19,7 @@ describe("parseDrumBlock - defaults and basic structure", () => {
     expect(block.repeatCount).toBe(1);
     expect(block.gridResolution).toBe(16);
     expect(block.legendMode).toBe("off");
-    expect(block.showCursor).toBe(true);
+    expect(block.showCursor).toBe(false);
     expect(block.showHighlight).toBe(true);
   });
 
