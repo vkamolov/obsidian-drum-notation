@@ -34,6 +34,7 @@ export interface DrumBar {
   rows: DrumRow[];
   slots: DrumSlot[];
   startSlot: number;
+  measureRepeat?: MeasureRepeat;
 }
 
 export interface PlaybackOptions {
@@ -101,6 +102,7 @@ export type DrumPlaybackKind =
 export type DrumArticulation = "normal" | "accent" | "ghost" | "flam" | "diddle" | "buzz";
 export type GridResolution = 16 | 32;
 export type LegendMode = "off" | "used" | "all";
+export type MeasureRepeat = 1;
 
 export const DEFAULT_TEMPO = 100;
 export const DEFAULT_TIME_SIGNATURE = "4/4";

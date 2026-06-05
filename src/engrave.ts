@@ -1,4 +1,4 @@
-import { Beam, Formatter, GraceNote, GraceNoteGroup, Modifier, Parenthesis, Renderer, Stave, StaveNote, Stem, TimeSignature, Tuplet, Voice } from "vexflow";
+import { Beam, Formatter, GraceNote, GraceNoteGroup, Modifier, Parenthesis, Renderer, RepeatNote, Stave, StaveNote, Stem, Tickable, TimeSignature, Tuplet, Voice } from "vexflow";
 import { DRUM_KIT } from "./kit";
 import {
   compareVexKeys,
@@ -11,7 +11,7 @@ import {
   largestPowerOfTwoAtMost,
   shouldBeamSubdivision
 } from "./music";
-import { DrumBlock, DrumHit, DrumInstrument, DrumSlot, GridResolution, ScoreRenderResult } from "./types";
+import { CursorPosition, DrumBlock, DrumHit, DrumInstrument, DrumSlot, GridResolution, MeasureRepeat, ScoreRenderResult } from "./types";
 
 interface NotationLayout {
   systemHeight: number;
@@ -52,9 +52,11 @@ interface NotationLayout {
 }
 
 interface VisualBarNotes {
-  notes: StaveNote[];
+  notes: Tickable[];
   hitNotes: StaveNote[];
   noteSlots: DrumSlot[];
+  cursorNotes: Tickable[];
+  cursorSlots: DrumSlot[];
   beams: Beam[];
   tuplets: Tuplet[];
 }
@@ -70,6 +72,8 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
 
   container.style.width = "100%";
   container.style.minHeight = `${Math.max(height, block.systems.length * height)}px`;
+
+  let previousBarAnchors: Array<{ note: Tickable; cursorPosition: CursorPosition } | undefined> = [];
 
   block.systems.forEach((scoreSystem, systemIndex) => {
     const system = container.createEl("div", { cls: "drum-notation__system" });
@@ -125,18 +129,24 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
       stave.setContext(context).draw();
       stave.setNoteStartX(stave.getNoteStartX() + layout.noteStartPadding);
 
-      const visualBar = buildVisualBarNotes(bar.slots, block.timeSignature, block.gridResolution, block.legendMode !== "off");
+      const visualBar = buildVisualBarNotes(bar.slots, bar.measureRepeat, block.timeSignature, block.gridResolution, block.legendMode !== "off");
       const notes = visualBar.notes;
       notes.forEach((note) => {
         if (layout.noteFontSize !== undefined) {
           note.setFontSize(layout.noteFontSize);
-          note.noteHeads.forEach((noteHead) => {
-            noteHead.setFontSize(layout.noteFontSize);
-          });
+
+          if (note instanceof StaveNote) {
+            note.noteHeads.forEach((noteHead) => {
+              noteHead.setFontSize(layout.noteFontSize);
+            });
+          }
         }
 
         note.setStyle({ fillStyle: "currentColor", strokeStyle: "currentColor", lineWidth: layout.strokeWidth });
-        note.setLedgerLineStyle({ fillStyle: "currentColor", strokeStyle: "currentColor", lineWidth: layout.ledgerLineWidth });
+
+        if (note instanceof StaveNote) {
+          note.setLedgerLineStyle({ fillStyle: "currentColor", strokeStyle: "currentColor", lineWidth: layout.ledgerLineWidth });
+        }
       });
       const voice = new Voice({
         numBeats: Math.max(1, Math.ceil(bar.slots.length / getSlotsPerBeat(block.timeSignature, block.gridResolution))),
@@ -171,17 +181,43 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
         tagRenderedNoteSlot(note, slot);
         drawNoteHitTargets(system, note, slot, layout);
       });
+      visualBar.cursorSlots.forEach((slot, noteIndex) => {
+        const note = visualBar.cursorNotes[noteIndex];
+
+        tagRenderedNoteSlot(note, slot);
+      });
 
       const cursorHeight = (stave.getYForLine(stave.getNumLines() - 1) - stave.getYForLine(0)) * layout.renderScale;
       const cursorY = systemTop + stave.getYForLine(0) * layout.renderScale;
+      const currentBarAnchors: Array<{ note: Tickable; cursorPosition: CursorPosition } | undefined> = [];
 
-      visualBar.noteSlots.forEach((slot, noteIndex) => {
-        cursorPositions[slot.index] = {
-          x: visualBar.hitNotes[noteIndex].getNoteHeadBeginX() * layout.renderScale,
+      visualBar.cursorSlots.forEach((slot, noteIndex) => {
+        const note = visualBar.cursorNotes[noteIndex];
+        const x = note instanceof StaveNote ? note.getNoteHeadBeginX() : note.getAbsoluteX();
+        const cursorPosition = {
+          x: x * layout.renderScale,
           y: cursorY,
           height: cursorHeight
         };
+
+        cursorPositions[slot.index] = cursorPosition;
+        currentBarAnchors[slot.index - bar.startSlot] = { note, cursorPosition };
       });
+
+      if (bar.measureRepeat) {
+        bar.slots.forEach((slot, localIndex) => {
+          const anchor = previousBarAnchors[localIndex];
+
+          if (!anchor) {
+            return;
+          }
+
+          cursorPositions[slot.index] = anchor.cursorPosition;
+          tagRenderedNoteSlot(anchor.note, slot);
+        });
+      } else {
+        previousBarAnchors = currentBarAnchors;
+      }
 
       currentX += barWidth;
     });
@@ -281,14 +317,27 @@ function getUniqueHitsForRenderedNoteheads(hits: DrumHit[]): DrumHit[] {
   return Array.from(hitsByVexKey.values()).sort((left, right) => compareVexKeys(left.instrument.vexKey, right.instrument.vexKey));
 }
 
-function tagRenderedNoteSlot(note: StaveNote | undefined, slot: DrumSlot): void {
+function tagRenderedNoteSlot(note: Tickable | undefined, slot: DrumSlot): void {
   const noteElement = note?.getSVGElement();
 
   if (!noteElement) {
     return;
   }
 
-  noteElement.setAttribute("data-slot-index", String(slot.index));
+  const existing = (noteElement.getAttribute("data-slot-indices") ?? "")
+    .split(/\s+/)
+    .filter((value) => value.length > 0);
+  const slotIndex = String(slot.index);
+
+  if (!existing.includes(slotIndex)) {
+    existing.push(slotIndex);
+  }
+
+  noteElement.setAttribute("data-slot-indices", existing.join(" "));
+
+  if (!noteElement.hasAttribute("data-slot-index")) {
+    noteElement.setAttribute("data-slot-index", slotIndex);
+  }
 }
 
 function drawNoteHitTargets(system: HTMLElement, note: StaveNote | undefined, slot: DrumSlot, layout: NotationLayout): void {
@@ -610,10 +659,15 @@ function slimTimeSignature(timeSignature: TimeSignature, timeSpec: string, fontS
 
 function buildVisualBarNotes(
   slots: DrumSlot[],
+  measureRepeat: MeasureRepeat | undefined,
   timeSignature: string,
   gridResolution: GridResolution,
   colorNoteheads: boolean
 ): VisualBarNotes {
+  if (measureRepeat) {
+    return buildMeasureRepeatVisualBarNotes(measureRepeat);
+  }
+
   if (gridResolution === 32) {
     return buildGrid32VisualBarNotes(slots, timeSignature, colorNoteheads);
   }
@@ -653,11 +707,27 @@ function buildVisualBarNotes(
     }
   }
 
-  return { notes, hitNotes, noteSlots, beams, tuplets };
+  return { notes, hitNotes, noteSlots, cursorNotes: hitNotes, cursorSlots: noteSlots, beams, tuplets };
+}
+
+function buildMeasureRepeatVisualBarNotes(measureRepeat: MeasureRepeat): VisualBarNotes {
+  const note = new RepeatNote(String(measureRepeat), { duration: "1" }, { line: 2 });
+
+  note.setCenterAlignment(true);
+
+  return {
+    notes: [note],
+    hitNotes: [],
+    noteSlots: [],
+    cursorNotes: [],
+    cursorSlots: [],
+    beams: [],
+    tuplets: []
+  };
 }
 
 function buildGrid32VisualBarNotes(slots: DrumSlot[], timeSignature: string, colorNoteheads: boolean): VisualBarNotes {
-  const notes: StaveNote[] = [];
+  const notes: Tickable[] = [];
   const hitNotes: StaveNote[] = [];
   const noteSlots: DrumSlot[] = [];
   const beams: Beam[] = [];
@@ -718,10 +788,10 @@ function buildGrid32VisualBarNotes(slots: DrumSlot[], timeSignature: string, col
     }
   }
 
-  return { notes, hitNotes, noteSlots, beams, tuplets };
+  return { notes, hitNotes, noteSlots, cursorNotes: hitNotes, cursorSlots: noteSlots, beams, tuplets };
 }
 
-function appendHiddenGridRests(notes: StaveNote[], span: number, gridResolution: GridResolution): void {
+function appendHiddenGridRests(notes: Tickable[], span: number, gridResolution: GridResolution): void {
   let remaining = span;
 
   while (remaining > 0) {
@@ -740,14 +810,20 @@ function makeRenderedNotesInteractive(
   const slotByIndex = new Map(block.slots.map((slot) => [slot.index, slot] as const));
   const noteElements: Array<SVGGElement | undefined> = [];
 
-  container.querySelectorAll<SVGGElement>("svg [data-slot-index]").forEach((group) => {
-    const slot = slotByIndex.get(Number(group.dataset.slotIndex));
+  container.querySelectorAll<SVGGElement>("svg [data-slot-index], svg [data-slot-indices]").forEach((group) => {
+    const slotIndexes = getRenderedSlotIndexes(group);
+    const slots = slotIndexes
+      .map((slotIndex) => slotByIndex.get(slotIndex))
+      .filter((slot): slot is DrumSlot => slot !== undefined && slot.hits.length > 0);
+    const slot = slots[0];
 
-    if (!slot || slot.hits.length === 0) {
+    if (!slot) {
       return;
     }
 
-    noteElements[slot.index] = group;
+    slots.forEach((candidate) => {
+      noteElements[candidate.index] = group;
+    });
 
     const instrumentList = slot.hits.map((hit) => hit.instrument.label).join(", ");
 
@@ -778,6 +854,15 @@ function makeRenderedNotesInteractive(
   });
 
   return noteElements;
+}
+
+function getRenderedSlotIndexes(group: SVGGElement): number[] {
+  const source = group.getAttribute("data-slot-indices") ?? group.getAttribute("data-slot-index") ?? "";
+
+  return source
+    .split(/\s+/)
+    .map((value) => Number.parseInt(value, 10))
+    .filter((value) => Number.isFinite(value));
 }
 
 function makeStaveNote(slot: DrumSlot, duration = "16", colorNoteheads = false): StaveNote {

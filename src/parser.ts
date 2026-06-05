@@ -10,19 +10,32 @@ import {
   DrumBlock,
   DrumBlockHeader,
   DrumHit,
+  DrumInstrument,
   DrumRow,
   DrumRowInput,
   DrumSlot,
   DrumSystem,
   GridResolution,
-  LegendMode
+  LegendMode,
+  MeasureRepeat
 } from "./types";
 import { normalizeLabel } from "./util";
+
+interface BarSnapshotRow {
+  label: string;
+  instrument: DrumInstrument;
+  pattern: string;
+}
+
+type BarSnapshot = BarSnapshotRow[];
 
 export function parseDrumBlock(source: string): DrumBlock {
   const metadata: string[] = [];
   const rowSections: DrumRowInput[][] = [];
+  const repeatSections: Array<Array<MeasureRepeat | undefined>> = [];
   let currentRows: DrumRowInput[] = [];
+  let currentRepeats: Array<MeasureRepeat | undefined> = [];
+  const barHistory: BarSnapshot[] = [];
   let tempo = DEFAULT_TEMPO;
   let timeSignature = DEFAULT_TIME_SIGNATURE;
   let repeatCount = DEFAULT_REPEAT_COUNT;
@@ -36,8 +49,12 @@ export function parseDrumBlock(source: string): DrumBlock {
       return;
     }
 
+    syncRepeatMarkers(currentRows, currentRepeats);
     rowSections.push(currentRows);
+    repeatSections.push(currentRepeats);
+    barHistory.push(...snapshotBars(currentRows));
     currentRows = [];
+    currentRepeats = [];
   };
 
   source
@@ -74,6 +91,16 @@ export function parseDrumBlock(source: string): DrumBlock {
         return;
       }
 
+      const measureRepeat = parseMeasureRepeatLine(line);
+
+      if (measureRepeat) {
+        if (!appendMeasureRepeat(currentRows, currentRepeats, barHistory, measureRepeat)) {
+          metadata.push(line);
+        }
+
+        return;
+      }
+
       const row = parseDrumRowInput(line);
 
       if (row) {
@@ -87,7 +114,8 @@ export function parseDrumBlock(source: string): DrumBlock {
 
   return finalizeDrumBlock(
     { tempo, timeSignature, repeatCount, showCursor, showHighlight, legendMode, gridResolution, metadata },
-    rowSections
+    rowSections,
+    repeatSections
   );
 }
 
@@ -95,8 +123,12 @@ export function parseDrumBlock(source: string): DrumBlock {
 // header plus per-system row inputs. parseDrumBlock builds the inputs from
 // text; the editor builds them from an existing block. Routing both through
 // one builder keeps slots, patterns, and bar widths consistent by construction.
-export function finalizeDrumBlock(header: DrumBlockHeader, rowSections: DrumRowInput[][]): DrumBlock {
-  const systems = buildSystems(rowSections);
+export function finalizeDrumBlock(
+  header: DrumBlockHeader,
+  rowSections: DrumRowInput[][],
+  repeatSections: Array<Array<MeasureRepeat | undefined>> = []
+): DrumBlock {
+  const systems = buildSystems(rowSections, repeatSections);
   const bars = systems.flatMap((system) => system.bars);
   const rows = bars.flatMap((bar) => bar.rows);
 
@@ -111,6 +143,12 @@ export function finalizeDrumBlock(header: DrumBlockHeader, rowSections: DrumRowI
 
 function isBarSeparator(line: string): boolean {
   return /^(new\s+)?(bar|measure)\b(\s+\d+)?\s*:?.*$/i.test(line);
+}
+
+function parseMeasureRepeatLine(line: string): MeasureRepeat | null {
+  return /^(%|repeat(?:\s+(?:bar|measure|previous\s+(?:bar|measure)|1(?:[-\s]*(?:bar|measure))?|one(?:[-\s]*(?:bar|measure))?))?)$/i.test(line)
+    ? 1
+    : null;
 }
 
 function parseSettingLine(line: string): { key: string; originalKey: string; value: string } | null {
@@ -154,15 +192,19 @@ function parseDrumRowInput(line: string): DrumRowInput | null {
   return { label, patterns, instrument };
 }
 
-function buildSystems(rowSections: DrumRowInput[][]): DrumSystem[] {
+function buildSystems(
+  rowSections: DrumRowInput[][],
+  repeatSections: Array<Array<MeasureRepeat | undefined>>
+): DrumSystem[] {
   let startSlot = 0;
 
-  return rowSections.map((rowInputs) => {
+  return rowSections.map((rowInputs, systemIndex) => {
     const segmentCount = Math.max(1, ...rowInputs.map((row) => row.patterns.length));
     const bars = Array.from({ length: segmentCount }, (_, segmentIndex) => {
       const rows = buildRowsForSegment(rowInputs, segmentIndex);
       const slots = buildSlots(rows, startSlot);
-      const bar = { rows, slots, startSlot };
+      const measureRepeat = repeatSections[systemIndex]?.[segmentIndex];
+      const bar = { rows, slots, startSlot, ...(measureRepeat ? { measureRepeat } : {}) };
       startSlot += slots.length;
 
       return bar;
@@ -170,6 +212,89 @@ function buildSystems(rowSections: DrumRowInput[][]): DrumSystem[] {
 
     return { bars };
   });
+}
+
+function appendMeasureRepeat(
+  currentRows: DrumRowInput[],
+  currentRepeats: Array<MeasureRepeat | undefined>,
+  barHistory: BarSnapshot[],
+  measureRepeat: MeasureRepeat
+): boolean {
+  syncRepeatMarkers(currentRows, currentRepeats);
+
+  const previousBars = [...barHistory, ...snapshotBars(currentRows)];
+  const previousBar = previousBars[previousBars.length - 1];
+
+  if (!previousBar) {
+    return false;
+  }
+
+  appendSnapshotBar(currentRows, previousBar);
+  currentRepeats.push(measureRepeat);
+
+  return true;
+}
+
+function appendSnapshotBar(currentRows: DrumRowInput[], snapshot: BarSnapshot): void {
+  const targetBarIndex = getSegmentCount(currentRows);
+  const widths = getBarWidths(currentRows);
+
+  snapshot.forEach((snapshotRow) => {
+    let row = currentRows.find((candidate) => candidate.instrument.id === snapshotRow.instrument.id);
+
+    if (!row) {
+      row = {
+        label: snapshotRow.label,
+        patterns: [],
+        instrument: snapshotRow.instrument
+      };
+      currentRows.push(row);
+    }
+
+    while (row.patterns.length < targetBarIndex) {
+      row.patterns.push("-".repeat(widths[row.patterns.length] ?? snapshotRow.pattern.length));
+    }
+
+    row.patterns.push(snapshotRow.pattern);
+  });
+}
+
+function syncRepeatMarkers(rows: DrumRowInput[], repeats: Array<MeasureRepeat | undefined>): void {
+  const segmentCount = getSegmentCount(rows);
+
+  while (repeats.length < segmentCount) {
+    repeats.push(undefined);
+  }
+}
+
+function snapshotBars(rows: DrumRowInput[]): BarSnapshot[] {
+  const segmentCount = getSegmentCount(rows);
+
+  return Array.from({ length: segmentCount }, (_, segmentIndex) =>
+    rows
+      .map((row): BarSnapshotRow | null => {
+        const pattern = row.patterns[segmentIndex];
+
+        if (!pattern) {
+          return null;
+        }
+
+        return { label: row.label, instrument: row.instrument, pattern };
+      })
+      .filter((row): row is BarSnapshotRow => row !== null)
+  );
+}
+
+function getSegmentCount(rows: DrumRowInput[]): number {
+  return Math.max(0, ...rows.map((row) => row.patterns.length));
+}
+
+function getBarWidths(rows: DrumRowInput[]): number[] {
+  const segmentCount = getSegmentCount(rows);
+
+  return Array.from({ length: segmentCount }, (_, segmentIndex) =>
+    Math.max(0, ...rows.map((row) => row.patterns[segmentIndex]?.length ?? 0))
+  );
 }
 
 function buildRowsForSegment(rowInputs: DrumRowInput[], segmentIndex: number): DrumRow[] {

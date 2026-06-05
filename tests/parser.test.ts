@@ -106,6 +106,30 @@ HH | -x-x`);
   });
 });
 
+describe("parseDrumBlock - measure repeats", () => {
+  it("expands a one-bar repeat into playable slots and marks the bar", () => {
+    const block = parseDrumBlock(`HH | x-x-
+SD | --o-
+%`);
+
+    expect(block.bars).toHaveLength(2);
+    expect(block.bars[1].measureRepeat).toBe(1);
+    expect(block.bars[1].rows.map((row) => row.pattern)).toEqual(["x-x-", "--o-"]);
+    expect(block.slots[4].hits.map((hit) => hit.instrument.id)).toEqual(["closed-hat"]);
+    expect(block.slots[6].hits.map((hit) => hit.instrument.id)).toEqual(["closed-hat", "snare"]);
+  });
+
+  it("can repeat the previous bar across a system separator", () => {
+    const block = parseDrumBlock(`HH | x---
+Bar
+%`);
+
+    expect(block.systems).toHaveLength(2);
+    expect(block.bars[1].measureRepeat).toBe(1);
+    expect(block.bars[1].rows[0].pattern).toBe("x---");
+  });
+});
+
 describe("parseDrumBlock - non-row lines", () => {
   it("ignores rows whose label is not a known instrument", () => {
     const block = parseDrumBlock(`Foo | x-x-

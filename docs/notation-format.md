@@ -21,6 +21,7 @@ A block is a sequence of lines. Each non-empty line is one of:
 | **Setting**      | `Key: value` where `Key` is a known setting                | Sets a header field |
 | **Metadata**     | `Key: value` with an unknown key, or any other free line   | Preserved verbatim (e.g. `Title`, `Count`, comments) |
 | **Bar separator**| A line matching `[new] bar|measure [N][:...]`               | Starts a new system (line of music) |
+| **Measure repeat**| `%` or `Repeat bar`                                       | Repeats the previous bar |
 | **Row**          | `LABEL \| pattern[ \| pattern…]`                            | One instrument voice |
 
 Leading/trailing whitespace is ignored. Blank lines are ignored. Unknown lines
@@ -171,6 +172,38 @@ Two independent groupings exist:
 Bar/measure numbering and trailing text on the separator line are not modeled;
 the serializer normalizes the separator to a bare `Bar`.
 
+### One-bar measure repeats
+
+A standalone `%` line means "repeat the previous bar." The parser expands that
+bar into normal playable slots while marking it as a repeat, so playback follows
+the repeated rhythm and the serializer/renderer keep the compact `%` symbol:
+
+```drums
+Title: Two bars, second repeated
+HH | x-x-x-x-x-x-x-x-
+SD | ----o-------o---
+BD | o-------o-o-----
+%
+```
+
+The repeat may also appear at the start of a new system, as long as a previous
+bar exists:
+
+```drums
+HH | x-x-x-x-x-x-x-x-
+SD | ----o-------o---
+Bar
+%
+```
+
+Accepted text forms are `%`, `Repeat`, `Repeat bar`, `Repeat measure`,
+`Repeat previous bar`, `Repeat 1 bar`, and `Repeat one bar`. The serializer
+always emits `%`.
+
+Two-bar repeat symbols, section repeat signs, first/second endings, D.S./D.C.,
+Segno, and Coda roadmaps are not modeled yet. They need span and playback-roadmap
+semantics beyond the current local one-bar repeat.
+
 ---
 
 ## 6. Grid resolution
@@ -267,7 +300,8 @@ BD | o-------o-o----- | o-o-----o-------
 ### Multiple systems and repeats
 
 A bar-separator line starts a new staff line; `Repeat:` loops the whole block
-during playback:
+during playback. This is distinct from the `%` measure-repeat symbol in §5,
+which repeats only the previous bar:
 
 ```drums
 Title: Verse then fill
@@ -321,6 +355,8 @@ To stay deterministic and diff-friendly, serialization **normalizes**:
 - Settings left at their default are **omitted** (they re-parse to the default).
 - Unknown/metadata lines are preserved verbatim and in order.
 - Bar separators normalize to `Bar`; row patterns are joined with ` | `.
+- One-bar measure repeats normalize to `%` and are not expanded back into row
+  text.
 
 This means a hand-authored block that uses `>` for accents or `.` for rests will
 come back from a serialize pass using `X`/`O` and `-`. That is expected. (A
@@ -339,6 +375,8 @@ The format has no explicit version field today. Guidelines for evolving it:
   prior behavior; unknown settings already degrade to metadata.
 - **Adding articulation characters** must not reuse an existing character's
   meaning, and should round-trip to a stable canonical glyph.
+- **Adding roadmap symbols** such as two-bar repeats, section repeats, voltas,
+  Segno, or Coda should define both text syntax and playback expansion rules.
 - A `Version:` setting may be introduced once a second producer exists (web app,
   visual editor, or importer), at which point the format becomes a shared
   contract and needs explicit schema-evolution rules. Until then a single

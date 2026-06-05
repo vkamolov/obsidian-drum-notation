@@ -8,6 +8,7 @@ import {
   DEFAULT_TEMPO,
   DEFAULT_TIME_SIGNATURE,
   DrumBlock,
+  DrumBar,
   DrumInstrument,
   DrumSystem
 } from "./types";
@@ -75,7 +76,35 @@ function serializeHeader(block: DrumBlock): string[] {
 }
 
 function serializeSystem(system: DrumSystem): string[] {
-  const rows = toSystemRows(system);
+  const lines: string[] = [];
+  let normalBars: DrumBar[] = [];
+
+  const flushNormalBars = () => {
+    if (normalBars.length === 0) {
+      return;
+    }
+
+    lines.push(...serializeNormalBars(normalBars));
+    normalBars = [];
+  };
+
+  system.bars.forEach((bar) => {
+    if (bar.measureRepeat) {
+      flushNormalBars();
+      lines.push("%");
+      return;
+    }
+
+    normalBars.push(bar);
+  });
+
+  flushNormalBars();
+
+  return lines;
+}
+
+function serializeNormalBars(bars: DrumBar[]): string[] {
+  const rows = toSystemRows(bars);
   const labelWidth = Math.max(0, ...rows.map((row) => row.label.length));
 
   return rows.map((row) => `${row.label.padEnd(labelWidth)} | ${row.patterns.join(" | ")}`);
@@ -92,12 +121,12 @@ interface SystemRow {
 // spans. An instrument that is absent from a trailing bar simply contributes
 // fewer patterns — which is exactly how the parser represents a row that spans
 // fewer bar segments than its neighbours.
-function toSystemRows(system: DrumSystem): SystemRow[] {
+function toSystemRows(bars: DrumBar[]): SystemRow[] {
   const order: DrumInstrument[] = [];
   const labels = new Map<string, string>();
   const patterns = new Map<string, string[]>();
 
-  for (const bar of system.bars) {
+  for (const bar of bars) {
     for (const row of bar.rows) {
       const id = row.instrument.id;
 

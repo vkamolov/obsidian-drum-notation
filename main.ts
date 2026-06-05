@@ -360,7 +360,13 @@ function makePlaybackVisuals(
       highlightedNote?.classList.add("is-playing");
     }
 
-    if (!state.cursor || cursorPosition === undefined) {
+    if (cursorPosition === undefined) {
+      state.cursor?.removeClass("is-active");
+      state.cursor?.removeAttribute("style");
+      return;
+    }
+
+    if (!state.cursor) {
       return;
     }
 

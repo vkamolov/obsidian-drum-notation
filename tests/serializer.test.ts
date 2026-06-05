@@ -72,6 +72,26 @@ HH | -x-x`);
     expect(out.split("\n")).toContain("Bar");
   });
 
+  it("round-trips one-bar repeat symbols without expanding them", () => {
+    const out = roundTrips(`HH | x-x-
+SD | --o-
+%`);
+
+    expect(out).toBe(`HH | x-x-
+SD | --o-
+%`);
+  });
+
+  it("round-trips a cross-system one-bar repeat", () => {
+    const out = roundTrips(`HH | x---
+Bar
+%`);
+
+    expect(out).toBe(`HH | x---
+Bar
+%`);
+  });
+
   it("round-trips 32nd-note grids", () => {
     roundTrips(`Grid: 32
 HH | xxxxxxxxxxxxxxxx`);

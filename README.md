@@ -338,6 +338,18 @@ BD | o-------o-o-----
 ```
 ````
 
+Use `%` on its own line for a one-bar measure repeat:
+
+````
+```drums
+Title: Repeated bar
+HH | x-x-x-x-x-x-x-x-
+SD | ----o-------o---
+BD | o-------o-o-----
+%
+```
+````
+
 Use **Loop Bar** in the rendered view to loop the bar containing the current cursor position. Click a note in another bar first, then press **Loop Bar** to loop that bar.
 
 ## Development

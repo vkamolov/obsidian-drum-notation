@@ -55,6 +55,14 @@ export class DrumPlayer {
     const repeatCount = this.options.loop ? Number.POSITIVE_INFINITY : this.options.repeatCount ?? DEFAULT_REPEAT_COUNT;
     const passStartTime = this.playbackStartTime + passIndex * this.passDurationSeconds;
 
+    this.timers.push(
+      window.setTimeout(() => {
+        if (!this.stopped) {
+          this.onSlotChange(this.playStartSlot);
+        }
+      }, Math.max(0, (passStartTime - this.synth.currentTime) * 1000))
+    );
+
     this.playSlots.forEach((slot) => {
       const slotTime = passStartTime + (slot.index - this.playStartSlot) * this.secondsPerSlot;
       if (slot.hits.length > 0) {
