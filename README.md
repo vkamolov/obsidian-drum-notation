@@ -1,6 +1,10 @@
 # Obsidian Drum Notation
 
+[![CI](https://github.com/vkamolov/obsidian-drum-notation/actions/workflows/ci.yml/badge.svg)](https://github.com/vkamolov/obsidian-drum-notation/actions/workflows/ci.yml)
+
 Render drum kit patterns as graphical SVG percussion staff notation in Obsidian, with playback.
+
+See [docs/notation-format.md](docs/notation-format.md) for the full notation format reference.
 
 ## Basic Example
 

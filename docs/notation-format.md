@@ -190,16 +190,128 @@ BD | o-------o-------
 
 ---
 
-## 7. Round-trip and serialization contract
+## 7. Worked examples
+
+Each example is a complete block. The articulation characters come from §4 and
+the structure rules from §3 and §5.
+
+### Accents and ghost notes
+
+Accent the backbeat snares and tuck quiet ghost notes between them. Accents use
+the upper-case glyph (`O` on a drum row), ghosts use `g`:
+
+```drums
+Title: Ghosted backbeat
+HH | x-x-x-x-x-x-x-x-
+SD | --g-O-g---g-O-g-
+BD | o-------o-------
+```
+
+### Flam
+
+A flam (`f`) renders as a small grace note before the main hit:
+
+```drums
+Title: Flam accents
+SD | f---f---f---f---
+BD | o-------o-------
+```
+
+### Diddle
+
+A diddle (`d`) is two hits inside one slot — the basis of double-stroke rolls.
+Here the snare plays paradiddle stickings against a steady hi-hat:
+
+```drums
+Title: Diddle groove
+HH | x-x-x-x-x-x-x-x-
+SD | o-d-o-d-o-d-o-d-
+BD | o-------o-------
+```
+
+### Buzz / press roll
+
+A buzz roll (`z`) sustains as a closed snare-roll texture. End a long roll with a
+normal release note:
+
+```drums
+Title: Two-beat buzz roll
+SD | z---z---o-------
+BD | o-------o-------
+```
+
+### Stacking hits
+
+Characters in the same column sound together. Here the kick stacks with the
+hi-hat foot on beats 2 and 4 while the hands keep time:
+
+```drums
+Title: Stacked voices
+HH | x-x-x-x-x-x-x-x-
+SD | ----o-------o---
+HF | x---x---x---x---
+BD | o-------o-o-----
+```
+
+### Multiple bars in one system
+
+Split a row with ` | ` to write several bars on one staff line:
+
+```drums
+Title: Two-bar phrase
+HH | x-x-x-x-x-x-x-x- | x-x-x-x-x-x-x-x-
+SD | ----o-------o--- | ----o---o---o---
+BD | o-------o-o----- | o-o-----o-------
+```
+
+### Multiple systems and repeats
+
+A bar-separator line starts a new staff line; `Repeat:` loops the whole block
+during playback:
+
+```drums
+Title: Verse then fill
+Repeat: 2
+HH | x-x-x-x-x-x-x-x-
+SD | ----o-------o---
+BD | o-------o-------
+Bar
+HT | --------o-o-----
+MT | ------------o-o-
+SD | o-o-o-o---------
+BD | o-------o-------
+```
+
+### Thirty-second-note fill
+
+In `Grid: 32` each character is a thirty-second note; note values are derived
+from the gap to the next hit within the beat:
+
+```drums
+Title: Linear 32nd fill
+Grid: 32
+SD | o-o-oo-oo-o-oo-oo-o-oo-oo-o-oo-o
+BD | o-------------------------------
+```
+
+---
+
+## 8. Round-trip and serialization contract
 
 The serializer (`serializeDrumBlock`) is the model → text inverse of the parser.
-Its contract is **model-level**, not textual:
+Its contract is **semantic**, not textual:
 
-- `parse(text)` is structurally equal to `parse(serialize(parse(text)))` —
-  parsing then serializing then parsing yields the same model.
-- `serialize` is **idempotent**: `serialize(parse(x))` equals
-  `serialize(parse(serialize(parse(x))))`.
-- Byte-for-byte fidelity with the input is **not** a goal.
+- **Semantic round-trip.** Settings, structure (systems/bars/rows), instruments,
+  and per-hit articulations survive `parse → serialize → parse` unchanged.
+- **Idempotence.** `serialize` is stable: `serialize(parse(x))` equals
+  `serialize(parse(serialize(parse(x))))`. Once a block has been serialized, it
+  re-serializes identically.
+- **Canonical fixpoint.** A block whose text already uses canonical characters
+  (what the serializer emits) round-trips to a deep-equal model. Non-canonical
+  input does not: the parser stores raw characters in `row.pattern`, and
+  normalization rewrites them — so the *semantics* match but that one cached
+  string differs. The hits, articulations, and structure are unaffected.
+- **Byte-for-byte fidelity with the input is not a goal.**
 
 To stay deterministic and diff-friendly, serialization **normalizes**:
 
@@ -217,7 +329,7 @@ of the original formatting; it is not implemented yet.)
 
 ---
 
-## 8. Forward compatibility
+## 9. Forward compatibility
 
 The format has no explicit version field today. Guidelines for evolving it:
 
