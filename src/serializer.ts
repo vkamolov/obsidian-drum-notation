@@ -88,19 +88,43 @@ function serializeSystem(system: DrumSystem): string[] {
     normalBars = [];
   };
 
-  system.bars.forEach((bar) => {
+  for (let index = 0; index < system.bars.length; index++) {
+    const bar = system.bars[index];
+
     if (bar.measureRepeat) {
       flushNormalBars();
-      lines.push("%");
-      return;
+
+      const repeatCount = Math.max(1, Math.min(bar.measureRepeatCount ?? 1, countMeasureRepeatRun(system.bars, index)));
+
+      lines.push(formatMeasureRepeat(repeatCount));
+      index += repeatCount - 1;
+      continue;
     }
 
     normalBars.push(bar);
-  });
+  }
 
   flushNormalBars();
 
   return lines;
+}
+
+function countMeasureRepeatRun(bars: DrumBar[], startIndex: number): number {
+  let count = 0;
+
+  for (let index = startIndex; index < bars.length; index++) {
+    if (!bars[index].measureRepeat) {
+      break;
+    }
+
+    count++;
+  }
+
+  return count;
+}
+
+function formatMeasureRepeat(count: number): string {
+  return count > 1 ? `%x${count}` : "%";
 }
 
 function serializeNormalBars(bars: DrumBar[]): string[] {

@@ -174,9 +174,11 @@ the serializer normalizes the separator to a bare `Bar`.
 
 ### One-bar measure repeats
 
-A standalone `%` line means "repeat the previous bar." The parser expands that
-bar into normal playable slots while marking it as a repeat, so playback follows
-the repeated rhythm and the serializer/renderer keep the compact `%` symbol:
+A standalone `%` line means "repeat the previous bar once." Add `xN` to repeat
+that previous one-bar pattern several times, e.g. `%x3` repeats the previous bar
+three times. The parser expands repeat shorthand into normal playable slots
+while marking those bars as repeats, so playback follows the repeated rhythm and
+the serializer/renderer keep the compact repeat symbols:
 
 ```drums
 Title: Two bars, second repeated
@@ -184,6 +186,14 @@ HH | x-x-x-x-x-x-x-x-
 SD | ----o-------o---
 BD | o-------o-o-----
 %
+```
+
+```drums
+Title: Repeat previous bar three times
+HH | x-x-x-x-x-x-x-x-
+SD | ----o-------o---
+BD | o-------o-o-----
+%x3
 ```
 
 The repeat may also appear at the start of a new system, as long as a previous
@@ -197,12 +207,16 @@ Bar
 ```
 
 Accepted text forms are `%`, `Repeat`, `Repeat bar`, `Repeat measure`,
-`Repeat previous bar`, `Repeat 1 bar`, and `Repeat one bar`. The serializer
-always emits `%`.
+`Repeat previous bar`, `Repeat 1 bar`, and `Repeat one bar`; each may include
+an `xN` suffix such as `%x3` or `Repeat bar x3`. Counts are clamped to 1–64.
+The serializer emits `%` for a single repeat and `%xN` for counted one-bar
+repeats. Separate `%` lines remain separate repeat bars; only explicit `%xN`
+syntax renders as one compact repeat bar with an `xN` mark.
 
-Two-bar repeat symbols, section repeat signs, first/second endings, D.S./D.C.,
-Segno, and Coda roadmaps are not modeled yet. They need span and playback-roadmap
-semantics beyond the current local one-bar repeat.
+`%2` is reserved for a future two-bar repeat symbol and is not modeled yet.
+Section repeat signs, first/second endings, D.S./D.C., Segno, and Coda roadmaps
+are not modeled yet either. They need span and playback-roadmap semantics beyond
+the current local one-bar repeat.
 
 ---
 

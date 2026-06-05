@@ -29,12 +29,17 @@ interface BarSnapshotRow {
 
 type BarSnapshot = BarSnapshotRow[];
 
+interface MeasureRepeatInput {
+  type: MeasureRepeat;
+  count: number;
+}
+
 export function parseDrumBlock(source: string): DrumBlock {
   const metadata: string[] = [];
   const rowSections: DrumRowInput[][] = [];
-  const repeatSections: Array<Array<MeasureRepeat | undefined>> = [];
+  const repeatSections: Array<Array<MeasureRepeatInput | undefined>> = [];
   let currentRows: DrumRowInput[] = [];
-  let currentRepeats: Array<MeasureRepeat | undefined> = [];
+  let currentRepeats: Array<MeasureRepeatInput | undefined> = [];
   const barHistory: BarSnapshot[] = [];
   let tempo = DEFAULT_TEMPO;
   let timeSignature = DEFAULT_TIME_SIGNATURE;
@@ -126,7 +131,7 @@ export function parseDrumBlock(source: string): DrumBlock {
 export function finalizeDrumBlock(
   header: DrumBlockHeader,
   rowSections: DrumRowInput[][],
-  repeatSections: Array<Array<MeasureRepeat | undefined>> = []
+  repeatSections: Array<Array<MeasureRepeatInput | undefined>> = []
 ): DrumBlock {
   const systems = buildSystems(rowSections, repeatSections);
   const bars = systems.flatMap((system) => system.bars);
@@ -145,10 +150,20 @@ function isBarSeparator(line: string): boolean {
   return /^(new\s+)?(bar|measure)\b(\s+\d+)?\s*:?.*$/i.test(line);
 }
 
-function parseMeasureRepeatLine(line: string): MeasureRepeat | null {
-  return /^(%|repeat(?:\s+(?:bar|measure|previous\s+(?:bar|measure)|1(?:[-\s]*(?:bar|measure))?|one(?:[-\s]*(?:bar|measure))?))?)$/i.test(line)
-    ? 1
-    : null;
+function parseMeasureRepeatLine(line: string): MeasureRepeatInput | null {
+  const percentMatch = /^%(?:\s*x\s*(\d+))?$/i.exec(line);
+
+  if (percentMatch) {
+    return { type: 1, count: parseMeasureRepeatCount(percentMatch[1]) };
+  }
+
+  const textMatch = /^repeat(?:\s+(?:bar|measure|previous\s+(?:bar|measure)|1(?:[-\s]*(?:bar|measure))?|one(?:[-\s]*(?:bar|measure))?))?(?:\s*x\s*(\d+))?$/i.exec(line);
+
+  if (!textMatch) {
+    return null;
+  }
+
+  return { type: 1, count: parseMeasureRepeatCount(textMatch[1]) };
 }
 
 function parseSettingLine(line: string): { key: string; originalKey: string; value: string } | null {
@@ -194,7 +209,7 @@ function parseDrumRowInput(line: string): DrumRowInput | null {
 
 function buildSystems(
   rowSections: DrumRowInput[][],
-  repeatSections: Array<Array<MeasureRepeat | undefined>>
+  repeatSections: Array<Array<MeasureRepeatInput | undefined>>
 ): DrumSystem[] {
   let startSlot = 0;
 
@@ -204,7 +219,13 @@ function buildSystems(
       const rows = buildRowsForSegment(rowInputs, segmentIndex);
       const slots = buildSlots(rows, startSlot);
       const measureRepeat = repeatSections[systemIndex]?.[segmentIndex];
-      const bar = { rows, slots, startSlot, ...(measureRepeat ? { measureRepeat } : {}) };
+      const bar = {
+        rows,
+        slots,
+        startSlot,
+        ...(measureRepeat ? { measureRepeat: measureRepeat.type } : {}),
+        ...(measureRepeat && measureRepeat.count > 1 ? { measureRepeatCount: measureRepeat.count } : {})
+      };
       startSlot += slots.length;
 
       return bar;
@@ -216,9 +237,9 @@ function buildSystems(
 
 function appendMeasureRepeat(
   currentRows: DrumRowInput[],
-  currentRepeats: Array<MeasureRepeat | undefined>,
+  currentRepeats: Array<MeasureRepeatInput | undefined>,
   barHistory: BarSnapshot[],
-  measureRepeat: MeasureRepeat
+  measureRepeat: MeasureRepeatInput
 ): boolean {
   syncRepeatMarkers(currentRows, currentRepeats);
 
@@ -229,8 +250,13 @@ function appendMeasureRepeat(
     return false;
   }
 
-  appendSnapshotBar(currentRows, previousBar);
-  currentRepeats.push(measureRepeat);
+  for (let index = 0; index < measureRepeat.count; index++) {
+    appendSnapshotBar(currentRows, previousBar);
+    currentRepeats.push({
+      type: measureRepeat.type,
+      count: index === 0 ? measureRepeat.count : 1
+    });
+  }
 
   return true;
 }
@@ -259,12 +285,22 @@ function appendSnapshotBar(currentRows: DrumRowInput[], snapshot: BarSnapshot): 
   });
 }
 
-function syncRepeatMarkers(rows: DrumRowInput[], repeats: Array<MeasureRepeat | undefined>): void {
+function syncRepeatMarkers(rows: DrumRowInput[], repeats: Array<MeasureRepeatInput | undefined>): void {
   const segmentCount = getSegmentCount(rows);
 
   while (repeats.length < segmentCount) {
     repeats.push(undefined);
   }
+}
+
+function parseMeasureRepeatCount(value: string | undefined): number {
+  const count = value ? Number.parseInt(value, 10) : 1;
+
+  if (!Number.isFinite(count)) {
+    return 1;
+  }
+
+  return Math.min(64, Math.max(1, count));
 }
 
 function snapshotBars(rows: DrumRowInput[]): BarSnapshot[] {

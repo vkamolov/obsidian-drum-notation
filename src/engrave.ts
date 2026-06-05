@@ -11,7 +11,7 @@ import {
   largestPowerOfTwoAtMost,
   shouldBeamSubdivision
 } from "./music";
-import { CursorPosition, DrumBlock, DrumHit, DrumInstrument, DrumSlot, GridResolution, MeasureRepeat, ScoreRenderResult } from "./types";
+import { CursorPosition, DrumBar, DrumBlock, DrumHit, DrumInstrument, DrumSlot, GridResolution, MeasureRepeat, ScoreRenderResult } from "./types";
 
 interface NotationLayout {
   systemHeight: number;
@@ -49,6 +49,9 @@ interface NotationLayout {
   openHatStrokeWidth: number;
   halfOpenHatLineExtension: number;
   noteHitTargetPadding: number;
+  measureRepeatCountGap: number;
+  measureRepeatCountFontSize: number;
+  measureRepeatCountFontWeight: string;
 }
 
 interface VisualBarNotes {
@@ -59,6 +62,12 @@ interface VisualBarNotes {
   cursorSlots: DrumSlot[];
   beams: Beam[];
   tuplets: Tuplet[];
+}
+
+interface VisualBarEntry {
+  bar: DrumBar;
+  repeatedBars: DrumBar[];
+  repeatCount: number;
 }
 
 export function renderVexflowScore(block: DrumBlock, container: HTMLElement): ScoreRenderResult {
@@ -90,7 +99,8 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
     context.setStrokeStyle("currentColor");
     context.setLineWidth(layout.strokeWidth);
 
-    const systemSlots = scoreSystem.bars.flatMap((bar) => bar.slots);
+    const visualBars = getVisualBarEntries(scoreSystem.bars);
+    const systemSlots = visualBars.flatMap((entry) => entry.bar.slots);
     const totalSlots = Math.max(1, systemSlots.length);
     const staveX = layout.staveX;
     const staveWidth = width - layout.staveX - layout.staveRightPadding;
@@ -98,9 +108,10 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
 
     let currentX = staveX;
 
-    scoreSystem.bars.forEach((bar, barIndex) => {
+    visualBars.forEach((entry, barIndex) => {
+      const bar = entry.bar;
       const isFirstBarInSystem = barIndex === 0;
-      const isLastBarInSystem = barIndex === scoreSystem.bars.length - 1;
+      const isLastBarInSystem = barIndex === visualBars.length - 1;
       const rawBarWidth = (bar.slots.length / totalSlots) * staveWidth;
       const barWidth = isLastBarInSystem ? staveX + staveWidth - currentX : Math.max(layout.barMinWidth, rawBarWidth);
       const stave = new Stave(currentX, layout.staveY, barWidth, {
@@ -159,6 +170,9 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
       const formatWidth = Math.min(availableFormatWidth, slotScaledFormatWidth);
       new Formatter().joinVoices([voice]).format([voice], formatWidth);
       voice.draw(context, stave);
+      if (bar.measureRepeat && entry.repeatCount > 1) {
+        drawMeasureRepeatCount(system, stave, visualBar.notes[0], entry.repeatCount, layout);
+      }
       visualBar.beams.forEach((beam) => {
         beam.renderOptions.beamWidth = layout.beamWidth;
         beam.renderOptions.maxSlope = layout.beamMaxSlope;
@@ -205,15 +219,17 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
       });
 
       if (bar.measureRepeat) {
-        bar.slots.forEach((slot, localIndex) => {
-          const anchor = previousBarAnchors[localIndex];
+        entry.repeatedBars.forEach((repeatedBar) => {
+          repeatedBar.slots.forEach((slot, localIndex) => {
+            const anchor = previousBarAnchors[localIndex];
 
-          if (!anchor) {
-            return;
-          }
+            if (!anchor) {
+              return;
+            }
 
-          cursorPositions[slot.index] = anchor.cursorPosition;
-          tagRenderedNoteSlot(anchor.note, slot);
+            cursorPositions[slot.index] = anchor.cursorPosition;
+            tagRenderedNoteSlot(anchor.note, slot);
+          });
         });
       } else {
         previousBarAnchors = currentBarAnchors;
@@ -224,6 +240,44 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
   });
 
   return { cursorPositions };
+}
+
+function getVisualBarEntries(bars: DrumBar[]): VisualBarEntry[] {
+  const entries: VisualBarEntry[] = [];
+
+  for (let index = 0; index < bars.length; index++) {
+    const bar = bars[index];
+
+    if (!bar.measureRepeat) {
+      entries.push({ bar, repeatedBars: [bar], repeatCount: 1 });
+      continue;
+    }
+
+    const repeatCount = Math.max(1, Math.min(bar.measureRepeatCount ?? 1, countMeasureRepeatRun(bars, index)));
+
+    entries.push({
+      bar,
+      repeatedBars: bars.slice(index, index + repeatCount),
+      repeatCount
+    });
+    index += repeatCount - 1;
+  }
+
+  return entries;
+}
+
+function countMeasureRepeatRun(bars: DrumBar[], startIndex: number): number {
+  let count = 0;
+
+  for (let index = startIndex; index < bars.length; index++) {
+    if (!bars[index].measureRepeat) {
+      break;
+    }
+
+    count++;
+  }
+
+  return count;
 }
 
 export function renderInstrumentLegend(block: DrumBlock, root: HTMLElement): void {
@@ -638,7 +692,10 @@ function getNotationLayout(): NotationLayout {
     openHatGap: 7,
     openHatStrokeWidth: 0.85,
     halfOpenHatLineExtension: 2.4,
-    noteHitTargetPadding: 3
+    noteHitTargetPadding: 3,
+    measureRepeatCountGap: 8,
+    measureRepeatCountFontSize: 11,
+    measureRepeatCountFontWeight: "700"
   };
 }
 
@@ -724,6 +781,33 @@ function buildMeasureRepeatVisualBarNotes(measureRepeat: MeasureRepeat): VisualB
     beams: [],
     tuplets: []
   };
+}
+
+function drawMeasureRepeatCount(
+  system: HTMLElement,
+  stave: Stave,
+  note: Tickable | undefined,
+  count: number,
+  layout: NotationLayout
+): void {
+  const svg = system.querySelector<SVGSVGElement>("svg");
+
+  if (!svg || !note) {
+    return;
+  }
+
+  const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+
+  label.classList.add("drum-notation__measure-repeat-count");
+  label.textContent = `x${count}`;
+  label.setAttribute("x", String(note.getAbsoluteX()));
+  label.setAttribute("y", String(stave.getYForLine(0) - layout.measureRepeatCountGap));
+  label.setAttribute("fill", "currentColor");
+  label.setAttribute("stroke", "none");
+  label.setAttribute("text-anchor", "middle");
+  label.setAttribute("font-size", String(layout.measureRepeatCountFontSize));
+  label.setAttribute("font-weight", layout.measureRepeatCountFontWeight);
+  svg.appendChild(label);
 }
 
 function buildGrid32VisualBarNotes(slots: DrumSlot[], timeSignature: string, colorNoteheads: boolean): VisualBarNotes {

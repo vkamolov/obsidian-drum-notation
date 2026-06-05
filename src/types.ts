@@ -35,6 +35,7 @@ export interface DrumBar {
   slots: DrumSlot[];
   startSlot: number;
   measureRepeat?: MeasureRepeat;
+  measureRepeatCount?: number;
 }
 
 export interface PlaybackOptions {

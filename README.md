@@ -338,7 +338,8 @@ BD | o-------o-o-----
 ```
 ````
 
-Use `%` on its own line for a one-bar measure repeat:
+Use `%` on its own line for a one-bar measure repeat. Add a count suffix such
+as `%x3` to repeat the previous bar three times:
 
 ````
 ```drums
@@ -346,7 +347,7 @@ Title: Repeated bar
 HH | x-x-x-x-x-x-x-x-
 SD | ----o-------o---
 BD | o-------o-o-----
-%
+%x3
 ```
 ````
 

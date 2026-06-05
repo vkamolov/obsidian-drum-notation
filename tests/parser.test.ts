@@ -119,6 +119,24 @@ SD | --o-
     expect(block.slots[6].hits.map((hit) => hit.instrument.id)).toEqual(["closed-hat", "snare"]);
   });
 
+  it("expands a counted one-bar repeat into multiple playable bars", () => {
+    const block = parseDrumBlock(`HH | x---
+%x3`);
+
+    expect(block.bars).toHaveLength(4);
+    expect(block.bars[1]).toMatchObject({ measureRepeat: 1, measureRepeatCount: 3 });
+    expect(block.bars[2]).toMatchObject({ measureRepeat: 1 });
+    expect(block.bars[2].measureRepeatCount).toBeUndefined();
+    expect(block.bars[3]).toMatchObject({ measureRepeat: 1 });
+    expect(block.slots).toHaveLength(16);
+    expect([0, 4, 8, 12].map((slotIndex) => block.slots[slotIndex].hits[0]?.instrument.id)).toEqual([
+      "closed-hat",
+      "closed-hat",
+      "closed-hat",
+      "closed-hat"
+    ]);
+  });
+
   it("can repeat the previous bar across a system separator", () => {
     const block = parseDrumBlock(`HH | x---
 Bar

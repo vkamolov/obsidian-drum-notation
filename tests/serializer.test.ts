@@ -82,6 +82,26 @@ SD | --o-
 %`);
   });
 
+  it("round-trips counted one-bar repeats without expanding them", () => {
+    const out = roundTrips(`HH | x---
+%x3`);
+
+    expect(out).toBe(`HH | x---
+%x3`);
+  });
+
+  it("preserves separate one-bar repeats as separate lines", () => {
+    const out = roundTrips(`HH | x---
+%
+%
+%`);
+
+    expect(out).toBe(`HH | x---
+%
+%
+%`);
+  });
+
   it("round-trips a cross-system one-bar repeat", () => {
     const out = roundTrips(`HH | x---
 Bar
