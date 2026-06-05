@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Drum Notation Playground</title>
+  </head>
+  <body>
+    <header class="pg-topbar">
+      <div class="pg-brand">drum notation <span>· playground</span></div>
+
+      <div class="pg-controls">
+        <label class="pg-field">
+          example
+          <select id="pg-example"></select>
+        </label>
+        <label class="pg-field">
+          tempo
+          <input id="pg-tempo" type="number" min="30" max="260" step="1" />
+        </label>
+        <label class="pg-field">
+          grid
+          <select id="pg-grid">
+            <option value="16">16</option>
+            <option value="32">32</option>
+          </select>
+        </label>
+
+        <span class="pg-sep"></span>
+
+        <button id="pg-play" class="pg-btn pg-btn--accent" type="button">Play</button>
+        <button id="pg-stop" class="pg-btn" type="button">Stop</button>
+        <button id="pg-loop" class="pg-btn" type="button">Loop Bar</button>
+
+        <span class="pg-sep"></span>
+
+        <button id="pg-copy-block" class="pg-btn" type="button">Copy block</button>
+        <button id="pg-copy-normalized" class="pg-btn" type="button">Copy normalized</button>
+        <button id="pg-theme" class="pg-btn pg-btn--icon" type="button" title="Toggle theme">◐</button>
+      </div>
+    </header>
+
+    <main class="pg-main">
+      <section class="pg-pane pg-pane--editor">
+        <div class="pg-pane__head">notation</div>
+        <textarea id="pg-editor" class="pg-editor" spellcheck="false" autocomplete="off"
+          autocapitalize="off" wrap="off"></textarea>
+      </section>
+
+      <section class="pg-pane pg-pane--preview">
+        <div class="pg-pane__head">preview</div>
+        <div class="pg-preview-scroll">
+          <div id="pg-preview" class="drum-notation drum-notation--legend-color"></div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="pg-diagnostics">
+      <div class="pg-diag">
+        <div class="pg-diag__head">model</div>
+        <div id="pg-model" class="pg-diag__body"></div>
+      </div>
+      <div class="pg-diag">
+        <div class="pg-diag__head">
+          normalized output
+          <span id="pg-normalized-flag" class="pg-flag"></span>
+        </div>
+        <pre id="pg-normalized" class="pg-diag__body pg-mono"></pre>
+      </div>
+      <div class="pg-diag">
+        <div class="pg-diag__head">notes</div>
+        <div id="pg-notes" class="pg-diag__body"></div>
+      </div>
+    </footer>
+
+    <script type="module" src="/src/app.ts"></script>
+  </body>
+</html>

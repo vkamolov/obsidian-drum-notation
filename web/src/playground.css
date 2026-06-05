@@ -1,0 +1,325 @@
+/* Obsidian theme variables the plugin's styles.css expects. Providing them here
+   (instead of inside Obsidian) is the entire CSS side of the browser port. The
+   renderer paints notation with currentColor, so theming mostly follows `color`. */
+:root {
+  --background-primary: #ffffff;
+  --background-secondary: #f5f6f8;
+  --background-modifier-border: #e3e5ea;
+  --text-normal: #2a2c34;
+  --text-muted: #6b6f7a;
+  --interactive-accent: #6c5ce7;
+  --font-small: 0.8rem;
+  --font-smallest: 0.72rem;
+
+  --pg-bg: #fbfbfd;
+  --pg-panel: #ffffff;
+  --pg-border: #e3e5ea;
+  --pg-text: #2a2c34;
+  --pg-muted: #6b6f7a;
+  --pg-accent: #6c5ce7;
+  --pg-editor-bg: #ffffff;
+  --pg-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+
+body.theme-dark {
+  --background-primary: #20222b;
+  --background-secondary: #191b22;
+  --background-modifier-border: #2d303b;
+  --text-normal: #c8d0ee;
+  --text-muted: #8b90a3;
+  --interactive-accent: #8b7bf0;
+
+  --pg-bg: #15161c;
+  --pg-panel: #1b1d25;
+  --pg-border: #2d303b;
+  --pg-text: #c8d0ee;
+  --pg-muted: #868ba0;
+  --pg-accent: #8b7bf0;
+  --pg-editor-bg: #1b1d25;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  height: 100vh;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  color: var(--pg-text);
+  background: var(--pg-bg);
+}
+
+/* ---- top bar ---- */
+.pg-topbar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.5rem 0.85rem;
+  border-bottom: 1px solid var(--pg-border);
+  background: var(--pg-panel);
+}
+
+.pg-brand {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.pg-brand span {
+  color: var(--pg-muted);
+  font-weight: 400;
+}
+
+.pg-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+  flex-wrap: wrap;
+}
+
+.pg-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: var(--font-smallest);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--pg-muted);
+}
+
+.pg-field select,
+.pg-field input {
+  font: inherit;
+  font-size: 0.8rem;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--pg-text);
+  background: var(--pg-bg);
+  border: 1px solid var(--pg-border);
+  border-radius: 6px;
+  padding: 0.25rem 0.4rem;
+}
+
+.pg-field input {
+  width: 4.2rem;
+}
+
+.pg-sep {
+  width: 1px;
+  height: 1.4rem;
+  background: var(--pg-border);
+}
+
+.pg-btn {
+  font: inherit;
+  font-size: 0.8rem;
+  color: var(--pg-text);
+  background: var(--pg-bg);
+  border: 1px solid var(--pg-border);
+  border-radius: 6px;
+  padding: 0.3rem 0.6rem;
+  cursor: pointer;
+}
+
+.pg-btn:hover {
+  border-color: var(--pg-accent);
+}
+
+.pg-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.pg-btn--accent {
+  border-color: var(--pg-accent);
+  color: var(--pg-accent);
+  font-weight: 600;
+}
+
+.pg-btn.is-playing {
+  background: var(--pg-accent);
+  color: #fff;
+  border-color: var(--pg-accent);
+}
+
+.pg-btn--icon {
+  padding: 0.3rem 0.5rem;
+}
+
+/* ---- main split ---- */
+.pg-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  min-height: 0;
+}
+
+.pg-pane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+
+.pg-pane--editor {
+  border-right: 1px solid var(--pg-border);
+}
+
+.pg-pane__head {
+  padding: 0.3rem 0.75rem;
+  font-size: var(--font-smallest);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--pg-muted);
+  border-bottom: 1px solid var(--pg-border);
+  background: var(--pg-panel);
+}
+
+.pg-editor {
+  flex: 1;
+  min-height: 0;
+  resize: none;
+  border: 0;
+  outline: none;
+  padding: 0.85rem 1rem;
+  font-family: var(--pg-mono);
+  font-size: 13px;
+  line-height: 1.6;
+  tab-size: 2;
+  color: var(--pg-text);
+  background: var(--pg-editor-bg);
+  white-space: pre;
+}
+
+.pg-pane--preview {
+  background: var(--pg-bg);
+}
+
+.pg-preview-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 1rem;
+}
+
+/* the preview centerpiece uses the plugin's own .drum-notation styles */
+#pg-preview {
+  margin: 0 auto;
+}
+
+/* ---- diagnostics ---- */
+.pg-diagnostics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  max-height: 30vh;
+  border-top: 1px solid var(--pg-border);
+  background: var(--pg-border);
+}
+
+.pg-diag {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--pg-panel);
+}
+
+.pg-diag__head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 0.75rem;
+  font-size: var(--font-smallest);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--pg-muted);
+}
+
+.pg-diag__body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  margin: 0;
+  padding: 0.4rem 0.75rem 0.7rem;
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.pg-mono {
+  font-family: var(--pg-mono);
+  white-space: pre;
+}
+
+.pg-model-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.1rem 0.75rem;
+}
+
+.pg-model-grid dt {
+  color: var(--pg-muted);
+}
+
+.pg-model-grid dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.pg-flag {
+  font-size: var(--font-smallest);
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.pg-flag--normalized {
+  color: var(--pg-accent);
+}
+
+.pg-note {
+  margin: 0 0 0.3rem;
+}
+
+.pg-note--warn {
+  color: #b45309;
+}
+
+.pg-note--error {
+  color: #dc2626;
+  font-family: var(--pg-mono);
+  white-space: pre-wrap;
+}
+
+.pg-note--ok {
+  color: var(--pg-muted);
+}
+
+/* ---- responsive: stack on narrow screens ---- */
+@media (max-width: 760px) {
+  body {
+    grid-template-rows: auto auto 1fr auto;
+  }
+
+  .pg-main {
+    grid-template-columns: 1fr;
+    grid-auto-rows: minmax(180px, 40vh);
+  }
+
+  .pg-pane--editor {
+    border-right: 0;
+    border-bottom: 1px solid var(--pg-border);
+  }
+
+  .pg-diagnostics {
+    grid-template-columns: 1fr;
+    max-height: 38vh;
+  }
+}
