@@ -20,6 +20,7 @@ import { DrumSynth } from "../../src/synth";
 import { CursorPosition, DrumBlock, DrumSlot, GridResolution } from "../../src/types";
 import { normalizeLabel } from "../../src/util";
 import { EXAMPLES } from "./examples";
+import { GridEditorHandle, mountGridEditor } from "./editor-grid";
 
 const STORAGE_KEY = "drum-playground.notation";
 const THEME_KEY = "drum-playground.theme";
@@ -41,6 +42,8 @@ const gridSelect = $<HTMLSelectElement>("pg-grid");
 const playBtn = $<HTMLButtonElement>("pg-play");
 const stopBtn = $<HTMLButtonElement>("pg-stop");
 const loopBtn = $<HTMLButtonElement>("pg-loop");
+const editBtn = $<HTMLButtonElement>("pg-edit");
+const editRoot = $<HTMLDivElement>("pg-edit-root");
 const copyBlockBtn = $<HTMLButtonElement>("pg-copy-block");
 const copyNormalizedBtn = $<HTMLButtonElement>("pg-copy-normalized");
 const themeBtn = $<HTMLButtonElement>("pg-theme");
@@ -59,6 +62,7 @@ let highlightedNote: SVGGElement | null = null;
 let currentSlotIndex = 0;
 let lastRenderError: string | null = null;
 let isLooping = false;
+let gridEditor: GridEditorHandle | null = null;
 
 /* ---------- audio (lazy, created on first user gesture) ---------- */
 let audioContext: AudioContext | null = null;
@@ -91,6 +95,7 @@ function renderPreview(): void {
   playBtn.disabled = !hasRows;
   stopBtn.disabled = !hasRows;
   loopBtn.disabled = !hasRows;
+  editBtn.disabled = !hasRows;
 
   if (!hasRows) {
     score.createEl("div", {
@@ -274,6 +279,40 @@ function applyEditedBlock(next: DrumBlock): void {
   renderPreview();
 }
 
+/* ---------- edit mode (grid editor) ---------- */
+function enterEditMode(): void {
+  if (gridEditor || !currentBlock || currentBlock.slots.length === 0) {
+    return;
+  }
+  stopPlayback();
+  stopPreview();
+  document.body.classList.add("pg-editing");
+  editBtn.classList.add("is-playing");
+  preview.hidden = true;
+  editRoot.hidden = false;
+
+  gridEditor = mountGridEditor({
+    container: editRoot,
+    block: currentBlock,
+    onSave: (block) => {
+      editor.value = serializeDrumBlock(block);
+      persist();
+      exitEditMode();
+      renderPreview();
+    },
+    onCancel: exitEditMode
+  });
+}
+
+function exitEditMode(): void {
+  gridEditor?.destroy();
+  gridEditor = null;
+  document.body.classList.remove("pg-editing");
+  editBtn.classList.remove("is-playing");
+  editRoot.hidden = true;
+  preview.hidden = false;
+}
+
 /* ---------- diagnostics ---------- */
 function updateDiagnostics(block: DrumBlock, raw: string): void {
   const rows: Array<[string, string]> = [
@@ -442,6 +481,13 @@ function init(): void {
   playBtn.addEventListener("click", play);
   stopBtn.addEventListener("click", stopPlayback);
   loopBtn.addEventListener("click", loopBar);
+  editBtn.addEventListener("click", () => {
+    if (gridEditor) {
+      exitEditMode();
+    } else {
+      enterEditMode();
+    }
+  });
 
   copyBlockBtn.addEventListener("click", () => {
     void copyText(copyBlockBtn, "```drums\n" + editor.value.trim() + "\n```");
@@ -458,7 +504,7 @@ function init(): void {
   // Refit the score to the pane width (debounced; skip no-op width changes).
   let lastWidth = 0;
   const refit = debounce(() => {
-    if (currentBlock && currentBlock.rows.length > 0 && scoreEl) {
+    if (!gridEditor && currentBlock && currentBlock.rows.length > 0 && scoreEl) {
       renderPreview();
     }
   }, 150);

@@ -302,6 +302,112 @@ body {
   color: var(--pg-muted);
 }
 
+/* ---- grid editor ---- */
+.pg-grid-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.pg-grid-editor__bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.pg-grid-editor__palette {
+  font: inherit;
+  font-size: 0.8rem;
+  color: var(--pg-text);
+  background: var(--pg-bg);
+  border: 1px solid var(--pg-border);
+  border-radius: 6px;
+  padding: 0.25rem 0.4rem;
+}
+
+.pg-grid-editor__spacer {
+  flex: 1;
+  min-width: 8rem;
+  font-size: var(--font-smallest);
+  color: var(--pg-muted);
+}
+
+.pg-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-x: auto;
+}
+
+.pg-grid__row {
+  display: grid;
+  grid-template-columns: 3rem 1fr;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.pg-grid__label {
+  font-family: var(--pg-mono);
+  font-size: 0.75rem;
+  color: var(--pg-muted);
+  text-align: right;
+}
+
+.pg-grid__cells {
+  display: grid;
+  grid-template-columns: repeat(var(--pg-grid-cols), minmax(18px, 1fr));
+  gap: 2px;
+}
+
+.pg-grid__cell {
+  aspect-ratio: 1;
+  min-width: 18px;
+  padding: 0;
+  font-family: var(--pg-mono);
+  font-size: 0.7rem;
+  line-height: 1;
+  color: #fff;
+  background: var(--pg-bg);
+  border: 1px solid var(--pg-border);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.pg-grid__cell:hover {
+  border-color: var(--pg-accent);
+}
+
+.pg-grid__cell.is-beat-start {
+  border-left: 2px solid var(--pg-muted);
+}
+
+.pg-grid__cell.is-bar-start {
+  border-left: 3px solid var(--pg-text);
+}
+
+.pg-grid__cell.is-hit.is-normal {
+  background: #2563eb;
+  border-color: #2563eb;
+}
+
+.pg-grid__cell.is-hit.is-accent {
+  background: #dc2626;
+  border-color: #dc2626;
+}
+
+.pg-grid__cell.is-hit.is-ghost {
+  background: #6b7280;
+  border-color: #6b7280;
+}
+
+.pg-grid__cell.is-hit.is-flam,
+.pg-grid__cell.is-hit.is-diddle,
+.pg-grid__cell.is-hit.is-buzz {
+  background: #7c3aed;
+  border-color: #7c3aed;
+}
+
 /* ---- responsive: stack on narrow screens ---- */
 @media (max-width: 760px) {
   body {
