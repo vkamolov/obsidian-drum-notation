@@ -128,6 +128,7 @@ Every pattern character is either a **rest** or a **hit with an articulation**.
 | `X`, `O`, `>`, `!`, `#` | Accent | 1.0 |
 | `g` | Ghost note (parenthesized, quieter) | 0.4 |
 | `f` | Flam (grace note + connector) | 0.75 |
+| `r` | Drag / ruff (two beamed grace notes + connector) | 0.75 |
 | `d` | Diddle (two hits inside the slot) | 0.75 |
 | `z`, `Z` | Buzz / press roll | 0.68 |
 | `-`, `.`, `_`, space | Rest (no hit) | — |
@@ -261,6 +262,16 @@ A flam (`f`) renders as a small grace note before the main hit:
 ```drums
 Title: Flam accents
 SD | f---f---f---f---
+BD | o-------o-------
+```
+
+### Drag / ruff
+
+A drag (`r`) renders as two beamed grace notes before the main hit:
+
+```drums
+Title: Drag accents
+SD | r---r---r---r---
 BD | o-------o-------
 ```
 

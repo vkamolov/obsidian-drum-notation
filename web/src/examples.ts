@@ -35,7 +35,7 @@ BD | o-------o-------
 
   "Articulations": `Title: Articulations
 HH | x-x-x-x-x-x-x-x-
-SD | g-O-f-d-z-g-O---
+SD | g-O-f-r-d-z-g-O-
 BD | o-------o-------`,
 
   "Open & half-open hats": `Title: Open & half-open hats

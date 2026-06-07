@@ -195,6 +195,7 @@ const ARTICULATION_BY_CHAR: Record<string, DrumArticulation> = {
   ">": "accent",
   g: "ghost",
   f: "flam",
+  r: "drag",
   d: "diddle"
 };
 
@@ -203,6 +204,7 @@ const VELOCITY_BY_ARTICULATION: Record<DrumArticulation, number> = {
   accent: 1,
   ghost: 0.4,
   flam: 0.75,
+  drag: 0.75,
   diddle: 0.75,
   buzz: 0.68
 };
@@ -241,6 +243,8 @@ export function getHitChar(instrument: DrumInstrument, articulation: DrumArticul
       return "g";
     case "flam":
       return "f";
+    case "drag":
+      return "r";
     case "diddle":
       return "d";
     case "buzz":

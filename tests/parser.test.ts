@@ -74,16 +74,17 @@ HH | x---`);
 });
 
 describe("parseDrumBlock - articulations", () => {
-  const block = parseDrumBlock("SD | Ogfdz-");
+  const block = parseDrumBlock("SD | Ogfrdz-");
 
   it("records articulation and velocity per character", () => {
     const hits = block.slots.map((slot) => slot.hits[0]);
     expect(hits[0]).toMatchObject({ articulation: "accent", velocity: 1 });
     expect(hits[1]).toMatchObject({ articulation: "ghost", velocity: 0.4 });
     expect(hits[2]).toMatchObject({ articulation: "flam", velocity: 0.75 });
-    expect(hits[3]).toMatchObject({ articulation: "diddle", velocity: 0.75 });
-    expect(hits[4]).toMatchObject({ articulation: "buzz", velocity: 0.68 });
-    expect(block.slots[5].hits).toHaveLength(0);
+    expect(hits[3]).toMatchObject({ articulation: "drag", velocity: 0.75 });
+    expect(hits[4]).toMatchObject({ articulation: "diddle", velocity: 0.75 });
+    expect(hits[5]).toMatchObject({ articulation: "buzz", velocity: 0.68 });
+    expect(block.slots[6].hits).toHaveLength(0);
   });
 });
 

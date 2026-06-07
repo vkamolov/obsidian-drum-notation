@@ -402,6 +402,7 @@ body {
 }
 
 .pg-grid__cell.is-hit.is-flam,
+.pg-grid__cell.is-hit.is-drag,
 .pg-grid__cell.is-hit.is-diddle,
 .pg-grid__cell.is-hit.is-buzz {
   background: #7c3aed;

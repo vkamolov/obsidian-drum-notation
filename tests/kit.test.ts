@@ -11,6 +11,7 @@ describe("getArticulation", () => {
   it("maps the remaining articulation characters", () => {
     expect(getArticulation("g")).toBe("ghost");
     expect(getArticulation("f")).toBe("flam");
+    expect(getArticulation("r")).toBe("drag");
     expect(getArticulation("d")).toBe("diddle");
     expect(getArticulation("z")).toBe("buzz");
     expect(getArticulation("Z")).toBe("buzz");
@@ -29,6 +30,7 @@ describe("getVelocity", () => {
     expect(getVelocity("g")).toBe(0.4);
     expect(getVelocity("z")).toBe(0.68);
     expect(getVelocity("f")).toBe(0.75);
+    expect(getVelocity("r")).toBe(0.75);
     expect(getVelocity("d")).toBe(0.75);
     expect(getVelocity("x")).toBe(0.75);
   });

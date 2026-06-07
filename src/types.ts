@@ -100,7 +100,7 @@ export type DrumPlaybackKind =
   | "cowbell"
   | "click";
 
-export type DrumArticulation = "normal" | "accent" | "ghost" | "flam" | "diddle" | "buzz";
+export type DrumArticulation = "normal" | "accent" | "ghost" | "flam" | "drag" | "diddle" | "buzz";
 export type GridResolution = 16 | 32;
 export type LegendMode = "off" | "used" | "all";
 export type MeasureRepeat = 1;

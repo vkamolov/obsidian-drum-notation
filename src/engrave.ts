@@ -1000,7 +1000,7 @@ function applyLegendNoteheadColors(note: StaveNote, hits: DrumHit[]): void {
 
 function applyHitModifiers(note: StaveNote, hits: DrumHit[]): void {
   addGhostParentheses(note, hits);
-  addFlamGraceNotes(note, hits);
+  addGraceNoteOrnaments(note, hits);
 }
 
 function addGhostParentheses(note: StaveNote, hits: DrumHit[]): void {
@@ -1018,9 +1018,9 @@ function addGhostParentheses(note: StaveNote, hits: DrumHit[]): void {
     });
 }
 
-function addFlamGraceNotes(note: StaveNote, hits: DrumHit[]): void {
+function addGraceNoteOrnaments(note: StaveNote, hits: DrumHit[]): void {
   hits
-    .filter((hit) => hit.articulation === "flam")
+    .filter((hit) => hit.articulation === "flam" || hit.articulation === "drag")
     .forEach((hit) => {
       const noteheadIndex = note.getKeys().findIndex((key) => key === hit.instrument.vexKey);
 
@@ -1028,15 +1028,25 @@ function addFlamGraceNotes(note: StaveNote, hits: DrumHit[]): void {
         return;
       }
 
-      const graceNote = new GraceNote({
-        keys: [hit.instrument.vexKey],
-        duration: "8",
-        clef: "percussion",
-        stemDirection: Stem.UP,
-        slash: false
-      });
+      const isDrag = hit.articulation === "drag";
+      const graceNotes = Array.from(
+        { length: isDrag ? 2 : 1 },
+        () =>
+          new GraceNote({
+            keys: [hit.instrument.vexKey],
+            duration: isDrag ? "16" : "8",
+            clef: "percussion",
+            stemDirection: Stem.UP,
+            slash: false
+          })
+      );
+      const graceGroup = new GraceNoteGroup(graceNotes, true);
 
-      note.addModifier(new GraceNoteGroup([graceNote], true), noteheadIndex);
+      if (isDrag) {
+        graceGroup.beamNotes();
+      }
+
+      note.addModifier(graceGroup, noteheadIndex);
     });
 }
 

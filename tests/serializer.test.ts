@@ -43,9 +43,9 @@ Author: Jane
 HH | x---`);
   });
 
-  it("normalizes accent/ghost/flam/diddle/buzz to canonical characters", () => {
-    const out = roundTrips("SD | Ogfdz-");
-    expect(out).toContain("SD | Ogfdz-");
+  it("normalizes accent/ghost/flam/drag/diddle/buzz to canonical characters", () => {
+    const out = roundTrips("SD | Ogfrdz-");
+    expect(out).toContain("SD | Ogfrdz-");
   });
 
   it("normalizes hit characters to notehead convention without changing the model", () => {

@@ -64,6 +64,11 @@ export class DrumSynth {
       this.scheduleInstrument(hit.instrument.playback, Math.max(0, time - 0.035), hit.velocity * 0.45);
     }
 
+    if (hit.articulation === "drag") {
+      this.scheduleInstrument(hit.instrument.playback, Math.max(0, time - 0.055), hit.velocity * 0.34);
+      this.scheduleInstrument(hit.instrument.playback, Math.max(0, time - 0.028), hit.velocity * 0.43);
+    }
+
     if (hit.articulation === "diddle") {
       this.scheduleInstrument(hit.instrument.playback, time, hit.velocity);
       this.scheduleInstrument(hit.instrument.playback, time + Math.max(0.025, slotDuration / 2), hit.velocity * 0.92);

@@ -31,6 +31,7 @@ const ARTICULATION_CLASS: Record<DrumArticulation, string> = {
   accent: "is-accent",
   ghost: "is-ghost",
   flam: "is-flam",
+  drag: "is-drag",
   diddle: "is-diddle",
   buzz: "is-buzz"
 };
@@ -164,7 +165,7 @@ function cycleCell(
   current: DrumArticulation | null
 ): DrumBlock {
   // Only the three primary articulations participate in the click cycle; flam,
-  // diddle, and buzz survive untouched (they just step to ghost -> empty).
+  // drag, diddle, and buzz survive untouched (they step to ghost -> empty).
   const position = current && CYCLE.includes(current) ? CYCLE.indexOf(current) : 0;
   const next = CYCLE[(position + 1) % CYCLE.length];
 

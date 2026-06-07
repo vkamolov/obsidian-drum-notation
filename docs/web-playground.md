@@ -148,7 +148,7 @@ Console should be free of errors/warnings.
   empty rows).
 - **`%` measure-repeat bars:** edit mode operates on `block.slots`; behavior on
   `%` / `%x3` repeat bars is untested/edge-case.
-- The click cycle covers normal / accent / ghost only; flam / diddle / buzz are
+- The click cycle covers normal / accent / ghost only; flam / drag / diddle / buzz are
   not reachable from the grid yet (they survive untouched if already present).
 - `web/tsconfig.json` exists for editor support but is **not** run in CI — Vite
   transpiles without type-checking, so a pure type error in `web/` would not
