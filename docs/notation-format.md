@@ -102,6 +102,7 @@ rows to stack simultaneous hits (e.g. kick + hi-hat foot).
 | Half-open hat | `ho`, `hho`, `half-open hi-hat` | × | 46 |
 | Hi-hat (closed) | `hh`, `ch`, `hat`, `hihat`, `closed` | × | 42 |
 | Hi-hat foot | `hf`, `hhf`, `fh`, `hat foot` | × | 44 |
+| Hi-hat foot splash | `hfs`, `hhfs`, `hi-hat splash`, `foot splash` | circled × | 44 |
 | Snare | `sd`, `sn`, `snare` | ● | 38 |
 | Rim / cross-stick | `rs`, `rim`, `rimshot`, `xstick`, `cross`, `cross-stick` | × | 37 |
 | High rack tom | `ht`, `rt`, `t1`, `tom1`, `rack` | ● | 50 |
@@ -131,6 +132,7 @@ Every pattern character is either a **rest** or a **hit with an articulation**.
 | `r` | Drag / ruff (two beamed grace notes + connector) | 0.75 |
 | `d` | Diddle (two hits inside the slot) | 0.75 |
 | `z`, `Z` | Buzz / press roll | 0.68 |
+| `c` | Choked cymbal (short cymbal hit with plus mark) | 0.9 |
 | `-`, `.`, `_`, space | Rest (no hit) | — |
 
 **The model stores the articulation, not the exact character.** `>`, `!`, `#`,
@@ -298,6 +300,17 @@ SD | z---z---o-------
 BD | o-------o-------
 ```
 
+### Choked cymbal
+
+A choked cymbal (`c`) renders as a cymbal notehead with a small plus mark above
+it and plays with a short muted decay:
+
+```drums
+Title: Choked crash
+CC | c---------------
+BD | o---------------
+```
+
 ### Stacking hits
 
 Characters in the same column sound together. Here the kick stacks with the
@@ -309,6 +322,14 @@ HH | x-x-x-x-x-x-x-x-
 SD | ----o-------o---
 HF | x---x---x---x---
 BD | o-------o-o-----
+```
+
+Use `HFS` for a hi-hat foot splash. It is written on the same staff position as
+`HF`, but renders as a circled x notehead:
+
+```drums
+HFS | x-------x-------
+BD  | o-------o-------
 ```
 
 ### Multiple bars in one system
@@ -375,7 +396,8 @@ Its contract is **semantic**, not textual:
 To stay deterministic and diff-friendly, serialization **normalizes**:
 
 - Hit characters collapse to the canonical glyph for their articulation and
-  notehead (`x`/`X` for cross voices, `o`/`O` for drums; `g`, `f`, `d`, `z`).
+  notehead (`x`/`X` for cross voices, `o`/`O` for drums; `g`, `f`, `d`, `z`,
+  `c`).
 - Rests collapse to `-`.
 - Settings left at their default are **omitted** (they re-parse to the default).
 - Unknown/metadata lines are preserved verbatim and in order.

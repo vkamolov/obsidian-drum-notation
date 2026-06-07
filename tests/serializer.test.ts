@@ -43,9 +43,9 @@ Author: Jane
 HH | x---`);
   });
 
-  it("normalizes accent/ghost/flam/drag/diddle/buzz to canonical characters", () => {
-    const out = roundTrips("SD | Ogfrdz-");
-    expect(out).toContain("SD | Ogfrdz-");
+  it("normalizes accent/ghost/flam/drag/diddle/buzz/choke to canonical characters", () => {
+    const out = roundTrips("SD | Ogfrdzc-");
+    expect(out).toContain("SD | Ogfrdzc-");
   });
 
   it("normalizes hit characters to notehead convention without changing the model", () => {
@@ -54,6 +54,18 @@ HH | x---`);
     const out = serializeDrumBlock(parseDrumBlock("SD | >!Xo\nHH | XXxo"));
     expect(out).toContain("SD | OOOo");
     expect(out).toContain("HH | XXxx");
+  });
+
+  it("round-trips hi-hat foot splash rows as cross-notehead hits", () => {
+    const out = roundTrips("HFS | xX--\nBD  | o---");
+
+    expect(out).toContain("HFS | xX--");
+  });
+
+  it("round-trips choked cymbal hits with the choke character", () => {
+    const out = roundTrips("CC | c---\nBD | o---");
+
+    expect(out).toContain("CC | c---");
   });
 
   it("round-trips multiple bars within one system", () => {

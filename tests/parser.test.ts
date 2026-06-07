@@ -74,7 +74,7 @@ HH | x---`);
 });
 
 describe("parseDrumBlock - articulations", () => {
-  const block = parseDrumBlock("SD | Ogfrdz-");
+  const block = parseDrumBlock("SD | Ogfrdzc-");
 
   it("records articulation and velocity per character", () => {
     const hits = block.slots.map((slot) => slot.hits[0]);
@@ -84,7 +84,19 @@ describe("parseDrumBlock - articulations", () => {
     expect(hits[3]).toMatchObject({ articulation: "drag", velocity: 0.75 });
     expect(hits[4]).toMatchObject({ articulation: "diddle", velocity: 0.75 });
     expect(hits[5]).toMatchObject({ articulation: "buzz", velocity: 0.68 });
-    expect(block.slots[6].hits).toHaveLength(0);
+    expect(hits[6]).toMatchObject({ articulation: "choke", velocity: 0.9 });
+    expect(block.slots[7].hits).toHaveLength(0);
+  });
+});
+
+describe("parseDrumBlock - hi-hat foot splash", () => {
+  it("recognizes hi-hat foot splash as a separate foot-hat voice", () => {
+    const block = parseDrumBlock(`HFS | x---
+BD  | o---`);
+
+    expect(block.rows[0].instrument.id).toBe("hi-hat-foot-splash");
+    expect(block.rows[0].instrument.playback).toBe("hatFootSplash");
+    expect(block.slots[0].hits.map((hit) => hit.instrument.id)).toEqual(["hi-hat-foot-splash", "kick"]);
   });
 });
 

@@ -36,6 +36,9 @@ interface NotationLayout {
   accentWidth: number;
   accentHeight: number;
   accentStrokeWidth: number;
+  chokeGap: number;
+  chokePlusSize: number;
+  chokeStrokeWidth: number;
   diddleWidth: number;
   diddleHeight: number;
   diddleThickness: number;
@@ -48,6 +51,8 @@ interface NotationLayout {
   openHatGap: number;
   openHatStrokeWidth: number;
   halfOpenHatLineExtension: number;
+  footSplashCirclePadding: number;
+  footSplashStrokeWidth: number;
   noteHitTargetPadding: number;
   graceSlurGap: number;
   graceSlurCp1: number;
@@ -206,7 +211,9 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
       });
       drawGraceNoteSlurs(system, visualBar.hitNotes, layout);
       drawHatOpennessMarks(system, visualBar.hitNotes, visualBar.noteSlots, layout);
+      drawFootSplashMarks(system, visualBar.hitNotes, visualBar.noteSlots, layout);
       drawAccentMarks(system, visualBar.hitNotes, visualBar.noteSlots, layout);
+      drawChokeMarks(system, visualBar.hitNotes, visualBar.noteSlots, layout);
       drawDiddleMarks(system, visualBar.hitNotes, visualBar.noteSlots, layout);
       drawBuzzRollMarks(system, visualBar.hitNotes, visualBar.noteSlots, layout);
       visualBar.noteSlots.forEach((slot, noteIndex) => {
@@ -527,6 +534,44 @@ function drawHatOpennessMarks(system: HTMLElement, notes: StaveNote[], noteSlots
   });
 }
 
+function drawFootSplashMarks(system: HTMLElement, notes: StaveNote[], noteSlots: DrumSlot[], layout: NotationLayout): void {
+  const svg = system.querySelector<SVGSVGElement>("svg");
+
+  if (!svg) {
+    return;
+  }
+
+  noteSlots.forEach((slot, noteIndex) => {
+    const splashHit = slot.hits.find((hit) => hit.instrument.id === "hi-hat-foot-splash");
+
+    if (!splashHit) {
+      return;
+    }
+
+    const note = notes[noteIndex];
+    const noteheadIndex = note?.getKeys().findIndex((key) => key === splashHit.instrument.vexKey) ?? -1;
+    const notehead = noteheadIndex >= 0 ? note?.noteHeads[noteheadIndex] : undefined;
+
+    if (!notehead) {
+      return;
+    }
+
+    const box = notehead.getBoundingBox();
+    const radius = Math.max(box.getW(), box.getH()) / 2 + layout.footSplashCirclePadding;
+    const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+
+    circle.classList.add("drum-notation__foot-splash");
+    circle.setAttribute("cx", String(box.getX() + box.getW() / 2));
+    circle.setAttribute("cy", String(box.getY() + box.getH() / 2));
+    circle.setAttribute("r", String(radius));
+    circle.setAttribute("fill", "none");
+    circle.setAttribute("stroke", "currentColor");
+    circle.setAttribute("stroke-width", String(layout.footSplashStrokeWidth));
+    circle.setAttribute("pointer-events", "none");
+    svg.appendChild(circle);
+  });
+}
+
 function drawAccentMarks(system: HTMLElement, notes: StaveNote[], noteSlots: DrumSlot[], layout: NotationLayout): void {
   const svg = system.querySelector<SVGSVGElement>("svg");
 
@@ -559,6 +604,59 @@ function drawAccentMarks(system: HTMLElement, notes: StaveNote[], noteSlots: Dru
     accent.setAttribute("stroke-linecap", "round");
     accent.setAttribute("stroke-linejoin", "round");
     svg.appendChild(accent);
+  });
+}
+
+function drawChokeMarks(system: HTMLElement, notes: StaveNote[], noteSlots: DrumSlot[], layout: NotationLayout): void {
+  const svg = system.querySelector<SVGSVGElement>("svg");
+
+  if (!svg) {
+    return;
+  }
+
+  noteSlots.forEach((slot, noteIndex) => {
+    const chokeHits = slot.hits.filter((hit) => hit.articulation === "choke");
+
+    if (chokeHits.length === 0) {
+      return;
+    }
+
+    const note = notes[noteIndex];
+
+    chokeHits.forEach((hit) => {
+      const noteheadIndex = note?.getKeys().findIndex((key) => key === hit.instrument.vexKey) ?? -1;
+      const notehead = noteheadIndex >= 0 ? note?.noteHeads[noteheadIndex] : undefined;
+
+      if (!notehead) {
+        return;
+      }
+
+      const box = notehead.getBoundingBox();
+      const centerX = box.getX() + box.getW() / 2;
+      const centerY = box.getY() - layout.chokeGap;
+      const halfSize = layout.chokePlusSize / 2;
+      const plus = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      const segments: Array<[number, number, number, number]> = [
+        [centerX - halfSize, centerY, centerX + halfSize, centerY],
+        [centerX, centerY - halfSize, centerX, centerY + halfSize]
+      ];
+
+      plus.classList.add("drum-notation__choke");
+      plus.setAttribute("pointer-events", "none");
+      segments.forEach(([x1, y1, x2, y2]) => {
+        const segment = document.createElementNS("http://www.w3.org/2000/svg", "line");
+
+        segment.setAttribute("x1", String(x1));
+        segment.setAttribute("y1", String(y1));
+        segment.setAttribute("x2", String(x2));
+        segment.setAttribute("y2", String(y2));
+        segment.setAttribute("stroke", "currentColor");
+        segment.setAttribute("stroke-width", String(layout.chokeStrokeWidth));
+        segment.setAttribute("stroke-linecap", "round");
+        plus.appendChild(segment);
+      });
+      svg.appendChild(plus);
+    });
   });
 }
 
@@ -746,6 +844,9 @@ function getNotationLayout(): NotationLayout {
     accentWidth: 10,
     accentHeight: 6,
     accentStrokeWidth: 0.72,
+    chokeGap: 9,
+    chokePlusSize: 7,
+    chokeStrokeWidth: 0.95,
     diddleWidth: 11,
     diddleHeight: 6,
     diddleThickness: 3.4,
@@ -758,6 +859,8 @@ function getNotationLayout(): NotationLayout {
     openHatGap: 7,
     openHatStrokeWidth: 0.85,
     halfOpenHatLineExtension: 2.4,
+    footSplashCirclePadding: 2.1,
+    footSplashStrokeWidth: 0.85,
     noteHitTargetPadding: 3,
     graceSlurGap: 3.2,
     graceSlurCp1: 5.6,

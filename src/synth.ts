@@ -80,7 +80,39 @@ export class DrumSynth {
       return;
     }
 
+    if (hit.articulation === "choke") {
+      this.scheduleChokedInstrument(hit.instrument.playback, time, hit.velocity);
+      return;
+    }
+
     this.scheduleInstrument(hit.instrument.playback, time, hit.velocity);
+  }
+
+  private scheduleChokedInstrument(playback: DrumPlaybackKind, time: number, velocity: number): void {
+    switch (playback) {
+      case "crash":
+        this.scheduleFilteredNoise(time, 0.12, "highpass", 4500, velocity * 0.5, 0.8);
+        this.scheduleMetal(time, 0.1, 900, velocity * 0.24);
+        break;
+      case "splash":
+        this.scheduleFilteredNoise(time, 0.1, "highpass", 6400, velocity * 0.44, 0.65);
+        this.scheduleMetal(time, 0.09, 1450, velocity * 0.18);
+        break;
+      case "china":
+        this.scheduleFilteredNoise(time, 0.13, "bandpass", 1900, velocity * 0.56, 1.1);
+        this.scheduleFilteredNoise(time, 0.1, "highpass", 3600, velocity * 0.2, 0.55);
+        break;
+      case "stack":
+        this.scheduleFilteredNoise(time, 0.08, "bandpass", 3100, velocity * 0.52, 2.2);
+        this.scheduleMetal(time, 0.07, 1200, velocity * 0.14);
+        break;
+      case "ride":
+        this.scheduleMetal(time, 0.12, 1800, velocity * 0.3);
+        break;
+      default:
+        this.scheduleInstrument(playback, time, velocity);
+        break;
+    }
   }
 
   private scheduleInstrument(playback: DrumPlaybackKind, time: number, velocity: number): void {
@@ -113,6 +145,10 @@ export class DrumSynth {
       case "hatFoot":
         this.scheduleNoise(time, 0.08, 5200, velocity * 0.35);
         this.scheduleClick(time, velocity * 0.25);
+        break;
+      case "hatFootSplash":
+        this.scheduleFilteredNoise(time, 0.22, "highpass", 5600, velocity * 0.42, 0.75);
+        this.scheduleClick(time, velocity * 0.18);
         break;
       case "ride":
         this.scheduleMetal(time, 0.38, 1800, velocity * 0.35);

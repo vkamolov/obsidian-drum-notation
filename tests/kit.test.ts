@@ -15,6 +15,7 @@ describe("getArticulation", () => {
     expect(getArticulation("d")).toBe("diddle");
     expect(getArticulation("z")).toBe("buzz");
     expect(getArticulation("Z")).toBe("buzz");
+    expect(getArticulation("c")).toBe("choke");
   });
 
   it("treats anything else as a normal hit", () => {
@@ -32,6 +33,7 @@ describe("getVelocity", () => {
     expect(getVelocity("f")).toBe(0.75);
     expect(getVelocity("r")).toBe(0.75);
     expect(getVelocity("d")).toBe(0.75);
+    expect(getVelocity("c")).toBe(0.9);
     expect(getVelocity("x")).toBe(0.75);
   });
 });
@@ -58,6 +60,8 @@ describe("INSTRUMENTS_BY_ALIAS", () => {
     expect(INSTRUMENTS_BY_ALIAS.get("hh")?.id).toBe("closed-hat");
     expect(INSTRUMENTS_BY_ALIAS.get("ho")?.id).toBe("half-open-hat");
     expect(INSTRUMENTS_BY_ALIAS.get("hho")?.id).toBe("half-open-hat");
+    expect(INSTRUMENTS_BY_ALIAS.get("hfs")?.id).toBe("hi-hat-foot-splash");
+    expect(INSTRUMENTS_BY_ALIAS.get("hihatsplash")?.id).toBe("hi-hat-foot-splash");
     expect(INSTRUMENTS_BY_ALIAS.get("sd")?.id).toBe("snare");
   });
 

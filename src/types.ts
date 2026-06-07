@@ -92,6 +92,7 @@ export type DrumPlaybackKind =
   | "hatHalfOpen"
   | "hatOpen"
   | "hatFoot"
+  | "hatFootSplash"
   | "ride"
   | "crash"
   | "splash"
@@ -100,7 +101,7 @@ export type DrumPlaybackKind =
   | "cowbell"
   | "click";
 
-export type DrumArticulation = "normal" | "accent" | "ghost" | "flam" | "drag" | "diddle" | "buzz";
+export type DrumArticulation = "normal" | "accent" | "ghost" | "flam" | "drag" | "diddle" | "buzz" | "choke";
 export type GridResolution = 16 | 32;
 export type LegendMode = "off" | "used" | "all";
 export type MeasureRepeat = 1;

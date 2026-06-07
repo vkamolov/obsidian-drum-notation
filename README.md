@@ -71,6 +71,7 @@ The pattern is one character per grid slot. By default one character is a sixtee
 | --- | --- |
 | `BD`, `KD`, `Kick` | Kick |
 | `HF`, `HHF`, `Foot Hat`, `Hi-hat Foot` | Hi-hat foot |
+| `HFS`, `HHFS`, `Foot Splash`, `Hi-hat Splash` | Hi-hat foot splash |
 | `SD`, `SN`, `Snare` | Snare |
 | `RS`, `Rim`, `Cross`, `Cross-stick` | Rim/cross-stick |
 | `HH`, `CH`, `Close`, `Hat`, `Hi-hat` | Closed hi-hat |
@@ -89,7 +90,7 @@ The pattern is one character per grid slot. By default one character is a sixtee
 | `LFT`, `Low Floor Tom` | Low floor tom |
 | `CB`, `Cowbell` | Cowbell |
 
-`SD` uses a fuller synthesized snare sound. `RS` / cross-stick stays shorter and clickier. `CR`, `SP`, `China`, and `Stack` use separate synthesized cymbal voices so their playback is distinguishable. `OH` / open hi-hat renders with the standard open-circle mark above the note. `HO` / half-open hi-hat renders the open circle with a vertical line through it.
+`SD` uses a fuller synthesized snare sound. `RS` / cross-stick stays shorter and clickier. `CR`, `SP`, `China`, and `Stack` use separate synthesized cymbal voices so their playback is distinguishable. `OH` / open hi-hat renders with the standard open-circle mark above the note. `HO` / half-open hi-hat renders the open circle with a vertical line through it. `HFS` / hi-hat foot splash renders as a circled x on the foot-hat line.
 
 ## Color Legend
 
@@ -189,7 +190,18 @@ Use `Grid: 32` for written-out thirty-second-note fills. In `Grid: 32`, the rend
 | `r` | Drag / ruff, drawn as two beamed grace notes with connector and played as two soft grace hits |
 | `d` | Diddle, drawn as a mid-stem slash and played as two hits inside the current grid slot |
 | `z`, `Z` | Buzz roll, drawn as a custom line-drawn `Z` through the note stem and played as a closed snare-roll texture |
+| `c` | Choked cymbal, drawn with a small plus mark and played with a short muted decay |
 | `-`, `.`, `_` | Rest |
+
+Use `c` on a cymbal row for a choked cymbal:
+
+````
+```drums
+Title: Choked crash
+CC | c---------------
+BD | o---------------
+```
+````
 
 ## Buzz Rolls
 
@@ -226,7 +238,7 @@ Buzz-roll combinations:
 | `SD | zzzzzzzz` in `Grid: 32` | Written-out thirty-second buzz strokes, useful for very dense roll notation. |
 | `z` stacked with another row in the same column | Snare plays a buzz texture while the other instrument plays its normal hit. |
 | `z` followed by `o` | Buzz roll followed by a clean release note. |
-| `z` with `d`, `r`, `g`, `f`, or accent in the same snare cell | Not supported because each instrument row uses one character per slot. Use adjacent slots or written-out `Grid: 32` notes when you need more detail. |
+| `z` with `d`, `r`, `g`, `f`, `c`, or accent in the same snare cell | Not supported because each instrument row uses one character per slot. Use adjacent slots or written-out `Grid: 32` notes when you need more detail. |
 
 ## Thirty-Second Notes And Diddles
 
@@ -267,11 +279,11 @@ Combinations:
 | `Grid: 32` + `d` | One visible diddled thirty-second note, played as two faster hits inside that thirty-second slot. |
 | `Grid: 32` + written hits like `oooo` | Four explicit thirty-second notes. |
 | `d` stacked with another row in the same column | The diddled instrument plays twice; the other stacked instrument plays once. |
-| `d` with `X`, `g`, `f`, or `r` in the same cell | Not supported because each instrument row uses one character per slot. Use written-out `Grid: 32` notes when you need an accented, ghosted, flammed, or dragged double. |
+| `d` with `X`, `g`, `f`, `r`, or `c` in the same cell | Not supported because each instrument row uses one character per slot. Use written-out `Grid: 32` notes when you need an accented, ghosted, flammed, dragged, or choked double. |
 
 ## Full Kit Example
 
-This example is inspired by the reference image and includes every supported row: cymbals, hi-hats, ride bell, cowbell, snare, cross-stick, ghost/flam/drag strokes, rack toms, floor toms, kick, foot hi-hat, and a stacked kick plus foot-hat hit.
+This example is inspired by the reference image and includes every supported row: cymbals, hi-hats, ride bell, cowbell, snare, cross-stick, ghost/flam/drag/choke strokes, rack toms, floor toms, kick, foot hi-hat, foot splash, and a stacked kick plus foot-hat hit.
 
 ````
 ```drums
@@ -284,7 +296,7 @@ Count: 1 e & a 2 e & a 3 e & a 4 e & a 5 e & a 6 e & a 7 e & a 8 e & a
 HH    | x-------------------------------
 OH    | -o------------------------------
 HO    | --x-----------------------------
-CR    | --->----------------------------
+CR    | --->----c-----------------------
 SP    | ----x---------------------------
 China | -----x--------------------------
 Stack | ------x-------------------------
@@ -300,6 +312,7 @@ FT    | ---------------o----------------
 LFT   | ----------------o---------------
 BD    | -----------------o-------------X
 HF    | ------------------x------------X
+HFS   | -------------------x------------
 ```
 ````
 

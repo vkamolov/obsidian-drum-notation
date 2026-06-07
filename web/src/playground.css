@@ -404,7 +404,8 @@ body {
 .pg-grid__cell.is-hit.is-flam,
 .pg-grid__cell.is-hit.is-drag,
 .pg-grid__cell.is-hit.is-diddle,
-.pg-grid__cell.is-hit.is-buzz {
+.pg-grid__cell.is-hit.is-buzz,
+.pg-grid__cell.is-hit.is-choke {
   background: #7c3aed;
   border-color: #7c3aed;
 }

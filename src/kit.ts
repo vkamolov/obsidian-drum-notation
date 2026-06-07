@@ -93,6 +93,15 @@ export const DRUM_KIT: DrumInstrument[] = [
     playback: "hatFoot"
   },
   {
+    id: "hi-hat-foot-splash",
+    label: "Hi-hat foot splash",
+    aliases: ["hfs", "hhfs", "foot splash", "hat foot splash", "hi-hat foot splash", "hihat foot splash", "hi-hat splash", "hihat splash"],
+    vexKey: "d/4/X",
+    midi: 44,
+    color: "#854d0e",
+    playback: "hatFootSplash"
+  },
+  {
     id: "snare",
     label: "Snare",
     aliases: ["sd", "sn", "snare"],
@@ -196,7 +205,8 @@ const ARTICULATION_BY_CHAR: Record<string, DrumArticulation> = {
   g: "ghost",
   f: "flam",
   r: "drag",
-  d: "diddle"
+  d: "diddle",
+  c: "choke"
 };
 
 const VELOCITY_BY_ARTICULATION: Record<DrumArticulation, number> = {
@@ -206,7 +216,8 @@ const VELOCITY_BY_ARTICULATION: Record<DrumArticulation, number> = {
   flam: 0.75,
   drag: 0.75,
   diddle: 0.75,
-  buzz: 0.68
+  buzz: 0.68,
+  choke: 0.9
 };
 
 const REST_CHARS = new Set(["-", ".", "_", " "]);
@@ -249,6 +260,8 @@ export function getHitChar(instrument: DrumInstrument, articulation: DrumArticul
       return "d";
     case "buzz":
       return "z";
+    case "choke":
+      return "c";
     case "normal":
     default:
       return cross ? "x" : "o";
