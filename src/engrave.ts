@@ -49,6 +49,8 @@ interface NotationLayout {
   openHatStrokeWidth: number;
   halfOpenHatLineExtension: number;
   noteHitTargetPadding: number;
+  tupletFontSize: number;
+  tupletFontWeight: string;
   measureRepeatCountGap: number;
   measureRepeatCountFontSize: number;
   measureRepeatCountFontWeight: string;
@@ -182,6 +184,7 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
         beam.setContext(context).draw();
       });
       visualBar.tuplets.forEach((tuplet) => {
+        slimTupletText(tuplet, layout);
         tuplet.setStyle({ fillStyle: "currentColor", strokeStyle: "currentColor", lineWidth: layout.strokeWidth });
         tuplet.setContext(context).draw();
       });
@@ -693,10 +696,27 @@ function getNotationLayout(): NotationLayout {
     openHatStrokeWidth: 0.85,
     halfOpenHatLineExtension: 2.4,
     noteHitTargetPadding: 3,
+    tupletFontSize: 12,
+    tupletFontWeight: "400",
     measureRepeatCountGap: 8,
     measureRepeatCountFontSize: 11,
     measureRepeatCountFontWeight: "700"
   };
+}
+
+function slimTupletText(tuplet: Tuplet, layout: NotationLayout): void {
+  const tupletParts = tuplet as Tuplet & {
+    textElement?: {
+      setFontSize: (size: number) => unknown;
+      fontWeight?: string;
+    };
+  };
+
+  tupletParts.textElement?.setFontSize(layout.tupletFontSize);
+
+  if (tupletParts.textElement) {
+    tupletParts.textElement.fontWeight = layout.tupletFontWeight;
+  }
 }
 
 function slimTimeSignature(timeSignature: TimeSignature, timeSpec: string, fontSize: number): void {
