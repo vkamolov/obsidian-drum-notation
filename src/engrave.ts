@@ -49,6 +49,9 @@ interface NotationLayout {
   openHatStrokeWidth: number;
   halfOpenHatLineExtension: number;
   noteHitTargetPadding: number;
+  graceSlurGap: number;
+  graceSlurCp1: number;
+  graceSlurCp2: number;
   tupletFontSize: number;
   tupletFontWeight: string;
   measureRepeatCountGap: number;
@@ -71,6 +74,18 @@ interface VisualBarEntry {
   repeatedBars: DrumBar[];
   repeatCount: number;
 }
+
+interface PendingHitTarget {
+  note: StaveNote | undefined;
+  slot: DrumSlot;
+}
+
+interface GraceSlurAnchor {
+  graceNotes: GraceNote[];
+  mainNoteheadIndex: number;
+}
+
+const graceSlurAnchors = new WeakMap<StaveNote, GraceSlurAnchor[]>();
 
 export function renderVexflowScore(block: DrumBlock, container: HTMLElement): ScoreRenderResult {
   container.empty();
@@ -109,6 +124,7 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
     const systemTop = systemIndex * height;
 
     let currentX = staveX;
+    const pendingHitTargets: PendingHitTarget[] = [];
 
     visualBars.forEach((entry, barIndex) => {
       const bar = entry.bar;
@@ -188,6 +204,7 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
         tuplet.setStyle({ fillStyle: "currentColor", strokeStyle: "currentColor", lineWidth: layout.strokeWidth });
         tuplet.setContext(context).draw();
       });
+      drawGraceNoteSlurs(system, visualBar.hitNotes, layout);
       drawHatOpennessMarks(system, visualBar.hitNotes, visualBar.noteSlots, layout);
       drawAccentMarks(system, visualBar.hitNotes, visualBar.noteSlots, layout);
       drawDiddleMarks(system, visualBar.hitNotes, visualBar.noteSlots, layout);
@@ -196,7 +213,7 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
         const note = visualBar.hitNotes[noteIndex];
 
         tagRenderedNoteSlot(note, slot);
-        drawNoteHitTargets(system, note, slot, layout);
+        pendingHitTargets.push({ note, slot });
       });
       visualBar.cursorSlots.forEach((slot, noteIndex) => {
         const note = visualBar.cursorNotes[noteIndex];
@@ -239,6 +256,10 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
       }
 
       currentX += barWidth;
+    });
+
+    pendingHitTargets.forEach(({ note, slot }) => {
+      drawNoteHitTargets(system, note, slot, layout);
     });
   });
 
@@ -649,6 +670,48 @@ function drawBuzzRollMarks(
   });
 }
 
+function drawGraceNoteSlurs(system: HTMLElement, notes: StaveNote[], layout: NotationLayout): void {
+  const svg = system.querySelector<SVGSVGElement>("svg");
+
+  if (!svg) {
+    return;
+  }
+
+  notes.forEach((note) => {
+    const anchors = graceSlurAnchors.get(note);
+
+    if (!anchors) {
+      return;
+    }
+
+    anchors.forEach((anchor) => {
+      const graceNotehead = anchor.graceNotes[0]?.noteHeads[0];
+      const mainNotehead = note.noteHeads[anchor.mainNoteheadIndex];
+
+      if (!graceNotehead || !mainNotehead) {
+        return;
+      }
+
+      const graceBox = graceNotehead.getBoundingBox();
+      const mainBox = mainNotehead.getBoundingBox();
+      const startX = graceBox.getX() + graceBox.getW() * 0.35;
+      const endX = mainBox.getX() + mainBox.getW() * 0.45;
+      const baseY = Math.max(graceBox.getY() + graceBox.getH(), mainBox.getY() + mainBox.getH()) + layout.graceSlurGap;
+      const cpX = (startX + endX) / 2;
+      const topY = baseY + layout.graceSlurCp1;
+      const bottomY = baseY + layout.graceSlurCp2;
+      const slur = document.createElementNS("http://www.w3.org/2000/svg", "path");
+
+      slur.classList.add("drum-notation__grace-slur");
+      slur.setAttribute("d", `M ${startX} ${baseY} Q ${cpX} ${topY} ${endX} ${baseY} Q ${cpX} ${bottomY} ${startX} ${baseY} Z`);
+      slur.setAttribute("fill", "currentColor");
+      slur.setAttribute("stroke", "none");
+      slur.setAttribute("pointer-events", "none");
+      svg.appendChild(slur);
+    });
+  });
+}
+
 function getStemMarkMiddleY(note: StaveNote, markHeight: number, markThickness: number, noteheadClearance: number): number {
   const { topY, baseY } = note.getStemExtents();
   const noteheadTopY = Math.min(...note.getYs());
@@ -696,6 +759,9 @@ function getNotationLayout(): NotationLayout {
     openHatStrokeWidth: 0.85,
     halfOpenHatLineExtension: 2.4,
     noteHitTargetPadding: 3,
+    graceSlurGap: 3.2,
+    graceSlurCp1: 5.6,
+    graceSlurCp2: 8.3,
     tupletFontSize: 12,
     tupletFontWeight: "400",
     measureRepeatCountGap: 8,
@@ -1060,14 +1126,22 @@ function addGraceNoteOrnaments(note: StaveNote, hits: DrumHit[]): void {
             slash: false
           })
       );
-      const graceGroup = new GraceNoteGroup(graceNotes, true);
+      const graceGroup = new GraceNoteGroup(graceNotes, false);
 
       if (isDrag) {
         graceGroup.beamNotes();
       }
 
       note.addModifier(graceGroup, noteheadIndex);
+      rememberGraceSlur(note, graceNotes, noteheadIndex);
     });
+}
+
+function rememberGraceSlur(note: StaveNote, graceNotes: GraceNote[], mainNoteheadIndex: number): void {
+  const anchors = graceSlurAnchors.get(note) ?? [];
+
+  anchors.push({ graceNotes, mainNoteheadIndex });
+  graceSlurAnchors.set(note, anchors);
 }
 
 export { makeRenderedNotesInteractive };
