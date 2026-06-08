@@ -309,7 +309,13 @@ function enterEditMode(): void {
   gridEditor = mountGridEditor({
     container: editRoot,
     block: currentBlock,
-    onChange: applyGridEditedBlock
+    onChange: applyGridEditedBlock,
+    onPreview: (block, slotIndex) => {
+      const slot = block.slots.find((candidate) => candidate.index === slotIndex);
+      if (slot) {
+        void previewSlot(block, slot);
+      }
+    }
   });
 }
 

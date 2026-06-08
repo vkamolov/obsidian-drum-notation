@@ -3,12 +3,12 @@
 // (x -> slot) is trivial and the vertical "which instrument?" ambiguity the
 // architecture notes call out is resolved by the row itself (and the palette).
 //
-// Every mutation goes through edit.ts (toggleHit / applyArticulation /
-// removeHit) and returns a new block; Save serializes the working block back to
-// text. Nothing here reaches into the renderer or the DOM beyond its container.
+// Every mutation goes through edit.ts (setHit / applyArticulation / clearHit)
+// and returns a new block. Nothing here reaches into the renderer or the DOM
+// beyond its container.
 
-import { applyArticulation, findHit, removeHit, toggleHit } from "../../src/edit";
-import { DRUM_KIT, getHitChar } from "../../src/kit";
+import { applyArticulation, clearHit, findHit, setHit } from "../../src/edit";
+import { DRUM_KIT, getAllowedArticulations, getHitChar, isArticulationAllowed } from "../../src/kit";
 import { getSlotsPerBeat } from "../../src/music";
 import { DrumArticulation, DrumBlock, DrumInstrument } from "../../src/types";
 
@@ -20,10 +20,8 @@ interface GridEditorOptions {
   container: HTMLElement;
   block: DrumBlock;
   onChange: (block: DrumBlock, changedSlotIndex?: number) => void;
+  onPreview: (block: DrumBlock, slotIndex: number) => void;
 }
-
-// Click cycle for a cell: empty -> normal -> accent -> ghost -> empty.
-const CYCLE: Array<DrumArticulation | null> = [null, "normal", "accent", "ghost"];
 
 const ARTICULATION_CLASS: Record<DrumArticulation, string> = {
   normal: "is-normal",
@@ -36,10 +34,27 @@ const ARTICULATION_CLASS: Record<DrumArticulation, string> = {
   choke: "is-choke"
 };
 
+const ARTICULATION_LABELS: Record<DrumArticulation, string> = {
+  normal: "Normal",
+  accent: "Accent",
+  ghost: "Ghost",
+  flam: "Flam",
+  drag: "Drag",
+  diddle: "Diddle",
+  buzz: "Buzz",
+  choke: "Choke"
+};
+
+interface SelectedCell {
+  slotIndex: number;
+  instrumentId: string;
+}
+
 export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
   let working = options.block;
   const undoStack: Array<{ block: DrumBlock; slotIndex?: number }> = [];
   const redoStack: Array<{ block: DrumBlock; slotIndex?: number }> = [];
+  let selectedCell: SelectedCell | null = null;
   // Instruments shown as rows: those already in the block, plus any the user
   // adds from the palette (kept visible even before they have a hit).
   const extraInstruments: DrumInstrument[] = [];
@@ -82,6 +97,39 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     render();
   };
 
+  const selectedInstrument = (): DrumInstrument | undefined => {
+    if (!selectedCell) {
+      return undefined;
+    }
+
+    return displayedInstruments().find((instrument) => instrument.id === selectedCell?.instrumentId);
+  };
+
+  const applyArticulationToSelection = (articulation: DrumArticulation) => {
+    const instrument = selectedInstrument();
+
+    if (!selectedCell || !instrument || !isArticulationAllowed(instrument, articulation)) {
+      return;
+    }
+
+    const existing = findHit(working, selectedCell.slotIndex, instrument.id);
+    const next = existing
+      ? applyArticulation(working, selectedCell.slotIndex, instrument, articulation)
+      : setHit(working, selectedCell.slotIndex, instrument, articulation);
+
+    applyChange(next, selectedCell.slotIndex);
+  };
+
+  const clearSelectionHit = () => {
+    const instrument = selectedInstrument();
+
+    if (!selectedCell || !instrument) {
+      return;
+    }
+
+    applyChange(clearHit(working, selectedCell.slotIndex, instrument), selectedCell.slotIndex);
+  };
+
   const onKeyDown = (event: KeyboardEvent) => {
     const target = event.target as HTMLElement | null;
     const tagName = target?.tagName.toLowerCase();
@@ -101,6 +149,16 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     } else if (isRedo) {
       event.preventDefault();
       redo();
+    } else if (selectedCell && (event.key === "Backspace" || event.key === "Delete")) {
+      event.preventDefault();
+      clearSelectionHit();
+    } else if (!event.metaKey && !event.ctrlKey && !event.altKey && selectedCell) {
+      const articulation = articulationFromKey(event.key);
+
+      if (articulation) {
+        event.preventDefault();
+        applyArticulationToSelection(articulation);
+      }
     }
   };
 
@@ -111,6 +169,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     const root = options.container.createEl("div", { cls: "pg-grid-editor" });
 
     renderHeader(root);
+    renderArticulationTools(root);
 
     if (working.slots.length === 0) {
       root.createEl("p", {
@@ -142,7 +201,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     });
 
     const spacer = bar.createEl("span", { cls: "pg-grid-editor__spacer" });
-    spacer.textContent = "live edit: click cells; undo with Ctrl/Cmd+Z";
+    spacer.textContent = "Live edit";
 
     const undoButton = bar.createEl("button", { cls: "pg-btn", text: "Undo" }) as HTMLButtonElement;
     undoButton.disabled = undoStack.length === 0;
@@ -151,6 +210,46 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     const redoButton = bar.createEl("button", { cls: "pg-btn", text: "Redo" }) as HTMLButtonElement;
     redoButton.disabled = redoStack.length === 0;
     redoButton.addEventListener("click", redo);
+  };
+
+  const renderArticulationTools = (root: HTMLElement) => {
+    const instrument = selectedInstrument();
+    const slotIndex = selectedCell?.slotIndex;
+
+    if (!instrument || slotIndex === undefined) {
+      return;
+    }
+
+    const hit = findHit(working, slotIndex, instrument.id);
+    const tools = root.createEl("div", { cls: "pg-grid-editor__tools" });
+    const label = tools.createEl("span", {
+      cls: "pg-grid-editor__selection",
+      text: `${(instrument.aliases[0] ?? instrument.id).toUpperCase()} ${slotIndex + 1}`
+    });
+
+    label.setAttr("aria-live", "polite");
+
+    getAllowedArticulations(instrument).forEach((articulation) => {
+      const button = tools.createEl("button", {
+        cls: `pg-grid-editor__tool ${hit?.articulation === articulation ? "is-active" : ""}`,
+        text: getHitChar(instrument, articulation)
+      }) as HTMLButtonElement;
+
+      button.dataset.articulation = articulation;
+      button.title = ARTICULATION_LABELS[articulation];
+      button.setAttr("aria-label", ARTICULATION_LABELS[articulation]);
+      button.addEventListener("click", () => applyArticulationToSelection(articulation));
+    });
+
+    const deleteButton = tools.createEl("button", {
+      cls: "pg-grid-editor__tool pg-grid-editor__tool--delete",
+      text: "×"
+    }) as HTMLButtonElement;
+
+    deleteButton.title = "Delete";
+    deleteButton.setAttr("aria-label", "Delete");
+    deleteButton.disabled = !hit;
+    deleteButton.addEventListener("click", clearSelectionHit);
   };
 
   const displayedInstruments = (): DrumInstrument[] => {
@@ -195,6 +294,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
       for (const slot of working.slots) {
         const hit = findHit(working, slot.index, instrument.id);
         const cell = cells.createEl("button", { cls: "pg-grid__cell" });
+        const isSelected = selectedCell?.slotIndex === slot.index && selectedCell.instrumentId === instrument.id;
 
         if (barStartSlots.has(slot.index) && slot.index !== 0) {
           cell.classList.add("is-bar-start");
@@ -207,8 +307,30 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
           cell.textContent = getHitChar(instrument, hit.articulation);
         }
 
+        if (isSelected) {
+          cell.classList.add("is-selected");
+          cell.setAttr("aria-pressed", "true");
+        }
+
         cell.addEventListener("click", () => {
-          applyChange(cycleCell(working, slot.index, instrument, hit?.articulation ?? null), slot.index);
+          selectedCell = { slotIndex: slot.index, instrumentId: instrument.id };
+
+          if (hit) {
+            options.onPreview(working, slot.index);
+            render();
+            return;
+          }
+
+          applyChange(setHit(working, slot.index, instrument), slot.index);
+        });
+
+        cell.addEventListener("contextmenu", (event) => {
+          event.preventDefault();
+          selectedCell = { slotIndex: slot.index, instrumentId: instrument.id };
+          if (hit) {
+            options.onPreview(working, slot.index);
+          }
+          render();
         });
       }
     }
@@ -224,22 +346,27 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
   };
 }
 
-function cycleCell(
-  block: DrumBlock,
-  slotIndex: number,
-  instrument: DrumInstrument,
-  current: DrumArticulation | null
-): DrumBlock {
-  // Only the three primary articulations participate in the click cycle; flam,
-  // drag, diddle, buzz, and choke survive untouched (they step to ghost -> empty).
-  const position = current && CYCLE.includes(current) ? CYCLE.indexOf(current) : 0;
-  const next = CYCLE[(position + 1) % CYCLE.length];
-
-  if (next === null) {
-    return removeHit(block, slotIndex, instrument);
+function articulationFromKey(key: string): DrumArticulation | null {
+  switch (key) {
+    case "x":
+    case "o":
+      return "normal";
+    case "X":
+    case "O":
+      return "accent";
+    case "g":
+      return "ghost";
+    case "f":
+      return "flam";
+    case "r":
+      return "drag";
+    case "d":
+      return "diddle";
+    case "z":
+      return "buzz";
+    case "c":
+      return "choke";
+    default:
+      return null;
   }
-  if (current === null) {
-    return toggleHit(block, slotIndex, instrument, next);
-  }
-  return applyArticulation(block, slotIndex, instrument, next);
 }

@@ -333,6 +333,61 @@ body {
   color: var(--pg-muted);
 }
 
+.pg-grid-editor__tools {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  padding: 0.4rem;
+  border: 1px solid var(--pg-border);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--pg-panel) 86%, var(--pg-accent));
+}
+
+.pg-grid-editor__selection {
+  min-width: 3.6rem;
+  font-family: var(--pg-mono);
+  font-size: 0.75rem;
+  color: var(--pg-muted);
+}
+
+.pg-grid-editor__tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2rem;
+  min-height: 2rem;
+  padding: 0 0.45rem;
+  font: inherit;
+  font-family: var(--pg-mono);
+  font-size: 0.82rem;
+  line-height: 1;
+  color: var(--pg-text);
+  background: var(--pg-bg);
+  border: 1px solid var(--pg-border);
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.pg-grid-editor__tool:hover {
+  border-color: var(--pg-accent);
+}
+
+.pg-grid-editor__tool.is-active {
+  color: #fff;
+  background: var(--pg-accent);
+  border-color: var(--pg-accent);
+}
+
+.pg-grid-editor__tool:disabled {
+  opacity: 0.42;
+  cursor: default;
+}
+
+.pg-grid-editor__tool--delete {
+  color: #dc2626;
+}
+
 .pg-grid {
   display: flex;
   flex-direction: column;
@@ -376,6 +431,11 @@ body {
 
 .pg-grid__cell:hover {
   border-color: var(--pg-accent);
+}
+
+.pg-grid__cell.is-selected {
+  outline: 2px solid var(--pg-accent);
+  outline-offset: 1px;
 }
 
 .pg-grid__cell.is-beat-start {

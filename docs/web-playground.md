@@ -111,8 +111,10 @@ the **first** import in `app.ts`. `engrave.ts` itself was **not** changed.
 - Example picker (`examples.ts`), Copy block / Copy normalized, light/dark theme
   toggle (persisted).
 - **Edit mode** (`editor-grid.ts`): fixed HTML grid, rows = instruments,
-  columns = slots. Cell click cycles empty → normal → accent → ghost via
-  `toggleHit` / `applyArticulation` / `removeHit`. Instrument palette adds rows.
+  columns = slots. Empty-cell click adds a normal hit; filled-cell click selects
+  and previews the hit. The selected-cell tool strip and keyboard shortcuts
+  choose only instrument-valid articulations, with Delete/Backspace for erase.
+  Instrument palette adds rows.
   Edits live-apply to the editor text and notation preview immediately; Undo/Redo
   replaces the old Save/Cancel flow. First interactive consumer of `src/edit.ts`.
 
@@ -133,8 +135,9 @@ In the browser at `localhost:5173`:
 2. Click **Play** → audio + moving cursor/highlight.
 3. Click **Edit** → a grid opens below the live preview (3 rows × 16 cells for
    the default). Click an empty HH cell → fills (normal) and immediately updates
-   the editor text/preview; click again → accent. Click **Undo** → the previous
-   text/preview returns.
+   the editor text/preview. Click a filled SD cell → selects/previews it and
+   shows snare-valid tools such as flam, drag, diddle, and buzz. Click
+   **Undo** → the previous text/preview returns.
 4. Toggle theme (◐), change Tempo/Grid (rewrites editor via edit helpers), switch
    examples.
 
@@ -148,8 +151,8 @@ Console should be free of errors/warnings.
   empty rows).
 - **`%` measure-repeat bars:** edit mode operates on `block.slots`; behavior on
   `%` / `%x3` repeat bars is untested/edge-case.
-- The click cycle covers normal / accent / ghost only; flam / drag / diddle / buzz / choke are
-  not reachable from the grid yet (they survive untouched if already present).
+- Edit mode uses a selected-cell tool strip; selected-bar editing and bar action
+  controls are still deferred to the visual-edit roadmap.
 - `web/tsconfig.json` exists for editor support but is **not** run in CI — Vite
   transpiles without type-checking, so a pure type error in `web/` would not
   fail CI (only the plugin's `tsc` runs).
