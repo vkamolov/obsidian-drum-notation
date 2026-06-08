@@ -4,10 +4,12 @@ import { parseDrumBlock } from "../src/parser";
 import { serializeDrumBlock } from "../src/serializer";
 import {
   applyArticulation,
+  clearHit,
   findHit,
   hitKey,
   removeHit,
   setGrid,
+  setHit,
   setInstrument,
   setTempo,
   setTimeSignature,
@@ -18,6 +20,7 @@ const instrument = (alias: string) => INSTRUMENTS_BY_ALIAS.get(alias)!;
 const HH = instrument("hh");
 const SD = instrument("sd");
 const BD = instrument("bd");
+const CC = instrument("cc");
 
 describe("note identity", () => {
   it("addresses a hit by composite (slot, instrument) key", () => {
@@ -29,6 +32,28 @@ describe("note identity", () => {
 });
 
 describe("hit edits", () => {
+  it("setHit adds or updates a hit without mutating the input", () => {
+    const block = parseDrumBlock("CC | ----");
+    const added = setHit(block, 1, CC, "choke");
+
+    expect(findHit(added, 1, CC.id)?.articulation).toBe("choke");
+    expect(findHit(block, 1, CC.id)).toBeUndefined();
+    expect(serializeDrumBlock(added)).toBe("CC | -c--");
+
+    const accented = setHit(added, 1, CC, "accent");
+    expect(findHit(accented, 1, CC.id)?.articulation).toBe("accent");
+    expect(serializeDrumBlock(accented)).toBe("CC | -X--");
+    expect(serializeDrumBlock(parseDrumBlock(serializeDrumBlock(accented)))).toBe("CC | -X--");
+  });
+
+  it("clearHit removes a hit through the explicit visual-edit helper", () => {
+    const block = parseDrumBlock("HH | x-x-");
+    const cleared = clearHit(block, 2, HH);
+
+    expect(findHit(cleared, 2, HH.id)).toBeUndefined();
+    expect(serializeDrumBlock(cleared)).toBe("HH | x---");
+  });
+
   it("toggleHit adds and removes a hit without mutating the input", () => {
     const block = parseDrumBlock("HH | x-x-");
     const added = toggleHit(block, 1, HH);

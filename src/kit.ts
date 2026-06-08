@@ -191,6 +191,42 @@ export const INSTRUMENTS_BY_ALIAS = new Map<string, DrumInstrument>(
   ])
 );
 
+const DEFAULT_ARTICULATIONS: DrumArticulation[] = ["normal", "accent"];
+const CYMBAL_ARTICULATIONS: DrumArticulation[] = ["normal", "accent", "choke"];
+const SNARE_ARTICULATIONS: DrumArticulation[] = ["normal", "accent", "ghost", "flam", "drag", "diddle", "buzz"];
+const TOM_ARTICULATIONS: DrumArticulation[] = ["normal", "accent", "flam", "drag", "diddle"];
+const KICK_ARTICULATIONS: DrumArticulation[] = ["normal", "accent", "flam"];
+
+const CYMBAL_INSTRUMENT_IDS = new Set(["crash", "splash", "china", "stack", "ride"]);
+const TOM_INSTRUMENT_IDS = new Set(["high-tom", "mid-tom", "low-tom", "floor-tom", "low-floor-tom"]);
+
+// Instrument-aware articulation capabilities for visual editors. This keeps
+// the model alphabet global while letting UI surfaces offer only useful choices
+// for the selected voice.
+export function getAllowedArticulations(instrument: DrumInstrument): DrumArticulation[] {
+  if (CYMBAL_INSTRUMENT_IDS.has(instrument.id)) {
+    return [...CYMBAL_ARTICULATIONS];
+  }
+
+  if (instrument.id === "snare") {
+    return [...SNARE_ARTICULATIONS];
+  }
+
+  if (TOM_INSTRUMENT_IDS.has(instrument.id)) {
+    return [...TOM_ARTICULATIONS];
+  }
+
+  if (instrument.id === "kick") {
+    return [...KICK_ARTICULATIONS];
+  }
+
+  return [...DEFAULT_ARTICULATIONS];
+}
+
+export function isArticulationAllowed(instrument: DrumInstrument, articulation: DrumArticulation): boolean {
+  return getAllowedArticulations(instrument).includes(articulation);
+}
+
 // The pattern "alphabet": every notation character maps to a single articulation,
 // and every articulation maps to a single playback velocity. Keeping these in one
 // place means the grammar is documented and testable in exactly one spot.

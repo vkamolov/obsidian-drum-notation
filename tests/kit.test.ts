@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getArticulation, getVelocity, INSTRUMENTS_BY_ALIAS, isRest } from "../src/kit";
+import { getAllowedArticulations, getArticulation, getVelocity, INSTRUMENTS_BY_ALIAS, isArticulationAllowed, isRest } from "../src/kit";
 
 describe("getArticulation", () => {
   it("maps accent characters", () => {
@@ -67,5 +67,25 @@ describe("INSTRUMENTS_BY_ALIAS", () => {
 
   it("returns undefined for unknown labels", () => {
     expect(INSTRUMENTS_BY_ALIAS.get("zzz")).toBeUndefined();
+  });
+});
+
+describe("getAllowedArticulations", () => {
+  const instrument = (alias: string) => INSTRUMENTS_BY_ALIAS.get(alias)!;
+
+  it("returns useful visual-edit choices by instrument family", () => {
+    expect(getAllowedArticulations(instrument("cc"))).toEqual(["normal", "accent", "choke"]);
+    expect(getAllowedArticulations(instrument("sd"))).toEqual(["normal", "accent", "ghost", "flam", "drag", "diddle", "buzz"]);
+    expect(getAllowedArticulations(instrument("ft"))).toEqual(["normal", "accent", "flam", "drag", "diddle"]);
+    expect(getAllowedArticulations(instrument("bd"))).toEqual(["normal", "accent", "flam"]);
+    expect(getAllowedArticulations(instrument("hh"))).toEqual(["normal", "accent"]);
+    expect(getAllowedArticulations(instrument("hfs"))).toEqual(["normal", "accent"]);
+  });
+
+  it("keeps less common cross-notehead voices on the default choices", () => {
+    expect(getAllowedArticulations(instrument("rs"))).toEqual(["normal", "accent"]);
+    expect(getAllowedArticulations(instrument("cb"))).toEqual(["normal", "accent"]);
+    expect(isArticulationAllowed(instrument("cc"), "choke")).toBe(true);
+    expect(isArticulationAllowed(instrument("hh"), "choke")).toBe(false);
   });
 });

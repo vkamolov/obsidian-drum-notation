@@ -62,9 +62,20 @@ export function toggleHit(
 ): DrumBlock {
   const existing = findHit(block, slotIndex, instrument.id);
 
-  return existing
-    ? withHitChar(block, slotIndex, instrument, null)
-    : withHitChar(block, slotIndex, instrument, getHitChar(instrument, articulation));
+  return existing ? clearHit(block, slotIndex, instrument) : setHit(block, slotIndex, instrument, articulation);
+}
+
+export function setHit(
+  block: DrumBlock,
+  slotIndex: number,
+  instrument: DrumInstrument,
+  articulation: DrumArticulation = "normal"
+): DrumBlock {
+  return withHitChar(block, slotIndex, instrument, getHitChar(instrument, articulation));
+}
+
+export function clearHit(block: DrumBlock, slotIndex: number, instrument: DrumInstrument): DrumBlock {
+  return removeHit(block, slotIndex, instrument);
 }
 
 export function removeHit(block: DrumBlock, slotIndex: number, instrument: DrumInstrument): DrumBlock {
