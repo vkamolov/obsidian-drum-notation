@@ -280,6 +280,9 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
 
     const grid = root.createEl("div", { cls: "pg-grid" });
     grid.style.setProperty("--pg-grid-cols", String(working.slots.length));
+    grid.style.setProperty("--pg-grid-width", gridWidth(working.slots.length));
+
+    renderRuler(grid, slotsPerBeat, barStartSlots, localIndex);
 
     for (const instrument of displayedInstruments()) {
       const rowEl = grid.createEl("div", { cls: "pg-grid__row" });
@@ -296,11 +299,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
         const cell = cells.createEl("button", { cls: "pg-grid__cell" });
         const isSelected = selectedCell?.slotIndex === slot.index && selectedCell.instrumentId === instrument.id;
 
-        if (barStartSlots.has(slot.index) && slot.index !== 0) {
-          cell.classList.add("is-bar-start");
-        } else if ((localIndex.get(slot.index) ?? 0) % slotsPerBeat === 0) {
-          cell.classList.add("is-beat-start");
-        }
+        addBoundaryClasses(cell, slot.index, slotsPerBeat, barStartSlots, localIndex);
 
         if (hit) {
           cell.classList.add("is-hit", ARTICULATION_CLASS[hit.articulation]);
@@ -336,6 +335,29 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     }
   };
 
+  const renderRuler = (
+    grid: HTMLElement,
+    slotsPerBeat: number,
+    barStartSlots: Set<number>,
+    localIndex: Map<number, number>
+  ) => {
+    const ruler = grid.createEl("div", { cls: "pg-grid__ruler" });
+    ruler.createEl("div", { cls: "pg-grid__ruler-label", text: "Count" });
+
+    const cells = ruler.createEl("div", { cls: "pg-grid__ruler-cells" });
+    cells.style.setProperty("--pg-grid-cols", String(working.slots.length));
+
+    for (const slot of working.slots) {
+      const cell = cells.createEl("div", {
+        cls: "pg-grid__ruler-cell",
+        text: countLabel(localIndex.get(slot.index) ?? 0, slotsPerBeat)
+      });
+
+      cell.setAttr("aria-label", `Slot ${slot.index + 1}`);
+      addBoundaryClasses(cell, slot.index, slotsPerBeat, barStartSlots, localIndex);
+    }
+  };
+
   render();
 
   return {
@@ -344,6 +366,45 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
       options.container.empty();
     }
   };
+}
+
+function addBoundaryClasses(
+  element: HTMLElement,
+  slotIndex: number,
+  slotsPerBeat: number,
+  barStartSlots: Set<number>,
+  localIndex: Map<number, number>
+): void {
+  if (barStartSlots.has(slotIndex) && slotIndex !== 0) {
+    element.classList.add("is-bar-start");
+  } else if ((localIndex.get(slotIndex) ?? 0) % slotsPerBeat === 0) {
+    element.classList.add("is-beat-start");
+  }
+}
+
+function countLabel(slotIndexInBar: number, slotsPerBeat: number): string {
+  const beat = Math.floor(slotIndexInBar / slotsPerBeat) + 1;
+  const offset = slotIndexInBar % slotsPerBeat;
+
+  if (offset === 0) {
+    return String(beat);
+  }
+
+  if (slotsPerBeat === 4) {
+    return ["", "e", "&", "a"][offset] ?? "";
+  }
+
+  if (slotsPerBeat === 8) {
+    return ["", "", "e", "", "&", "", "a", ""][offset] ?? "";
+  }
+
+  return "";
+}
+
+function gridWidth(slotCount: number): string {
+  const cellWidth = 26;
+  const gapWidth = 2;
+  return `${slotCount * cellWidth + Math.max(0, slotCount - 1) * gapWidth}px`;
 }
 
 function articulationFromKey(key: string): DrumArticulation | null {

@@ -115,7 +115,9 @@ the **first** import in `app.ts`. `engrave.ts` itself was **not** changed.
   and previews the hit. The selected cell highlights the matching rendered SVG
   note while edit mode is open. The selected-cell tool strip and keyboard
   shortcuts choose only instrument-valid articulations, with Delete/Backspace for
-  erase. Instrument palette adds rows.
+  erase. Instrument labels stay visible while horizontally scrolling the grid,
+  and a count ruler above the cells marks beats/subdivisions. Instrument palette
+  adds rows.
   Edits live-apply to the editor text and notation preview immediately; Undo/Redo
   replaces the old Save/Cancel flow. First interactive consumer of `src/edit.ts`.
 
@@ -123,7 +125,7 @@ the **first** import in `app.ts`. `engrave.ts` itself was **not** changed.
 
 ```bash
 npm ci
-npm test            # expect: 61 passed
+npm test            # expect: 68 passed
 npm run build       # plugin build: tsc + esbuild, no errors; emits main.js
 npm run web:build   # vite build, no errors; emits web/dist/ (JS ~1.17MB — VexFlow; size warning is advisory only)
 npm run web         # dev server at http://localhost:5173
@@ -138,8 +140,9 @@ In the browser at `localhost:5173`:
    the default). Click an empty HH cell → fills (normal) and immediately updates
    the editor text/preview. Click a filled SD cell → selects/previews it and
    highlights the matching rendered note while showing snare-valid tools such as
-   flam, drag, diddle, and buzz. Click **Undo** → the previous text/preview
-   returns.
+   flam, drag, diddle, and buzz. Horizontally scroll the grid → instrument
+   labels remain pinned while count markers and cells scroll. Click **Undo** →
+   the previous text/preview returns.
 4. Toggle theme (◐), change Tempo/Grid (rewrites editor via edit helpers), switch
    examples.
 

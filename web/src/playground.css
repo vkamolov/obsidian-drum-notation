@@ -399,35 +399,74 @@ body {
 }
 
 .pg-grid {
+  --pg-grid-label-width: 3.25rem;
+  --pg-grid-cell-min: 1.65rem;
+  --pg-grid-gap: 2px;
+
   display: flex;
   flex-direction: column;
   gap: 4px;
   overflow-x: auto;
+  padding-bottom: 0.15rem;
 }
 
+.pg-grid__ruler,
 .pg-grid__row {
   display: grid;
-  grid-template-columns: 3rem 1fr;
+  grid-template-columns: var(--pg-grid-label-width) minmax(0, 1fr);
   align-items: center;
   gap: 0.5rem;
+  min-width: calc(var(--pg-grid-label-width) + 0.5rem + var(--pg-grid-width));
 }
 
+.pg-grid__ruler-label,
 .pg-grid__label {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  align-self: stretch;
+  padding-right: 0.4rem;
   font-family: var(--pg-mono);
   font-size: 0.75rem;
   color: var(--pg-muted);
-  text-align: right;
+  background: var(--pg-bg);
+  border-right: 1px solid var(--pg-border);
 }
 
+.pg-grid__ruler-label {
+  font-size: var(--font-smallest);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.pg-grid__ruler-cells,
 .pg-grid__cells {
   display: grid;
-  grid-template-columns: repeat(var(--pg-grid-cols), minmax(18px, 1fr));
-  gap: 2px;
+  grid-template-columns: repeat(var(--pg-grid-cols), minmax(var(--pg-grid-cell-min), 1fr));
+  gap: var(--pg-grid-gap);
+  min-width: var(--pg-grid-width);
+}
+
+.pg-grid__ruler-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--pg-grid-cell-min);
+  min-height: 1.2rem;
+  padding: 0;
+  font-family: var(--pg-mono);
+  font-size: var(--font-smallest);
+  line-height: 1;
+  color: var(--pg-muted);
+  border-left: 1px solid transparent;
 }
 
 .pg-grid__cell {
   aspect-ratio: 1;
-  min-width: 18px;
+  min-width: var(--pg-grid-cell-min);
   padding: 0;
   font-family: var(--pg-mono);
   font-size: 0.7rem;
@@ -450,10 +489,12 @@ body {
     inset 0 0 0 4px var(--pg-accent);
 }
 
+.pg-grid__ruler-cell.is-beat-start,
 .pg-grid__cell.is-beat-start {
   border-left: 2px solid var(--pg-muted);
 }
 
+.pg-grid__ruler-cell.is-bar-start,
 .pg-grid__cell.is-bar-start {
   border-left: 3px solid var(--pg-text);
 }
@@ -484,6 +525,11 @@ body {
 
 /* ---- responsive: stack on narrow screens ---- */
 @media (max-width: 760px) {
+  .pg-grid {
+    --pg-grid-label-width: 3.75rem;
+    --pg-grid-cell-min: 1.9rem;
+  }
+
   body {
     grid-template-rows: auto auto 1fr auto;
   }
