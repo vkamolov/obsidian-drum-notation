@@ -279,6 +279,22 @@ function applyEditedBlock(next: DrumBlock): void {
   renderPreview();
 }
 
+function applyGridEditedBlock(next: DrumBlock, changedSlotIndex?: number): void {
+  editor.value = serializeDrumBlock(next);
+  persist();
+  renderPreview();
+
+  if (changedSlotIndex === undefined || !currentBlock) {
+    return;
+  }
+
+  const slot = currentBlock.slots.find((candidate) => candidate.index === changedSlotIndex);
+
+  if (slot) {
+    void previewSlot(currentBlock, slot);
+  }
+}
+
 /* ---------- edit mode (grid editor) ---------- */
 function enterEditMode(): void {
   if (gridEditor || !currentBlock || currentBlock.slots.length === 0) {
@@ -288,19 +304,12 @@ function enterEditMode(): void {
   stopPreview();
   document.body.classList.add("pg-editing");
   editBtn.classList.add("is-playing");
-  preview.hidden = true;
   editRoot.hidden = false;
 
   gridEditor = mountGridEditor({
     container: editRoot,
     block: currentBlock,
-    onSave: (block) => {
-      editor.value = serializeDrumBlock(block);
-      persist();
-      exitEditMode();
-      renderPreview();
-    },
-    onCancel: exitEditMode
+    onChange: applyGridEditedBlock
   });
 }
 
@@ -310,7 +319,6 @@ function exitEditMode(): void {
   document.body.classList.remove("pg-editing");
   editBtn.classList.remove("is-playing");
   editRoot.hidden = true;
-  preview.hidden = false;
 }
 
 /* ---------- diagnostics ---------- */

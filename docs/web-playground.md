@@ -113,8 +113,8 @@ the **first** import in `app.ts`. `engrave.ts` itself was **not** changed.
 - **Edit mode** (`editor-grid.ts`): fixed HTML grid, rows = instruments,
   columns = slots. Cell click cycles empty → normal → accent → ghost via
   `toggleHit` / `applyArticulation` / `removeHit`. Instrument palette adds rows.
-  Save serializes the working block back to the editor text; Cancel discards.
-  First interactive consumer of `src/edit.ts`.
+  Edits live-apply to the editor text and notation preview immediately; Undo/Redo
+  replaces the old Save/Cancel flow. First interactive consumer of `src/edit.ts`.
 
 ## Verification steps
 
@@ -131,10 +131,10 @@ In the browser at `localhost:5173`:
 1. Default "Basic rock groove" renders a VexFlow staff; diagnostics show
    "normalized ≠ input" (it drops default `Tempo: 100` / `Time: 4/4`).
 2. Click **Play** → audio + moving cursor/highlight.
-3. Click **Edit** → preview swaps to a grid (3 rows × 16 cells for the default).
-   Click an empty HH cell → fills (normal); click again → accent. Click **Save**
-   → editor text becomes `HH | xXx-x-x-x-x-x-x-`; re-render shows
-   "normalized = input".
+3. Click **Edit** → a grid opens below the live preview (3 rows × 16 cells for
+   the default). Click an empty HH cell → fills (normal) and immediately updates
+   the editor text/preview; click again → accent. Click **Undo** → the previous
+   text/preview returns.
 4. Toggle theme (◐), change Tempo/Grid (rewrites editor via edit helpers), switch
    examples.
 

@@ -19,8 +19,7 @@ export interface GridEditorHandle {
 interface GridEditorOptions {
   container: HTMLElement;
   block: DrumBlock;
-  onSave: (block: DrumBlock) => void;
-  onCancel: () => void;
+  onChange: (block: DrumBlock, changedSlotIndex?: number) => void;
 }
 
 // Click cycle for a cell: empty -> normal -> accent -> ghost -> empty.
@@ -39,9 +38,73 @@ const ARTICULATION_CLASS: Record<DrumArticulation, string> = {
 
 export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
   let working = options.block;
+  const undoStack: Array<{ block: DrumBlock; slotIndex?: number }> = [];
+  const redoStack: Array<{ block: DrumBlock; slotIndex?: number }> = [];
   // Instruments shown as rows: those already in the block, plus any the user
   // adds from the palette (kept visible even before they have a hit).
   const extraInstruments: DrumInstrument[] = [];
+
+  const applyChange = (next: DrumBlock, slotIndex?: number) => {
+    if (next === working) {
+      return;
+    }
+
+    undoStack.push({ block: working, slotIndex });
+    redoStack.length = 0;
+    working = next;
+    options.onChange(working, slotIndex);
+    render();
+  };
+
+  const undo = () => {
+    const previous = undoStack.pop();
+
+    if (!previous) {
+      return;
+    }
+
+    redoStack.push({ block: working, slotIndex: previous.slotIndex });
+    working = previous.block;
+    options.onChange(working, previous.slotIndex);
+    render();
+  };
+
+  const redo = () => {
+    const next = redoStack.pop();
+
+    if (!next) {
+      return;
+    }
+
+    undoStack.push({ block: working, slotIndex: next.slotIndex });
+    working = next.block;
+    options.onChange(working, next.slotIndex);
+    render();
+  };
+
+  const onKeyDown = (event: KeyboardEvent) => {
+    const target = event.target as HTMLElement | null;
+    const tagName = target?.tagName.toLowerCase();
+
+    if (tagName === "input" || tagName === "select" || tagName === "textarea") {
+      return;
+    }
+
+    const isUndo = (event.metaKey || event.ctrlKey) && !event.shiftKey && event.key.toLowerCase() === "z";
+    const isRedo =
+      ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === "z") ||
+      ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "y");
+
+    if (isUndo) {
+      event.preventDefault();
+      undo();
+    } else if (isRedo) {
+      event.preventDefault();
+      redo();
+    }
+  };
+
+  document.addEventListener("keydown", onKeyDown);
 
   const render = () => {
     options.container.empty();
@@ -79,13 +142,15 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     });
 
     const spacer = bar.createEl("span", { cls: "pg-grid-editor__spacer" });
-    spacer.textContent = "click a cell to cycle: empty → hit → accent → ghost";
+    spacer.textContent = "live edit: click cells; undo with Ctrl/Cmd+Z";
 
-    const save = bar.createEl("button", { cls: "pg-btn pg-btn--accent", text: "Save" });
-    save.addEventListener("click", () => options.onSave(working));
+    const undoButton = bar.createEl("button", { cls: "pg-btn", text: "Undo" }) as HTMLButtonElement;
+    undoButton.disabled = undoStack.length === 0;
+    undoButton.addEventListener("click", undo);
 
-    const cancel = bar.createEl("button", { cls: "pg-btn", text: "Cancel" });
-    cancel.addEventListener("click", () => options.onCancel());
+    const redoButton = bar.createEl("button", { cls: "pg-btn", text: "Redo" }) as HTMLButtonElement;
+    redoButton.disabled = redoStack.length === 0;
+    redoButton.addEventListener("click", redo);
   };
 
   const displayedInstruments = (): DrumInstrument[] => {
@@ -143,8 +208,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
         }
 
         cell.addEventListener("click", () => {
-          working = cycleCell(working, slot.index, instrument, hit?.articulation ?? null);
-          render();
+          applyChange(cycleCell(working, slot.index, instrument, hit?.articulation ?? null), slot.index);
         });
       }
     }
@@ -154,6 +218,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
 
   return {
     destroy() {
+      document.removeEventListener("keydown", onKeyDown);
       options.container.empty();
     }
   };
