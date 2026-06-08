@@ -112,9 +112,10 @@ the **first** import in `app.ts`. `engrave.ts` itself was **not** changed.
   toggle (persisted).
 - **Edit mode** (`editor-grid.ts`): fixed HTML grid, rows = instruments,
   columns = slots. Empty-cell click adds a normal hit; filled-cell click selects
-  and previews the hit. The selected-cell tool strip and keyboard shortcuts
-  choose only instrument-valid articulations, with Delete/Backspace for erase.
-  Instrument palette adds rows.
+  and previews the hit. The selected cell highlights the matching rendered SVG
+  note while edit mode is open. The selected-cell tool strip and keyboard
+  shortcuts choose only instrument-valid articulations, with Delete/Backspace for
+  erase. Instrument palette adds rows.
   Edits live-apply to the editor text and notation preview immediately; Undo/Redo
   replaces the old Save/Cancel flow. First interactive consumer of `src/edit.ts`.
 
@@ -136,8 +137,9 @@ In the browser at `localhost:5173`:
 3. Click **Edit** → a grid opens below the live preview (3 rows × 16 cells for
    the default). Click an empty HH cell → fills (normal) and immediately updates
    the editor text/preview. Click a filled SD cell → selects/previews it and
-   shows snare-valid tools such as flam, drag, diddle, and buzz. Click
-   **Undo** → the previous text/preview returns.
+   highlights the matching rendered note while showing snare-valid tools such as
+   flam, drag, diddle, and buzz. Click **Undo** → the previous text/preview
+   returns.
 4. Toggle theme (◐), change Tempo/Grid (rewrites editor via edit helpers), switch
    examples.
 

@@ -59,6 +59,8 @@ let cursorEl: HTMLElement | null = null;
 let cursorPositions: Array<CursorPosition | undefined> = [];
 let noteElements: Array<SVGGElement | undefined> = [];
 let highlightedNote: SVGGElement | null = null;
+let editHighlightedNote: SVGGElement | null = null;
+let editSelectedSlotIndex: number | null = null;
 let currentSlotIndex = 0;
 let lastRenderError: string | null = null;
 let isLooping = false;
@@ -84,6 +86,7 @@ function renderPreview(): void {
   currentBlock = block;
   lastRenderError = null;
 
+  clearEditHighlight();
   preview.empty();
   preview.classList.toggle("drum-notation--legend-color", block.legendMode !== "off");
 
@@ -98,6 +101,9 @@ function renderPreview(): void {
   editBtn.disabled = !hasRows;
 
   if (!hasRows) {
+    cursorPositions = [];
+    noteElements = [];
+    cursorEl = null;
     score.createEl("div", {
       cls: "drum-notation__empty",
       text: "No supported drum rows yet. Add rows like HH, SD, BD."
@@ -108,6 +114,7 @@ function renderPreview(): void {
 
   syncControls(block);
   updateDiagnostics(block, editor.value);
+  applyEditHighlight();
 }
 
 function drawScore(block: DrumBlock, score: HTMLElement): void {
@@ -140,6 +147,27 @@ function clearVisuals(): void {
   cursorEl?.removeAttribute("style");
   highlightedNote?.classList.remove("is-playing");
   highlightedNote = null;
+}
+
+function clearEditHighlight(): void {
+  editHighlightedNote?.classList.remove("is-edit-selected");
+  editHighlightedNote = null;
+}
+
+function applyEditHighlight(): void {
+  clearEditHighlight();
+
+  if (editSelectedSlotIndex === null) {
+    return;
+  }
+
+  editHighlightedNote = noteElements[editSelectedSlotIndex] ?? null;
+  editHighlightedNote?.classList.add("is-edit-selected");
+}
+
+function selectEditSlot(slotIndex: number | null): void {
+  editSelectedSlotIndex = slotIndex;
+  applyEditHighlight();
 }
 
 function moveCursor(slotIndex: number): void {
@@ -288,6 +316,7 @@ function applyGridEditedBlock(next: DrumBlock, changedSlotIndex?: number): void 
     return;
   }
 
+  selectEditSlot(changedSlotIndex);
   const slot = currentBlock.slots.find((candidate) => candidate.index === changedSlotIndex);
 
   if (slot) {
@@ -302,6 +331,7 @@ function enterEditMode(): void {
   }
   stopPlayback();
   stopPreview();
+  selectEditSlot(null);
   document.body.classList.add("pg-editing");
   editBtn.classList.add("is-playing");
   editRoot.hidden = false;
@@ -313,6 +343,7 @@ function enterEditMode(): void {
     onPreview: (block, slotIndex) => {
       const slot = block.slots.find((candidate) => candidate.index === slotIndex);
       if (slot) {
+        selectEditSlot(slotIndex);
         void previewSlot(block, slot);
       }
     }
@@ -322,6 +353,7 @@ function enterEditMode(): void {
 function exitEditMode(): void {
   gridEditor?.destroy();
   gridEditor = null;
+  selectEditSlot(null);
   document.body.classList.remove("pg-editing");
   editBtn.classList.remove("is-playing");
   editRoot.hidden = true;

@@ -216,6 +216,16 @@ body {
   margin: 0 auto;
 }
 
+.pg-editing #pg-preview .drum-notation__interactive-note.is-edit-selected {
+  filter: drop-shadow(0 0 5px color-mix(in srgb, var(--pg-accent) 72%, transparent));
+}
+
+.pg-editing #pg-preview .drum-notation__interactive-note.is-edit-selected path,
+.pg-editing #pg-preview .drum-notation__interactive-note.is-edit-selected text {
+  stroke: var(--pg-accent) !important;
+  fill: var(--pg-accent) !important;
+}
+
 /* ---- diagnostics ---- */
 .pg-diagnostics {
   display: grid;
