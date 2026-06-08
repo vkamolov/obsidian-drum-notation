@@ -17,7 +17,7 @@ import { DrumPlayer } from "../../src/player";
 import { serializeDrumBlock } from "../../src/serializer";
 import { setGrid, setTempo } from "../../src/edit";
 import { DrumSynth } from "../../src/synth";
-import { CursorPosition, DrumBlock, DrumSlot, GridResolution } from "../../src/types";
+import { CursorPosition, DrumBlock, DrumSlot, GridResolution, ScoreBarRegion } from "../../src/types";
 import { normalizeLabel } from "../../src/util";
 import { EXAMPLES } from "./examples";
 import { GridEditorHandle, mountGridEditor } from "./editor-grid";
@@ -57,10 +57,12 @@ let currentBlock: DrumBlock | null = null;
 let scoreEl: HTMLElement | null = null;
 let cursorEl: HTMLElement | null = null;
 let cursorPositions: Array<CursorPosition | undefined> = [];
+let barRegions: ScoreBarRegion[] = [];
 let noteElements: Array<SVGGElement | undefined> = [];
 let highlightedNote: SVGGElement | null = null;
 let editHighlightedNote: SVGGElement | null = null;
 let editSelectedSlotIndex: number | null = null;
+let selectedBarIndex = 0;
 let currentSlotIndex = 0;
 let lastRenderError: string | null = null;
 let isLooping = false;
@@ -85,6 +87,7 @@ function renderPreview(): void {
   const block = parseDrumBlock(editor.value);
   currentBlock = block;
   lastRenderError = null;
+  selectedBarIndex = clampBarIndex(block, selectedBarIndex);
 
   clearEditHighlight();
   preview.empty();
@@ -102,6 +105,7 @@ function renderPreview(): void {
 
   if (!hasRows) {
     cursorPositions = [];
+    barRegions = [];
     noteElements = [];
     cursorEl = null;
     score.createEl("div", {
@@ -119,21 +123,29 @@ function renderPreview(): void {
 
 function drawScore(block: DrumBlock, score: HTMLElement): void {
   try {
-    cursorPositions = renderVexflowScore(block, score).cursorPositions;
+    const renderResult = renderVexflowScore(block, score);
+
+    cursorPositions = renderResult.cursorPositions;
+    barRegions = renderResult.barRegions;
     if (block.legendMode !== "off") {
       colorRenderedNoteheads(block, score);
     }
     cursorEl = block.showCursor ? score.createEl("div", { cls: "drum-notation__cursor" }) : null;
     noteElements = makeRenderedNotesInteractive(block, score, (slot) => {
       currentSlotIndex = slot.index;
+      if (gridEditor) {
+        selectBar(barIndexForSlot(block, slot.index), true);
+      }
       void previewSlot(block, slot);
     });
+    renderBarSelectors(block, score);
     if (block.legendMode !== "off") {
       renderInstrumentLegend(block, preview);
     }
   } catch (error) {
     lastRenderError = error instanceof Error ? error.message : String(error);
     cursorPositions = [];
+    barRegions = [];
     noteElements = [];
     cursorEl = null;
     score.empty();
@@ -168,6 +180,85 @@ function applyEditHighlight(): void {
 function selectEditSlot(slotIndex: number | null): void {
   editSelectedSlotIndex = slotIndex;
   applyEditHighlight();
+}
+
+function clearBarSelectors(): void {
+  scoreEl?.querySelector(".pg-bar-selectors")?.remove();
+}
+
+function renderBarSelectors(block: DrumBlock, score: HTMLElement): void {
+  if (!gridEditor || barRegions.length === 0) {
+    return;
+  }
+
+  clearBarSelectors();
+  const layer = score.createEl("div", { cls: "pg-bar-selectors" });
+
+  barRegions.forEach((region) => {
+    const button = layer.createEl("button", {
+      cls: "pg-bar-selector",
+      attr: {
+        "aria-label": `Select bar ${region.barIndex + 1}`,
+        type: "button"
+      }
+    }) as HTMLButtonElement;
+
+    button.dataset.barIndex = String(region.barIndex);
+    button.dataset.barIndexes = region.barIndexes.join(" ");
+    button.style.left = `${Math.round(region.x)}px`;
+    button.style.top = `${Math.round(region.y)}px`;
+    button.style.width = `${Math.round(region.width)}px`;
+    button.style.height = `${Math.round(region.height)}px`;
+    button.addEventListener("click", () => selectBar(region.barIndex, true));
+  });
+
+  updateBarSelectorState(block);
+}
+
+function updateBarSelectorState(block: DrumBlock | null = currentBlock): void {
+  if (!block || !scoreEl) {
+    return;
+  }
+
+  selectedBarIndex = clampBarIndex(block, selectedBarIndex);
+  scoreEl.querySelectorAll<HTMLButtonElement>(".pg-bar-selector").forEach((button) => {
+    const indexes = (button.dataset.barIndexes ?? "")
+      .split(/\s+/)
+      .map((value) => Number.parseInt(value, 10))
+      .filter((value) => Number.isFinite(value));
+    const selected = indexes.includes(selectedBarIndex);
+
+    button.classList.toggle("is-selected", selected);
+    button.setAttr("aria-pressed", selected ? "true" : "false");
+  });
+}
+
+function selectBar(barIndex: number, syncGrid: boolean): void {
+  if (!currentBlock) {
+    return;
+  }
+
+  selectedBarIndex = clampBarIndex(currentBlock, barIndex);
+  currentSlotIndex = currentBlock.bars[selectedBarIndex]?.startSlot ?? currentSlotIndex;
+  selectEditSlot(null);
+  if (syncGrid) {
+    gridEditor?.selectBar(selectedBarIndex);
+  }
+  updateBarSelectorState(currentBlock);
+}
+
+function barIndexForSlot(block: DrumBlock, slotIndex: number): number {
+  const index = block.bars.findIndex((bar) => slotIndex >= bar.startSlot && slotIndex < bar.startSlot + bar.slots.length);
+
+  return index >= 0 ? index : 0;
+}
+
+function clampBarIndex(block: DrumBlock, barIndex: number): number {
+  if (block.bars.length === 0) {
+    return 0;
+  }
+
+  return Math.min(block.bars.length - 1, Math.max(0, Math.round(barIndex)));
 }
 
 function moveCursor(slotIndex: number): void {
@@ -308,6 +399,9 @@ function applyEditedBlock(next: DrumBlock): void {
 }
 
 function applyGridEditedBlock(next: DrumBlock, changedSlotIndex?: number): void {
+  if (changedSlotIndex !== undefined) {
+    selectedBarIndex = barIndexForSlot(next, changedSlotIndex);
+  }
   editor.value = serializeDrumBlock(next);
   persist();
   renderPreview();
@@ -331,6 +425,7 @@ function enterEditMode(): void {
   }
   stopPlayback();
   stopPreview();
+  selectedBarIndex = barIndexForSlot(currentBlock, currentSlotIndex);
   selectEditSlot(null);
   document.body.classList.add("pg-editing");
   editBtn.classList.add("is-playing");
@@ -339,6 +434,7 @@ function enterEditMode(): void {
   gridEditor = mountGridEditor({
     container: editRoot,
     block: currentBlock,
+    initialBarIndex: selectedBarIndex,
     onChange: applyGridEditedBlock,
     onPreview: (block, slotIndex) => {
       const slot = block.slots.find((candidate) => candidate.index === slotIndex);
@@ -346,14 +442,20 @@ function enterEditMode(): void {
         selectEditSlot(slotIndex);
         void previewSlot(block, slot);
       }
-    }
+    },
+    onSelectBar: (barIndex) => selectBar(barIndex, false)
   });
+
+  if (scoreEl) {
+    renderBarSelectors(currentBlock, scoreEl);
+  }
 }
 
 function exitEditMode(): void {
   gridEditor?.destroy();
   gridEditor = null;
   selectEditSlot(null);
+  clearBarSelectors();
   document.body.classList.remove("pg-editing");
   editBtn.classList.remove("is-playing");
   editRoot.hidden = true;

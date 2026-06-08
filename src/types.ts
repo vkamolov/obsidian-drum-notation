@@ -58,6 +58,18 @@ export interface DrumSlot {
 
 export interface ScoreRenderResult {
   cursorPositions: Array<CursorPosition | undefined>;
+  barRegions: ScoreBarRegion[];
+}
+
+export interface ScoreBarRegion {
+  barIndex: number;
+  barIndexes: number[];
+  startSlot: number;
+  endSlot: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }
 
 export interface CursorPosition {

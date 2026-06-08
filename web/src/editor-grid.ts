@@ -14,13 +14,16 @@ import { DrumArticulation, DrumBlock, DrumInstrument } from "../../src/types";
 
 export interface GridEditorHandle {
   destroy(): void;
+  selectBar(barIndex: number): void;
 }
 
 interface GridEditorOptions {
   container: HTMLElement;
   block: DrumBlock;
+  initialBarIndex?: number;
   onChange: (block: DrumBlock, changedSlotIndex?: number) => void;
   onPreview: (block: DrumBlock, slotIndex: number) => void;
+  onSelectBar?: (barIndex: number) => void;
 }
 
 const ARTICULATION_CLASS: Record<DrumArticulation, string> = {
@@ -55,6 +58,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
   const undoStack: Array<{ block: DrumBlock; slotIndex?: number }> = [];
   const redoStack: Array<{ block: DrumBlock; slotIndex?: number }> = [];
   let selectedCell: SelectedCell | null = null;
+  let selectedBarIndex = clampBarIndex(working, options.initialBarIndex ?? 0);
   // Instruments shown as rows: those already in the block, plus any the user
   // adds from the palette (kept visible even before they have a hit).
   const extraInstruments: DrumInstrument[] = [];
@@ -67,6 +71,10 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     undoStack.push({ block: working, slotIndex });
     redoStack.length = 0;
     working = next;
+    selectedBarIndex = clampBarIndex(working, selectedBarIndex);
+    if (!cellBelongsToSelectedBar()) {
+      selectedCell = null;
+    }
     options.onChange(working, slotIndex);
     render();
   };
@@ -80,6 +88,10 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
 
     redoStack.push({ block: working, slotIndex: previous.slotIndex });
     working = previous.block;
+    selectedBarIndex = clampBarIndex(working, selectedBarIndex);
+    if (!cellBelongsToSelectedBar()) {
+      selectedCell = null;
+    }
     options.onChange(working, previous.slotIndex);
     render();
   };
@@ -93,8 +105,35 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
 
     undoStack.push({ block: working, slotIndex: next.slotIndex });
     working = next.block;
+    selectedBarIndex = clampBarIndex(working, selectedBarIndex);
+    if (!cellBelongsToSelectedBar()) {
+      selectedCell = null;
+    }
     options.onChange(working, next.slotIndex);
     render();
+  };
+
+  const selectBar = (barIndex: number, notify = false) => {
+    const nextBarIndex = clampBarIndex(working, barIndex);
+
+    if (nextBarIndex === selectedBarIndex && selectedCell === null) {
+      return;
+    }
+
+    selectedBarIndex = nextBarIndex;
+    selectedCell = null;
+    if (notify) {
+      options.onSelectBar?.(selectedBarIndex);
+    }
+    render();
+  };
+
+  const selectedBar = () => working.bars[selectedBarIndex];
+
+  const cellBelongsToSelectedBar = (): boolean => {
+    const bar = selectedBar();
+
+    return !!bar && !!selectedCell && selectedCell.slotIndex >= bar.startSlot && selectedCell.slotIndex < bar.startSlot + bar.slots.length;
   };
 
   const selectedInstrument = (): DrumInstrument | undefined => {
@@ -169,12 +208,30 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     const root = options.container.createEl("div", { cls: "pg-grid-editor" });
 
     renderHeader(root);
+    renderBarPager(root);
     renderArticulationTools(root);
 
     if (working.slots.length === 0) {
       root.createEl("p", {
         cls: "pg-note pg-note--warn",
         text: "Edit mode needs a bar to work on. Add a row like \"HH | x---\" first."
+      });
+      return;
+    }
+
+    const bar = selectedBar();
+    if (!bar) {
+      root.createEl("p", {
+        cls: "pg-note pg-note--warn",
+        text: "Edit mode needs a selected bar."
+      });
+      return;
+    }
+
+    if (bar.measureRepeat) {
+      root.createEl("p", {
+        cls: "pg-grid-editor__repeat-note",
+        text: `Bar ${selectedBarIndex + 1} is a one-bar repeat. Repeat bars are read-only in this editor step.`
       });
       return;
     }
@@ -187,6 +244,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
 
     const palette = bar.createEl("select", { cls: "pg-grid-editor__palette" }) as HTMLSelectElement;
     palette.createEl("option", { text: "+ add instrument", value: "" });
+    palette.disabled = !!selectedBar()?.measureRepeat;
     for (const instrument of DRUM_KIT) {
       if (!displayedInstruments().some((shown) => shown.id === instrument.id)) {
         palette.createEl("option", { text: instrument.label, value: instrument.id });
@@ -212,11 +270,27 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     redoButton.addEventListener("click", redo);
   };
 
+  const renderBarPager = (root: HTMLElement) => {
+    const pager = root.createEl("div", { cls: "pg-grid-editor__bar-pager" });
+
+    working.bars.forEach((bar, index) => {
+      const button = pager.createEl("button", {
+        cls: `pg-grid-editor__bar-chip ${index === selectedBarIndex ? "is-active" : ""} ${bar.measureRepeat ? "is-repeat" : ""}`,
+        text: bar.measureRepeat ? `Bar ${index + 1} %` : `Bar ${index + 1}`
+      }) as HTMLButtonElement;
+
+      button.type = "button";
+      button.setAttr("aria-pressed", index === selectedBarIndex ? "true" : "false");
+      button.title = bar.measureRepeat ? `Bar ${index + 1} is read-only repeat notation` : `Edit bar ${index + 1}`;
+      button.addEventListener("click", () => selectBar(index, true));
+    });
+  };
+
   const renderArticulationTools = (root: HTMLElement) => {
     const instrument = selectedInstrument();
     const slotIndex = selectedCell?.slotIndex;
 
-    if (!instrument || slotIndex === undefined) {
+    if (!instrument || slotIndex === undefined || !cellBelongsToSelectedBar()) {
       return;
     }
 
@@ -271,18 +345,22 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
   };
 
   const renderGrid = (root: HTMLElement) => {
-    const slotsPerBeat = getSlotsPerBeat(working.timeSignature, working.gridResolution);
-    const barStartSlots = new Set(working.bars.map((eachBar) => eachBar.startSlot));
-    const localIndex = new Map<number, number>();
-    for (const eachBar of working.bars) {
-      eachBar.slots.forEach((slot, index) => localIndex.set(slot.index, index));
+    const bar = selectedBar();
+
+    if (!bar) {
+      return;
     }
 
-    const grid = root.createEl("div", { cls: "pg-grid" });
-    grid.style.setProperty("--pg-grid-cols", String(working.slots.length));
-    grid.style.setProperty("--pg-grid-width", gridWidth(working.slots.length));
+    const slotsPerBeat = getSlotsPerBeat(working.timeSignature, working.gridResolution);
+    const barStartSlots = new Set([bar.startSlot]);
+    const localIndex = new Map<number, number>();
+    bar.slots.forEach((slot, index) => localIndex.set(slot.index, index));
 
-    renderRuler(grid, slotsPerBeat, barStartSlots, localIndex);
+    const grid = root.createEl("div", { cls: "pg-grid" });
+    grid.style.setProperty("--pg-grid-cols", String(bar.slots.length));
+    grid.style.setProperty("--pg-grid-width", gridWidth(bar.slots.length));
+
+    renderRuler(grid, bar, slotsPerBeat, barStartSlots, localIndex);
 
     for (const instrument of displayedInstruments()) {
       const rowEl = grid.createEl("div", { cls: "pg-grid__row" });
@@ -292,9 +370,9 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
       });
 
       const cells = rowEl.createEl("div", { cls: "pg-grid__cells" });
-      cells.style.setProperty("--pg-grid-cols", String(working.slots.length));
+      cells.style.setProperty("--pg-grid-cols", String(bar.slots.length));
 
-      for (const slot of working.slots) {
+      for (const slot of bar.slots) {
         const hit = findHit(working, slot.index, instrument.id);
         const cell = cells.createEl("button", { cls: "pg-grid__cell" });
         const isSelected = selectedCell?.slotIndex === slot.index && selectedCell.instrumentId === instrument.id;
@@ -337,6 +415,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
 
   const renderRuler = (
     grid: HTMLElement,
+    bar: NonNullable<ReturnType<typeof selectedBar>>,
     slotsPerBeat: number,
     barStartSlots: Set<number>,
     localIndex: Map<number, number>
@@ -345,9 +424,9 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     ruler.createEl("div", { cls: "pg-grid__ruler-label", text: "Count" });
 
     const cells = ruler.createEl("div", { cls: "pg-grid__ruler-cells" });
-    cells.style.setProperty("--pg-grid-cols", String(working.slots.length));
+    cells.style.setProperty("--pg-grid-cols", String(bar.slots.length));
 
-    for (const slot of working.slots) {
+    for (const slot of bar.slots) {
       const cell = cells.createEl("div", {
         cls: "pg-grid__ruler-cell",
         text: countLabel(localIndex.get(slot.index) ?? 0, slotsPerBeat)
@@ -361,6 +440,9 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
   render();
 
   return {
+    selectBar(barIndex: number) {
+      selectBar(barIndex);
+    },
     destroy() {
       document.removeEventListener("keydown", onKeyDown);
       options.container.empty();
@@ -405,6 +487,14 @@ function gridWidth(slotCount: number): string {
   const cellWidth = 26;
   const gapWidth = 2;
   return `${slotCount * cellWidth + Math.max(0, slotCount - 1) * gapWidth}px`;
+}
+
+function clampBarIndex(block: DrumBlock, barIndex: number): number {
+  if (block.bars.length === 0) {
+    return 0;
+  }
+
+  return Math.min(block.bars.length - 1, Math.max(0, Math.round(barIndex)));
 }
 
 function articulationFromKey(key: string): DrumArticulation | null {

@@ -111,13 +111,15 @@ the **first** import in `app.ts`. `engrave.ts` itself was **not** changed.
 - Example picker (`examples.ts`), Copy block / Copy normalized, light/dark theme
   toggle (persisted).
 - **Edit mode** (`editor-grid.ts`): fixed HTML grid, rows = instruments,
-  columns = slots. Empty-cell click adds a normal hit; filled-cell click selects
-  and previews the hit. The selected cell highlights the matching rendered SVG
-  note while edit mode is open. The selected-cell tool strip and keyboard
-  shortcuts choose only instrument-valid articulations, with Delete/Backspace for
-  erase. Instrument labels stay visible while horizontally scrolling the grid,
-  and a count ruler above the cells marks beats/subdivisions. Instrument palette
-  adds rows.
+  columns = slots, and the grid edits one selected bar at a time. Bar chips page
+  between bars, and clicking/tapping a rendered notation bar selects the matching
+  edit bar. Empty-cell click adds a normal hit; filled-cell click selects and
+  previews the hit. The selected cell highlights the matching rendered SVG note
+  while edit mode is open. The selected-cell tool strip and keyboard shortcuts
+  choose only instrument-valid articulations, with Delete/Backspace for erase.
+  Instrument labels stay visible while horizontally scrolling the grid, and a
+  count ruler above the cells marks beats/subdivisions. Instrument palette adds
+  rows.
   Edits live-apply to the editor text and notation preview immediately; Undo/Redo
   replaces the old Save/Cancel flow. First interactive consumer of `src/edit.ts`.
 
@@ -136,13 +138,14 @@ In the browser at `localhost:5173`:
 1. Default "Basic rock groove" renders a VexFlow staff; diagnostics show
    "normalized ≠ input" (it drops default `Tempo: 100` / `Time: 4/4`).
 2. Click **Play** → audio + moving cursor/highlight.
-3. Click **Edit** → a grid opens below the live preview (3 rows × 16 cells for
-   the default). Click an empty HH cell → fills (normal) and immediately updates
-   the editor text/preview. Click a filled SD cell → selects/previews it and
-   highlights the matching rendered note while showing snare-valid tools such as
-   flam, drag, diddle, and buzz. Horizontally scroll the grid → instrument
-   labels remain pinned while count markers and cells scroll. Click **Undo** →
-   the previous text/preview returns.
+3. Click **Edit** → a selected-bar grid opens below the live preview. Use the
+   Bar chips, or click a rendered notation bar, to switch which bar is shown.
+   Click an empty HH cell → fills (normal) and immediately updates the editor
+   text/preview. Click a filled SD cell → selects/previews it and highlights the
+   matching rendered note while showing snare-valid tools such as flam, drag,
+   diddle, and buzz. Horizontally scroll the grid → instrument labels remain
+   pinned while count markers and cells scroll. Click **Undo** → the previous
+   text/preview returns.
 4. Toggle theme (◐), change Tempo/Grid (rewrites editor via edit helpers), switch
    examples.
 
@@ -155,9 +158,10 @@ Console should be free of errors/warnings.
   the format's contiguous-bar invariant; harmless for round-trip but visible as
   empty rows).
 - **`%` measure-repeat bars:** edit mode operates on `block.slots`; behavior on
-  `%` / `%x3` repeat bars is untested/edge-case.
-- Edit mode uses a selected-cell tool strip; selected-bar editing and bar action
-  controls are still deferred to the visual-edit roadmap.
+  `%` / `%x3` repeat bars is read-only for now. Source-bar editing for repeat
+  notation is still deferred.
+- Edit mode uses a selected-cell tool strip; bar action controls are still
+  deferred to the visual-edit roadmap.
 - `web/tsconfig.json` exists for editor support but is **not** run in CI — Vite
   transpiles without type-checking, so a pure type error in `web/` would not
   fail CI (only the plugin's `tsc` runs).

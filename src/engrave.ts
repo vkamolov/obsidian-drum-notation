@@ -100,6 +100,7 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
   const width = cssWidth / layout.renderScale;
   const height = layout.systemHeight;
   const cursorPositions: Array<ScoreRenderResult["cursorPositions"][number]> = [];
+  const barRegions: ScoreRenderResult["barRegions"] = [];
 
   container.style.width = "100%";
   container.style.minHeight = `${Math.max(height, block.systems.length * height)}px`;
@@ -162,6 +163,25 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
 
       stave.setContext(context).draw();
       stave.setNoteStartX(stave.getNoteStartX() + layout.noteStartPadding);
+
+      const barIndexes = entry.repeatedBars.map((repeatedBar) => block.bars.indexOf(repeatedBar)).filter((index) => index >= 0);
+      const firstBarIndex = barIndexes[0] ?? block.bars.indexOf(bar);
+      const staveTop = stave.getYForLine(0);
+      const staveBottom = stave.getYForLine(stave.getNumLines() - 1);
+      const hitPadding = 8;
+
+      if (firstBarIndex >= 0) {
+        barRegions.push({
+          barIndex: firstBarIndex,
+          barIndexes: barIndexes.length > 0 ? barIndexes : [firstBarIndex],
+          startSlot: bar.startSlot,
+          endSlot: bar.startSlot + bar.slots.length,
+          x: currentX * layout.renderScale,
+          y: systemTop + (staveTop - hitPadding) * layout.renderScale,
+          width: barWidth * layout.renderScale,
+          height: (staveBottom - staveTop + hitPadding * 2) * layout.renderScale
+        });
+      }
 
       const visualBar = buildVisualBarNotes(bar.slots, bar.measureRepeat, block.timeSignature, block.gridResolution, block.legendMode !== "off");
       const notes = visualBar.notes;
@@ -270,7 +290,7 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
     });
   });
 
-  return { cursorPositions };
+  return { cursorPositions, barRegions };
 }
 
 function getVisualBarEntries(bars: DrumBar[]): VisualBarEntry[] {

@@ -226,6 +226,29 @@ body {
   fill: var(--pg-accent) !important;
 }
 
+.pg-bar-selectors {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.pg-bar-selector {
+  position: absolute;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.pg-bar-selector:hover,
+.pg-bar-selector.is-selected {
+  background: color-mix(in srgb, var(--pg-accent) 8%, transparent);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--pg-accent) 78%, transparent);
+}
+
 /* ---- diagnostics ---- */
 .pg-diagnostics {
   display: grid;
@@ -396,6 +419,52 @@ body {
 
 .pg-grid-editor__tool--delete {
   color: #dc2626;
+}
+
+.pg-grid-editor__bar-pager {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  overflow-x: auto;
+  padding-bottom: 0.1rem;
+}
+
+.pg-grid-editor__bar-chip {
+  flex: 0 0 auto;
+  min-height: 1.9rem;
+  padding: 0 0.55rem;
+  font: inherit;
+  font-size: 0.78rem;
+  color: var(--pg-text);
+  background: var(--pg-bg);
+  border: 1px solid var(--pg-border);
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.pg-grid-editor__bar-chip:hover {
+  border-color: var(--pg-accent);
+}
+
+.pg-grid-editor__bar-chip.is-active {
+  color: #fff;
+  background: var(--pg-accent);
+  border-color: var(--pg-accent);
+}
+
+.pg-grid-editor__bar-chip.is-repeat:not(.is-active) {
+  color: var(--pg-muted);
+  border-style: dashed;
+}
+
+.pg-grid-editor__repeat-note {
+  margin: 0;
+  padding: 0.55rem 0.65rem;
+  color: var(--pg-muted);
+  background: var(--pg-bg);
+  border: 1px dashed var(--pg-border);
+  border-radius: 6px;
+  font-size: 0.82rem;
 }
 
 .pg-grid {
