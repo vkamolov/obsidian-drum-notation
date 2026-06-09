@@ -404,6 +404,10 @@ To stay deterministic and diff-friendly, serialization **normalizes**:
 - Bar separators normalize to `Bar`; row patterns are joined with ` | `.
 - One-bar measure repeats normalize to `%` and are not expanded back into row
   text.
+- Model-level bar edits serialize through the same row/bar invariants as parsed
+  text: inserted empty bars are represented as rest patterns for the selected
+  bar's instruments, duplicated bars copy the selected bar's row patterns, and
+  deleted bars remove empty systems when no rows remain.
 
 This means a hand-authored block that uses `>` for accents or `.` for rests will
 come back from a serialize pass using `X`/`O` and `-`. That is expected. (A

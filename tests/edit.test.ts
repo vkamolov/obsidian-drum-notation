@@ -5,8 +5,11 @@ import { serializeDrumBlock } from "../src/serializer";
 import {
   applyArticulation,
   clearHit,
+  deleteBar,
+  duplicateBar,
   findHit,
   hitKey,
+  insertBarAfter,
   removeHit,
   setGrid,
   setHit,
@@ -127,5 +130,77 @@ describe("setting edits", () => {
     const reparsed = parseDrumBlock(text);
     expect(reparsed.tempo).toBe(90);
     expect(reparsed.gridResolution).toBe(32);
+  });
+});
+
+describe("bar edits", () => {
+  it("insertBarAfter adds an empty bar in the same system", () => {
+    const block = parseDrumBlock("HH | x--- | --x-\nSD | ---- | --o-");
+    const edited = insertBarAfter(block, 0);
+
+    expect(edited.systems).toHaveLength(1);
+    expect(edited.bars).toHaveLength(3);
+    expect(edited.bars.map((bar) => bar.slots.length)).toEqual([4, 4, 4]);
+    expect(serializeDrumBlock(edited)).toBe("HH | x--- | ---- | --x-\nSD | ---- | ---- | --o-");
+  });
+
+  it("insertBarAfter can place an empty bar in a new system", () => {
+    const block = parseDrumBlock("HH | x---\nSD | --o-");
+    const edited = insertBarAfter(block, 0, "new-system");
+
+    expect(edited.systems).toHaveLength(2);
+    expect(serializeDrumBlock(edited)).toBe("HH | x---\nSD | --o-\nBar\nHH | ----\nSD | ----");
+  });
+
+  it("duplicateBar copies a bar in the same system", () => {
+    const block = parseDrumBlock("HH | x--- | --x-\nSD | ---- | --o-");
+    const edited = duplicateBar(block, 1);
+
+    expect(edited.systems).toHaveLength(1);
+    expect(edited.bars).toHaveLength(3);
+    expect(serializeDrumBlock(edited)).toBe("HH | x--- | --x- | --x-\nSD | ---- | --o- | --o-");
+  });
+
+  it("duplicateBar can place the copy in a new system", () => {
+    const block = parseDrumBlock("HH | x--- | --x-\nSD | ---- | --o-");
+    const edited = duplicateBar(block, 1, "new-system");
+
+    expect(edited.systems).toHaveLength(2);
+    expect(serializeDrumBlock(edited)).toBe("HH | x--- | --x-\nSD | ---- | --o-\nBar\nHH | --x-\nSD | --o-");
+  });
+
+  it("deleteBar removes a bar and drops empty systems", () => {
+    const block = parseDrumBlock("HH | x---\nBar\nSD | --o-");
+    const edited = deleteBar(block, 0);
+
+    expect(edited.systems).toHaveLength(1);
+    expect(edited.bars).toHaveLength(1);
+    expect(serializeDrumBlock(edited)).toBe("SD | --o-");
+  });
+
+  it("bar edits are no-ops for missing bar indexes", () => {
+    const block = parseDrumBlock("HH | x---");
+
+    expect(insertBarAfter(block, 99)).toEqual(block);
+    expect(duplicateBar(block, -1)).toEqual(block);
+    expect(deleteBar(block, 3)).toEqual(block);
+  });
+
+  it("preserves measure-repeat notation when editing a source bar", () => {
+    const block = parseDrumBlock("HH | x---\n%x3");
+    const edited = setHit(block, 2, HH);
+
+    expect(findHit(edited, 6, HH.id)).toBeTruthy();
+    expect(findHit(edited, 10, HH.id)).toBeTruthy();
+    expect(findHit(edited, 14, HH.id)).toBeTruthy();
+    expect(serializeDrumBlock(edited)).toBe("HH | x-x-\n%x3");
+  });
+
+  it("bar edits remain serialize round-trip stable", () => {
+    const block = parseDrumBlock("Title: Bar edit\nHH | x--- | --x-\nSD | ---- | --o-");
+    const edited = deleteBar(duplicateBar(insertBarAfter(block, 0), 2), 1);
+    const text = serializeDrumBlock(edited);
+
+    expect(serializeDrumBlock(parseDrumBlock(text))).toBe(text);
   });
 });
