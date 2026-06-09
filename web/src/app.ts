@@ -67,6 +67,7 @@ let currentSlotIndex = 0;
 let lastRenderError: string | null = null;
 let isLooping = false;
 let gridEditor: GridEditorHandle | null = null;
+let isApplyingGridEdit = false;
 
 /* ---------- audio (lazy, created on first user gesture) ---------- */
 let audioContext: AudioContext | null = null;
@@ -118,6 +119,9 @@ function renderPreview(): void {
 
   syncControls(block);
   updateDiagnostics(block, editor.value);
+  if (gridEditor && !isApplyingGridEdit) {
+    gridEditor.syncBlock(block, selectedBarIndex);
+  }
   applyEditHighlight();
 }
 
@@ -406,7 +410,12 @@ function applyGridEditedBlock(next: DrumBlock, changedSlotIndex?: number, nextSe
   }
   editor.value = serializeDrumBlock(next);
   persist();
-  renderPreview();
+  isApplyingGridEdit = true;
+  try {
+    renderPreview();
+  } finally {
+    isApplyingGridEdit = false;
+  }
 
   if (changedSlotIndex === undefined || !currentBlock) {
     return;

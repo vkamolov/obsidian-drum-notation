@@ -15,6 +15,7 @@ import { DrumArticulation, DrumBlock, DrumInstrument } from "../../src/types";
 export interface GridEditorHandle {
   destroy(): void;
   selectBar(barIndex: number): void;
+  syncBlock(block: DrumBlock, selectedBarIndex?: number): void;
 }
 
 interface GridEditorOptions {
@@ -131,6 +132,15 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     if (notify) {
       options.onSelectBar?.(selectedBarIndex);
     }
+    render();
+  };
+
+  const syncBlock = (block: DrumBlock, nextSelectedBarIndex = selectedBarIndex) => {
+    working = block;
+    selectedBarIndex = clampBarIndex(working, nextSelectedBarIndex);
+    selectedCell = null;
+    undoStack.length = 0;
+    redoStack.length = 0;
     render();
   };
 
@@ -535,6 +545,9 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
   return {
     selectBar(barIndex: number) {
       selectBar(barIndex);
+    },
+    syncBlock(block: DrumBlock, nextSelectedBarIndex?: number) {
+      syncBlock(block, nextSelectedBarIndex);
     },
     destroy() {
       document.removeEventListener("keydown", onKeyDown);
