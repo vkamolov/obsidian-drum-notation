@@ -121,13 +121,15 @@ the **first** import in `app.ts`. `engrave.ts` itself was **not** changed.
   count ruler above the cells marks beats/subdivisions. Instrument palette adds
   rows.
   Edits live-apply to the editor text and notation preview immediately; Undo/Redo
-  replaces the old Save/Cancel flow. First interactive consumer of `src/edit.ts`.
+  replaces the old Save/Cancel flow. The selected-bar editor also exposes compact
+  bar actions for adding, duplicating, adding on a new line/system, and deleting
+  bars. First interactive consumer of `src/edit.ts`.
 
 ## Verification steps
 
 ```bash
 npm ci
-npm test            # expect: 68 passed
+npm test            # expect: 76 passed
 npm run build       # plugin build: tsc + esbuild, no errors; emits main.js
 npm run web:build   # vite build, no errors; emits web/dist/ (JS ~1.17MB — VexFlow; size warning is advisory only)
 npm run web         # dev server at http://localhost:5173
@@ -144,8 +146,9 @@ In the browser at `localhost:5173`:
    text/preview. Click a filled SD cell → selects/previews it and highlights the
    matching rendered note while showing snare-valid tools such as flam, drag,
    diddle, and buzz. Horizontally scroll the grid → instrument labels remain
-   pinned while count markers and cells scroll. Click **Undo** → the previous
-   text/preview returns.
+   pinned while count markers and cells scroll. Use the bar action buttons to
+   add, duplicate, add-on-new-line, and delete bars; the selected bar follows the
+   changed bar. Click **Undo** → the previous text/preview returns.
 4. Toggle theme (◐), change Tempo/Grid (rewrites editor via edit helpers), switch
    examples.
 
@@ -160,8 +163,8 @@ Console should be free of errors/warnings.
 - **`%` measure-repeat bars:** edit mode operates on `block.slots`; behavior on
   `%` / `%x3` repeat bars is read-only for now. Source-bar editing for repeat
   notation is still deferred.
-- Edit mode uses a selected-cell tool strip; bar action controls are still
-  deferred to the visual-edit roadmap.
+- Edit mode uses a selected-cell tool strip; direct SVG/grid overlay editing is
+  still deferred to the visual-edit roadmap.
 - `web/tsconfig.json` exists for editor support but is **not** run in CI — Vite
   transpiles without type-checking, so a pure type error in `web/` would not
   fail CI (only the plugin's `tsc` runs).

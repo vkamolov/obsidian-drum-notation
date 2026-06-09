@@ -7,7 +7,7 @@
 // and returns a new block. Nothing here reaches into the renderer or the DOM
 // beyond its container.
 
-import { applyArticulation, clearHit, findHit, setHit } from "../../src/edit";
+import { applyArticulation, clearHit, deleteBar, duplicateBar, findHit, insertBarAfter, setHit } from "../../src/edit";
 import { DRUM_KIT, getAllowedArticulations, getHitChar, isArticulationAllowed } from "../../src/kit";
 import { getSlotsPerBeat } from "../../src/music";
 import { DrumArticulation, DrumBlock, DrumInstrument } from "../../src/types";
@@ -21,7 +21,7 @@ interface GridEditorOptions {
   container: HTMLElement;
   block: DrumBlock;
   initialBarIndex?: number;
-  onChange: (block: DrumBlock, changedSlotIndex?: number) => void;
+  onChange: (block: DrumBlock, changedSlotIndex?: number, selectedBarIndex?: number) => void;
   onPreview: (block: DrumBlock, slotIndex: number) => void;
   onSelectBar?: (barIndex: number) => void;
 }
@@ -53,29 +53,35 @@ interface SelectedCell {
   instrumentId: string;
 }
 
+interface HistoryEntry {
+  block: DrumBlock;
+  slotIndex?: number;
+  barIndex: number;
+}
+
 export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
   let working = options.block;
-  const undoStack: Array<{ block: DrumBlock; slotIndex?: number }> = [];
-  const redoStack: Array<{ block: DrumBlock; slotIndex?: number }> = [];
+  const undoStack: HistoryEntry[] = [];
+  const redoStack: HistoryEntry[] = [];
   let selectedCell: SelectedCell | null = null;
   let selectedBarIndex = clampBarIndex(working, options.initialBarIndex ?? 0);
   // Instruments shown as rows: those already in the block, plus any the user
   // adds from the palette (kept visible even before they have a hit).
   const extraInstruments: DrumInstrument[] = [];
 
-  const applyChange = (next: DrumBlock, slotIndex?: number) => {
+  const applyChange = (next: DrumBlock, slotIndex?: number, nextSelectedBarIndex = selectedBarIndex) => {
     if (next === working) {
       return;
     }
 
-    undoStack.push({ block: working, slotIndex });
+    undoStack.push({ block: working, slotIndex, barIndex: selectedBarIndex });
     redoStack.length = 0;
     working = next;
-    selectedBarIndex = clampBarIndex(working, selectedBarIndex);
+    selectedBarIndex = clampBarIndex(working, nextSelectedBarIndex);
     if (!cellBelongsToSelectedBar()) {
       selectedCell = null;
     }
-    options.onChange(working, slotIndex);
+    options.onChange(working, slotIndex, selectedBarIndex);
     render();
   };
 
@@ -86,13 +92,13 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
       return;
     }
 
-    redoStack.push({ block: working, slotIndex: previous.slotIndex });
+    redoStack.push({ block: working, slotIndex: previous.slotIndex, barIndex: selectedBarIndex });
     working = previous.block;
-    selectedBarIndex = clampBarIndex(working, selectedBarIndex);
+    selectedBarIndex = clampBarIndex(working, previous.barIndex);
     if (!cellBelongsToSelectedBar()) {
       selectedCell = null;
     }
-    options.onChange(working, previous.slotIndex);
+    options.onChange(working, previous.slotIndex, selectedBarIndex);
     render();
   };
 
@@ -103,13 +109,13 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
       return;
     }
 
-    undoStack.push({ block: working, slotIndex: next.slotIndex });
+    undoStack.push({ block: working, slotIndex: next.slotIndex, barIndex: selectedBarIndex });
     working = next.block;
-    selectedBarIndex = clampBarIndex(working, selectedBarIndex);
+    selectedBarIndex = clampBarIndex(working, next.barIndex);
     if (!cellBelongsToSelectedBar()) {
       selectedCell = null;
     }
-    options.onChange(working, next.slotIndex);
+    options.onChange(working, next.slotIndex, selectedBarIndex);
     render();
   };
 
@@ -169,6 +175,49 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     applyChange(clearHit(working, selectedCell.slotIndex, instrument), selectedCell.slotIndex);
   };
 
+  const addBarAfterSelection = () => {
+    applyChange(insertBarAfter(working, selectedBarIndex), undefined, selectedBarIndex + 1);
+  };
+
+  const duplicateSelectedBar = () => {
+    applyChange(duplicateBar(working, selectedBarIndex), undefined, selectedBarIndex + 1);
+  };
+
+  const addBarOnNewSystem = () => {
+    applyChange(insertBarAfter(working, selectedBarIndex, "new-system"), undefined, barIndexAfterSelectedSystem());
+  };
+
+  const deleteSelectedBar = () => {
+    const bar = selectedBar();
+
+    if (!bar) {
+      return;
+    }
+
+    const hasHits = bar.slots.some((slot) => slot.hits.length > 0);
+    if (hasHits && !window.confirm(`Delete bar ${selectedBarIndex + 1}?`)) {
+      return;
+    }
+
+    applyChange(deleteBar(working, selectedBarIndex), undefined, Math.max(0, selectedBarIndex - 1));
+  };
+
+  const barIndexAfterSelectedSystem = (): number => {
+    let current = 0;
+
+    for (const system of working.systems) {
+      const next = current + system.bars.length;
+
+      if (selectedBarIndex >= current && selectedBarIndex < next) {
+        return next;
+      }
+
+      current = next;
+    }
+
+    return selectedBarIndex + 1;
+  };
+
   const onKeyDown = (event: KeyboardEvent) => {
     const target = event.target as HTMLElement | null;
     const tagName = target?.tagName.toLowerCase();
@@ -209,6 +258,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
 
     renderHeader(root);
     renderBarPager(root);
+    renderBarActions(root);
     renderArticulationTools(root);
 
     if (working.slots.length === 0) {
@@ -284,6 +334,49 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
       button.title = bar.measureRepeat ? `Bar ${index + 1} is read-only repeat notation` : `Edit bar ${index + 1}`;
       button.addEventListener("click", () => selectBar(index, true));
     });
+  };
+
+  const renderBarActions = (root: HTMLElement) => {
+    if (working.bars.length === 0) {
+      return;
+    }
+
+    const actions = root.createEl("div", { cls: "pg-grid-editor__bar-actions" });
+    const addButton = actions.createEl("button", {
+      cls: "pg-grid-editor__bar-action",
+      text: "Add"
+    }) as HTMLButtonElement;
+    addButton.type = "button";
+    addButton.title = "Add bar after";
+    addButton.setAttr("aria-label", "Add bar after");
+    addButton.addEventListener("click", addBarAfterSelection);
+
+    const duplicateButton = actions.createEl("button", {
+      cls: "pg-grid-editor__bar-action",
+      text: "Copy"
+    }) as HTMLButtonElement;
+    duplicateButton.type = "button";
+    duplicateButton.title = "Duplicate bar";
+    duplicateButton.setAttr("aria-label", "Duplicate bar");
+    duplicateButton.addEventListener("click", duplicateSelectedBar);
+
+    const newLineButton = actions.createEl("button", {
+      cls: "pg-grid-editor__bar-action",
+      text: "New line"
+    }) as HTMLButtonElement;
+    newLineButton.type = "button";
+    newLineButton.title = "Add bar on new line";
+    newLineButton.setAttr("aria-label", "Add bar on new line");
+    newLineButton.addEventListener("click", addBarOnNewSystem);
+
+    const deleteButton = actions.createEl("button", {
+      cls: "pg-grid-editor__bar-action pg-grid-editor__bar-action--delete",
+      text: "Delete"
+    }) as HTMLButtonElement;
+    deleteButton.type = "button";
+    deleteButton.title = "Delete bar";
+    deleteButton.setAttr("aria-label", "Delete bar");
+    deleteButton.addEventListener("click", deleteSelectedBar);
   };
 
   const renderArticulationTools = (root: HTMLElement) => {

@@ -51,6 +51,7 @@ body {
 body {
   display: grid;
   grid-template-rows: auto 1fr auto;
+  grid-template-columns: minmax(0, 1fr);
   height: 100vh;
   font-family:
     -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -64,7 +65,10 @@ body {
   display: flex;
   align-items: center;
   gap: 1rem;
+  min-width: 0;
+  max-width: 100%;
   padding: 0.5rem 0.85rem;
+  overflow-x: hidden;
   border-bottom: 1px solid var(--pg-border);
   background: var(--pg-panel);
 }
@@ -83,6 +87,7 @@ body {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  min-width: 0;
   margin-left: auto;
   flex-wrap: wrap;
 }
@@ -161,6 +166,8 @@ body {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
   min-height: 0;
+  min-width: 0;
+  width: 100%;
 }
 
 .pg-pane {
@@ -207,12 +214,16 @@ body {
 .pg-preview-scroll {
   flex: 1;
   min-height: 0;
+  min-width: 0;
   overflow: auto;
   padding: 1rem;
 }
 
 /* the preview centerpiece uses the plugin's own .drum-notation styles */
 #pg-preview {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   margin: 0 auto;
 }
 
@@ -252,8 +263,9 @@ body {
 /* ---- diagnostics ---- */
 .pg-diagnostics {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 1px;
+  min-width: 0;
   max-height: 30vh;
   border-top: 1px solid var(--pg-border);
   background: var(--pg-border);
@@ -263,6 +275,7 @@ body {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  min-width: 0;
   background: var(--pg-panel);
 }
 
@@ -280,6 +293,8 @@ body {
 .pg-diag__body {
   flex: 1;
   min-height: 0;
+  min-width: 0;
+  max-width: 100%;
   overflow: auto;
   margin: 0;
   padding: 0.4rem 0.75rem 0.7rem;
@@ -288,6 +303,9 @@ body {
 }
 
 .pg-mono {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
   font-family: var(--pg-mono);
   white-space: pre;
 }
@@ -340,6 +358,9 @@ body {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 .pg-grid-editor__bar {
@@ -347,6 +368,7 @@ body {
   align-items: center;
   gap: 0.5rem;
   flex-wrap: wrap;
+  min-width: 0;
 }
 
 .pg-grid-editor__palette {
@@ -425,6 +447,8 @@ body {
   display: flex;
   align-items: center;
   gap: 0.35rem;
+  max-width: 100%;
+  min-width: 0;
   overflow-x: auto;
   padding-bottom: 0.1rem;
 }
@@ -457,6 +481,36 @@ body {
   border-style: dashed;
 }
 
+.pg-grid-editor__bar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.pg-grid-editor__bar-action {
+  min-height: 1.8rem;
+  padding: 0 0.55rem;
+  font: inherit;
+  font-size: 0.76rem;
+  color: var(--pg-text);
+  background: var(--pg-panel);
+  border: 1px solid var(--pg-border);
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.pg-grid-editor__bar-action:hover,
+.pg-grid-editor__bar-action:focus-visible {
+  border-color: var(--pg-accent);
+}
+
+.pg-grid-editor__bar-action--delete {
+  color: #dc2626;
+}
+
 .pg-grid-editor__repeat-note {
   margin: 0;
   padding: 0.55rem 0.65rem;
@@ -475,6 +529,8 @@ body {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  max-width: 100%;
+  min-width: 0;
   overflow-x: auto;
   padding-bottom: 0.15rem;
 }
@@ -594,6 +650,20 @@ body {
 
 /* ---- responsive: stack on narrow screens ---- */
 @media (max-width: 760px) {
+  .pg-topbar {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 0.5rem 0.75rem;
+  }
+
+  .pg-controls {
+    flex: 1 1 100%;
+    width: auto;
+    max-width: 100%;
+    margin-left: 0;
+    overflow-x: auto;
+  }
+
   .pg-grid {
     --pg-grid-label-width: 3.75rem;
     --pg-grid-cell-min: 1.9rem;

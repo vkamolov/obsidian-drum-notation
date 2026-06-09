@@ -398,8 +398,10 @@ function applyEditedBlock(next: DrumBlock): void {
   renderPreview();
 }
 
-function applyGridEditedBlock(next: DrumBlock, changedSlotIndex?: number): void {
-  if (changedSlotIndex !== undefined) {
+function applyGridEditedBlock(next: DrumBlock, changedSlotIndex?: number, nextSelectedBarIndex?: number): void {
+  if (nextSelectedBarIndex !== undefined) {
+    selectedBarIndex = clampBarIndex(next, nextSelectedBarIndex);
+  } else if (changedSlotIndex !== undefined) {
     selectedBarIndex = barIndexForSlot(next, changedSlotIndex);
   }
   editor.value = serializeDrumBlock(next);
