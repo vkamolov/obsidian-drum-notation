@@ -267,6 +267,48 @@ export function deleteBar(block: DrumBlock, barIndex: number): DrumBlock {
   return rebuildBlock(block, views);
 }
 
+export function setBarRepeat(block: DrumBlock, barIndex: number): DrumBlock {
+  const views = block.systems.map(toSystemView);
+  const location = locateBar(views, barIndex);
+  const previousLocation = locateBar(views, barIndex - 1);
+
+  if (!location || !previousLocation) {
+    return block;
+  }
+
+  syncMeasureRepeatCopies(views);
+
+  const view = views[location.system];
+  const snapshot = snapshotBar(views[previousLocation.system], previousLocation.bar);
+  view.bars[location.bar] = {
+    ...emptyBarLike(view.bars[location.bar]),
+    measureRepeat: 1
+  };
+  replaceBarWithSnapshot(view, location.bar, snapshot);
+
+  return rebuildBlock(block, views);
+}
+
+export function clearBarRepeat(block: DrumBlock, barIndex: number): DrumBlock {
+  const views = block.systems.map(toSystemView);
+  const location = locateBar(views, barIndex);
+
+  if (!location) {
+    return block;
+  }
+
+  const bar = views[location.system].bars[location.bar];
+
+  if (!bar.measureRepeat) {
+    return block;
+  }
+
+  delete bar.measureRepeat;
+  delete bar.measureRepeatCount;
+
+  return rebuildBlock(block, views);
+}
+
 function locate(
   views: SystemView[],
   slotIndex: number
@@ -381,6 +423,17 @@ function applySnapshotToBar(view: SystemView, barIndex: number, snapshot: RowSna
 
     row.patterns[barIndex] = snapshotRow.pattern;
   });
+}
+
+function replaceBarWithSnapshot(view: SystemView, barIndex: number, snapshot: RowSnapshot[]): void {
+  const snapshotIds = new Set(snapshot.map((row) => row.instrument.id));
+
+  view.rows.forEach((row) => {
+    if (!snapshotIds.has(row.instrument.id) && row.patterns.length > barIndex) {
+      row.patterns[barIndex] = "-".repeat(view.bars[barIndex].width);
+    }
+  });
+  applySnapshotToBar(view, barIndex, snapshot);
 }
 
 function locateBar(views: SystemView[], barIndex: number): { system: number; bar: number } | null {

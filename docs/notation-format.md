@@ -407,7 +407,10 @@ To stay deterministic and diff-friendly, serialization **normalizes**:
 - Model-level bar edits serialize through the same row/bar invariants as parsed
   text: inserted empty bars are represented as rest patterns for the selected
   bar's instruments, duplicated bars copy the selected bar's row patterns, and
-  deleted bars remove empty systems when no rows remain.
+  deleted bars remove empty systems when no rows remain. A model-level repeat
+  toggle marks a normal bar as `%` by copying the previous bar's playable
+  pattern, and clearing that marker leaves the copied bar as normal editable
+  row text.
 
 This means a hand-authored block that uses `>` for accents or `.` for rests will
 come back from a serialize pass using `X`/`O` and `-`. That is expected. (A

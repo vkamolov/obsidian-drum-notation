@@ -7,7 +7,17 @@
 // and returns a new block. Nothing here reaches into the renderer or the DOM
 // beyond its container.
 
-import { applyArticulation, clearHit, deleteBar, duplicateBar, findHit, insertBarAfter, setHit } from "../../src/edit";
+import {
+  applyArticulation,
+  clearBarRepeat,
+  clearHit,
+  deleteBar,
+  duplicateBar,
+  findHit,
+  insertBarAfter,
+  setBarRepeat,
+  setHit
+} from "../../src/edit";
 import { DRUM_KIT, getAllowedArticulations, getHitChar, isArticulationAllowed } from "../../src/kit";
 import { getSlotsPerBeat } from "../../src/music";
 import { DrumArticulation, DrumBlock, DrumInstrument } from "../../src/types";
@@ -212,6 +222,30 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     applyChange(deleteBar(working, selectedBarIndex), undefined, Math.max(0, selectedBarIndex - 1));
   };
 
+  const toggleSelectedBarRepeat = () => {
+    const bar = selectedBar();
+
+    if (!bar) {
+      return;
+    }
+
+    if (bar.measureRepeat) {
+      applyChange(clearBarRepeat(working, selectedBarIndex), undefined, selectedBarIndex);
+      return;
+    }
+
+    if (selectedBarIndex === 0) {
+      return;
+    }
+
+    const hasHits = bar.slots.some((slot) => slot.hits.length > 0);
+    if (hasHits && !window.confirm(`Replace bar ${selectedBarIndex + 1} with a repeat of the previous bar?`)) {
+      return;
+    }
+
+    applyChange(setBarRepeat(working, selectedBarIndex), undefined, selectedBarIndex);
+  };
+
   const barIndexAfterSelectedSystem = (): number => {
     let current = 0;
 
@@ -378,6 +412,16 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     newLineButton.title = "Add bar on new line";
     newLineButton.setAttr("aria-label", "Add bar on new line");
     newLineButton.addEventListener("click", addBarOnNewSystem);
+
+    const repeatButton = actions.createEl("button", {
+      cls: "pg-grid-editor__bar-action",
+      text: selectedBar()?.measureRepeat ? "Unrepeat" : "Repeat"
+    }) as HTMLButtonElement;
+    repeatButton.type = "button";
+    repeatButton.disabled = selectedBarIndex === 0 && !selectedBar()?.measureRepeat;
+    repeatButton.title = selectedBar()?.measureRepeat ? "Make repeat bar editable" : "Repeat previous bar";
+    repeatButton.setAttr("aria-label", selectedBar()?.measureRepeat ? "Make repeat bar editable" : "Repeat previous bar");
+    repeatButton.addEventListener("click", toggleSelectedBarRepeat);
 
     const deleteButton = actions.createEl("button", {
       cls: "pg-grid-editor__bar-action pg-grid-editor__bar-action--delete",

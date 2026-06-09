@@ -5,6 +5,7 @@ import { serializeDrumBlock } from "../src/serializer";
 import {
   applyArticulation,
   clearHit,
+  clearBarRepeat,
   deleteBar,
   duplicateBar,
   findHit,
@@ -12,6 +13,7 @@ import {
   insertBarAfter,
   removeHit,
   setGrid,
+  setBarRepeat,
   setHit,
   setInstrument,
   setTempo,
@@ -200,6 +202,48 @@ describe("bar edits", () => {
     const block = parseDrumBlock("Title: Bar edit\nHH | x--- | --x-\nSD | ---- | --o-");
     const edited = deleteBar(duplicateBar(insertBarAfter(block, 0), 2), 1);
     const text = serializeDrumBlock(edited);
+
+    expect(serializeDrumBlock(parseDrumBlock(text))).toBe(text);
+  });
+
+  it("setBarRepeat marks a bar as a one-bar repeat of the previous bar", () => {
+    const block = parseDrumBlock("HH | x--- | ----\nSD | ---- | --o-");
+    const edited = setBarRepeat(block, 1);
+
+    expect(edited.bars[1].measureRepeat).toBe(1);
+    expect(findHit(edited, 4, HH.id)).toBeTruthy();
+    expect(findHit(edited, 6, SD.id)).toBeUndefined();
+    expect(serializeDrumBlock(edited)).toBe("HH | x---\nSD | ----\n%");
+  });
+
+  it("setBarRepeat can repeat across a system boundary", () => {
+    const block = parseDrumBlock("HH | x---\nBar\nHH | ----");
+    const edited = setBarRepeat(block, 1);
+
+    expect(edited.systems).toHaveLength(2);
+    expect(edited.bars[1].measureRepeat).toBe(1);
+    expect(serializeDrumBlock(edited)).toBe("HH | x---\nBar\n%");
+  });
+
+  it("setBarRepeat is a no-op for the first or missing bar", () => {
+    const block = parseDrumBlock("HH | x---");
+
+    expect(setBarRepeat(block, 0)).toEqual(block);
+    expect(setBarRepeat(block, 4)).toEqual(block);
+  });
+
+  it("clearBarRepeat turns a repeat bar back into an editable copied bar", () => {
+    const block = parseDrumBlock("HH | x---\n%x2");
+    const edited = clearBarRepeat(block, 1);
+
+    expect(edited.bars[1].measureRepeat).toBeUndefined();
+    expect(edited.bars[2].measureRepeat).toBe(1);
+    expect(serializeDrumBlock(edited)).toBe("HH | x--- | x---\n%");
+  });
+
+  it("repeat toggle edits remain serialize round-trip stable", () => {
+    const block = parseDrumBlock("Title: Repeat toggle\nHH | x--- | ----\nSD | ---- | --o-");
+    const text = serializeDrumBlock(clearBarRepeat(setBarRepeat(block, 1), 1));
 
     expect(serializeDrumBlock(parseDrumBlock(text))).toBe(text);
   });
