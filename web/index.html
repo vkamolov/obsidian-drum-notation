@@ -7,43 +7,84 @@
   </head>
   <body>
     <header class="pg-topbar">
-      <div class="pg-brand">drum notation <span>· playground</span></div>
+      <div class="pg-topbar__head">
+        <div class="pg-brand">drum notation <span>· playground</span></div>
+      </div>
 
-      <div class="pg-controls">
-        <label class="pg-field">
-          example
-          <select id="pg-example"></select>
-        </label>
-        <label class="pg-field">
-          tempo
-          <input id="pg-tempo" type="number" min="30" max="260" step="1" />
-        </label>
-        <label class="pg-field">
-          grid
-          <select id="pg-grid">
-            <option value="16">16</option>
-            <option value="32">32</option>
-          </select>
-        </label>
+      <div class="pg-toolbar" aria-label="Playground toolbar">
+        <section class="pg-toolbar-row pg-toolbar-row--setup" aria-label="Notation setup">
+          <label class="pg-field pg-field--example">
+            <span>Example</span>
+            <select id="pg-example"></select>
+          </label>
+          <label class="pg-field pg-field--title">
+            <span>Title</span>
+            <input id="pg-title" type="text" autocomplete="off" spellcheck="false" />
+          </label>
+          <label class="pg-field">
+            <span>Tempo</span>
+            <input id="pg-tempo" type="number" min="30" max="260" step="1" />
+          </label>
+          <div class="pg-field pg-fieldset" role="group" aria-label="Time signature">
+            <span>Time</span>
+            <div class="pg-time-inputs">
+              <input id="pg-time-top" type="number" min="1" max="99" step="1" aria-label="Time signature beats" />
+              <span>/</span>
+              <input id="pg-time-bottom" type="number" min="1" max="99" step="1" aria-label="Time signature beat value" />
+            </div>
+          </div>
+          <label class="pg-field">
+            <span>Grid</span>
+            <select id="pg-grid">
+              <option value="16">16</option>
+              <option value="32">32</option>
+            </select>
+          </label>
+          <label class="pg-field">
+            <span>Repeat</span>
+            <input id="pg-repeat" type="number" min="1" max="64" step="1" />
+          </label>
+          <label class="pg-field">
+            <span>Legend</span>
+            <select id="pg-legend">
+              <option value="off">off</option>
+              <option value="used">used</option>
+              <option value="all">all</option>
+            </select>
+          </label>
+        </section>
 
-        <span class="pg-sep"></span>
+        <section class="pg-toolbar-row pg-toolbar-row--actions" aria-label="Playback, editing, and export">
+          <div class="pg-action-group" aria-label="Playback">
+            <div class="pg-action-group__label">Playback</div>
+            <div class="pg-action-group__controls">
+              <button id="pg-play" class="pg-btn pg-btn--accent" type="button">Play</button>
+              <button id="pg-stop" class="pg-btn" type="button">Stop</button>
+              <button id="pg-loop" class="pg-btn" type="button">Loop Bar</button>
+            </div>
+          </div>
 
-        <button id="pg-play" class="pg-btn pg-btn--accent" type="button">Play</button>
-        <button id="pg-stop" class="pg-btn" type="button">Stop</button>
-        <button id="pg-loop" class="pg-btn" type="button">Loop Bar</button>
-        <button id="pg-edit" class="pg-btn" type="button">Edit</button>
+          <div class="pg-action-group" aria-label="Editing">
+            <div class="pg-action-group__label">Edit</div>
+            <div class="pg-action-group__controls">
+              <button id="pg-edit" class="pg-btn" type="button">Edit</button>
+            </div>
+          </div>
 
-        <span class="pg-sep"></span>
-
-        <button id="pg-copy-block" class="pg-btn" type="button">Copy block</button>
-        <button id="pg-copy-normalized" class="pg-btn" type="button">Copy normalized</button>
-        <button id="pg-theme" class="pg-btn pg-btn--icon" type="button" title="Toggle theme">◐</button>
+          <div class="pg-action-group pg-action-group--export" aria-label="Export and view">
+            <div class="pg-action-group__label">Export</div>
+            <div class="pg-action-group__controls">
+              <button id="pg-copy-block" class="pg-btn pg-btn--accent" type="button">Copy for Obsidian</button>
+              <button id="pg-theme" class="pg-btn pg-btn--icon" type="button" title="Toggle theme">◐</button>
+            </div>
+          </div>
+        </section>
       </div>
     </header>
 
     <main class="pg-main">
       <section class="pg-pane pg-pane--editor">
-        <div class="pg-pane__head">notation</div>
+        <div class="pg-pane__head">Obsidian-ready notation</div>
         <textarea id="pg-editor" class="pg-editor" spellcheck="false" autocomplete="off"
           autocapitalize="off" wrap="off"></textarea>
       </section>
@@ -57,22 +98,28 @@
       </section>
     </main>
 
-    <footer class="pg-diagnostics">
-      <div class="pg-diag">
-        <div class="pg-diag__head">model</div>
-        <div id="pg-model" class="pg-diag__body"></div>
-      </div>
-      <div class="pg-diag">
-        <div class="pg-diag__head">
-          normalized output
+    <footer class="pg-footer">
+      <div id="pg-notes" class="pg-issues"></div>
+
+      <details class="pg-advanced">
+        <summary>
+          Advanced diagnostics
           <span id="pg-normalized-flag" class="pg-flag"></span>
+        </summary>
+        <div class="pg-diagnostics">
+          <div class="pg-diag">
+            <div class="pg-diag__head">model</div>
+            <div id="pg-model" class="pg-diag__body"></div>
+          </div>
+          <div class="pg-diag">
+            <div class="pg-diag__head">
+              normalized output
+              <button id="pg-copy-normalized" class="pg-btn pg-btn--small" type="button">Copy</button>
+            </div>
+            <pre id="pg-normalized" class="pg-diag__body pg-mono"></pre>
+          </div>
         </div>
-        <pre id="pg-normalized" class="pg-diag__body pg-mono"></pre>
-      </div>
-      <div class="pg-diag">
-        <div class="pg-diag__head">notes</div>
-        <div id="pg-notes" class="pg-diag__body"></div>
-      </div>
+      </details>
     </footer>
 
     <script type="module" src="/src/app.ts"></script>

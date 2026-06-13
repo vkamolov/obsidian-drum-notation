@@ -103,13 +103,19 @@ the **first** import in `app.ts`. `engrave.ts` itself was **not** changed.
 - Playback: Play / Stop / Loop Bar via `DrumPlayer` + lazy `AudioContext`;
   cursor + note highlight ported from `main.ts`; click-a-note preview via
   `DrumSynth`.
-- Diagnostics panel: parsed-model summary; live `serializeDrumBlock` output with
-  a "normalized = input / ≠ input" flag; warnings for unrecognized instrument
-  rows.
-- Tempo / Grid controls route through `setTempo` / `setGrid` (`src/edit.ts`)
-  then `serializeDrumBlock` -> rewrite editor (exercises the model -> text loop).
-- Example picker (`examples.ts`), Copy block / Copy normalized, light/dark theme
-  toggle (persisted).
+- Authoring toolbar: example picker, title, tempo, time signature, grid, repeat,
+  and legend controls. Toolbar edits rewrite the notation textarea in an
+  Obsidian-ready authoring form that keeps `Title`, `Tempo`, `Time`, and `Grid`
+  visible even when they are default values.
+- Two-row command toolbar: playback, edit, export, and theme controls are
+  grouped separately from notation setup.
+- Advanced diagnostics: parsed-model summary and live `serializeDrumBlock`
+  normalized output are still available behind a collapsed details panel. Parser
+  or render warnings remain visible only when there is something to fix.
+- Example picker (`examples.ts`), Copy for Obsidian, Copy normalized in
+  diagnostics, and light/dark theme toggle (persisted). If the browser blocks
+  programmatic clipboard writes, Copy for Obsidian opens a selected fallback
+  textarea containing the fenced block.
 - **Edit mode** (`editor-grid.ts`): fixed HTML grid, rows = instruments,
   columns = slots, and the grid edits one selected bar at a time. Bar chips page
   between bars, and clicking/tapping a rendered notation bar selects the matching
@@ -138,8 +144,10 @@ npm run web         # dev server at http://localhost:5173
 
 In the browser at `localhost:5173`:
 
-1. Default "Basic rock groove" renders a VexFlow staff; diagnostics show
-   "normalized ≠ input" (it drops default `Tempo: 100` / `Time: 4/4`).
+1. Default "Basic rock groove" renders a VexFlow staff; the notation editor
+   contains an Obsidian-ready block with `Title`, `Tempo`, `Time`, and `Grid`.
+   The advanced diagnostics panel can be opened to compare normalized output
+   with the current authoring text.
 2. Click **Play** → audio + moving cursor/highlight.
 3. Click **Edit** → a selected-bar grid opens below the live preview. Use the
    Bar chips, or click a rendered notation bar, to switch which bar is shown.
@@ -151,8 +159,8 @@ In the browser at `localhost:5173`:
    add, duplicate, add-on-new-line, mark/unmark one-bar repeats, and delete bars;
    the selected bar follows the changed bar. Click **Undo** → the previous
    text/preview returns.
-4. Toggle theme (◐), change Tempo/Grid (rewrites editor via edit helpers), switch
-   examples.
+4. Toggle theme, change Title/Tempo/Time/Grid/Repeat/Legend, switch examples,
+   and copy the block for Obsidian.
 
 Console should be free of errors/warnings.
 
@@ -165,6 +173,9 @@ Console should be free of errors/warnings.
 - **`%` measure-repeat bars:** repeat bars are read-only for cell edits, but the
   bar action row can convert a selected repeat back into a normal copied bar.
   Count editing for `%xN` is still deferred.
+- The notation textarea uses a web-only authoring serializer. The core
+  `serializeDrumBlock` contract is unchanged and remains visible in advanced
+  diagnostics as the normalized form.
 - Edit mode uses a selected-cell tool strip; direct SVG/grid overlay editing is
   still deferred to the visual-edit roadmap.
 - `web/tsconfig.json` exists for editor support but is **not** run in CI — Vite

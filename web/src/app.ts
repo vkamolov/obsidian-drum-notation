@@ -15,9 +15,9 @@ import { getBarRange, getSecondsPerSlot, getSlotVisualDurationSeconds } from "..
 import { getTitle, parseDrumBlock } from "../../src/parser";
 import { DrumPlayer } from "../../src/player";
 import { serializeDrumBlock } from "../../src/serializer";
-import { setGrid, setTempo } from "../../src/edit";
+import { setGrid, setRepeatCount, setTempo, setTimeSignature } from "../../src/edit";
 import { DrumSynth } from "../../src/synth";
-import { CursorPosition, DrumBlock, DrumSlot, GridResolution, ScoreBarRegion } from "../../src/types";
+import { CursorPosition, DrumBlock, DrumSlot, GridResolution, LegendMode, ScoreBarRegion } from "../../src/types";
 import { normalizeLabel } from "../../src/util";
 import { EXAMPLES } from "./examples";
 import { GridEditorHandle, mountGridEditor } from "./editor-grid";
@@ -37,8 +37,13 @@ const $ = <T extends HTMLElement>(id: string): T => {
 const editor = $<HTMLTextAreaElement>("pg-editor");
 const preview = $<HTMLDivElement>("pg-preview");
 const exampleSelect = $<HTMLSelectElement>("pg-example");
+const titleInput = $<HTMLInputElement>("pg-title");
 const tempoInput = $<HTMLInputElement>("pg-tempo");
+const timeTopInput = $<HTMLInputElement>("pg-time-top");
+const timeBottomInput = $<HTMLInputElement>("pg-time-bottom");
 const gridSelect = $<HTMLSelectElement>("pg-grid");
+const repeatInput = $<HTMLInputElement>("pg-repeat");
+const legendSelect = $<HTMLSelectElement>("pg-legend");
 const playBtn = $<HTMLButtonElement>("pg-play");
 const stopBtn = $<HTMLButtonElement>("pg-stop");
 const loopBtn = $<HTMLButtonElement>("pg-loop");
@@ -390,14 +395,23 @@ function stopPreview(): void {
 
 /* ---------- toolbar controls ---------- */
 function syncControls(block: DrumBlock): void {
+  const [beats, beatValue] = block.timeSignature.split("/");
+
+  titleInput.value = getTitle(block);
   tempoInput.value = String(block.tempo);
+  timeTopInput.value = beats || "4";
+  timeBottomInput.value = beatValue || "4";
   gridSelect.value = String(block.gridResolution);
+  repeatInput.value = String(block.repeatCount);
+  legendSelect.value = block.legendMode;
+  syncExampleSelection(editor.value);
 }
 
-// Tempo/Grid edits go through the pure edit helpers and serializer, then rewrite
-// the editor — exercising the full model -> text loop (and normalizing the text).
+// Toolbar and grid edits go through the pure edit helpers where possible, then
+// rewrite the editor in authoring form. The core serializer still owns the
+// deterministic normalized form used in diagnostics.
 function applyEditedBlock(next: DrumBlock): void {
-  editor.value = serializeDrumBlock(next);
+  editor.value = serializeAuthoringBlock(next);
   persist();
   renderPreview();
 }
@@ -408,7 +422,7 @@ function applyGridEditedBlock(next: DrumBlock, changedSlotIndex?: number, nextSe
   } else if (changedSlotIndex !== undefined) {
     selectedBarIndex = barIndexForSlot(next, changedSlotIndex);
   }
-  editor.value = serializeDrumBlock(next);
+  editor.value = serializeAuthoringBlock(next);
   persist();
   isApplyingGridEdit = true;
   try {
@@ -427,6 +441,67 @@ function applyGridEditedBlock(next: DrumBlock, changedSlotIndex?: number, nextSe
   if (slot) {
     void previewSlot(currentBlock, slot);
   }
+}
+
+function serializeAuthoringBlock(block: DrumBlock): string {
+  const requiredLines = [
+    `Title: ${getTitle(block)}`,
+    `Tempo: ${block.tempo}`,
+    `Time: ${block.timeSignature}`,
+    `Grid: ${block.gridResolution}`
+  ];
+
+  if (block.repeatCount !== 1) {
+    requiredLines.push(`Repeat: ${block.repeatCount}`);
+  }
+
+  if (block.legendMode !== "off") {
+    requiredLines.push(`Legend: ${block.legendMode}`);
+  }
+
+  const bodyLines = serializeDrumBlock(block)
+    .split("\n")
+    .filter((line) => line.trim().length > 0)
+    .filter((line) => !isManagedAuthoringLine(line));
+
+  return [...requiredLines, ...bodyLines].join("\n");
+}
+
+function isManagedAuthoringLine(line: string): boolean {
+  const divider = line.indexOf(":");
+
+  if (divider <= 0) {
+    return false;
+  }
+
+  return new Set([
+    "title",
+    "tempo",
+    "bpm",
+    "time",
+    "timesignature",
+    "meter",
+    "repeat",
+    "repeats",
+    "grid",
+    "subdivision",
+    "resolution",
+    "legend",
+    "instrumentlegend",
+    "kitlegend",
+    "colorlegend"
+  ]).has(normalizeLabel(line.slice(0, divider)));
+}
+
+function withTitle(block: DrumBlock, title: string): DrumBlock {
+  const normalizedTitle = title.trim() || "Drum notation";
+  const metadata = block.metadata.filter((line) => {
+    const divider = line.indexOf(":");
+
+    return divider <= 0 || normalizeLabel(line.slice(0, divider)) !== "title";
+  });
+
+  return { ...block, metadata: [`Title: ${normalizedTitle}`, ...metadata] };
 }
 
 /* ---------- edit mode (grid editor) ---------- */
@@ -524,9 +599,7 @@ function renderNotes(block: DrumBlock, raw: string): void {
     any = true;
   }
 
-  if (!any) {
-    notesOut.createEl("p", { cls: "pg-note pg-note--ok", text: "no issues" });
-  }
+  notesOut.hidden = !any;
 }
 
 // A line with a pipe whose label is not a known instrument silently becomes
@@ -560,22 +633,115 @@ function persist(): void {
 }
 
 function populateExamples(): void {
+  exampleSelect.createEl("option", { text: "Custom notation", value: "" });
   for (const name of Object.keys(EXAMPLES)) {
     exampleSelect.createEl("option", { text: name, value: name });
   }
 }
 
+function syncExampleSelection(raw: string): void {
+  const matchingExample = Object.entries(EXAMPLES).find(([, text]) => {
+    const trimmed = raw.trim();
+
+    return text.trim() === trimmed || toAuthoringText(text).trim() === trimmed;
+  });
+
+  exampleSelect.value = matchingExample?.[0] ?? "";
+}
+
+function toAuthoringText(raw: string): string {
+  return serializeAuthoringBlock(parseDrumBlock(raw));
+}
+
 async function copyText(button: HTMLButtonElement, text: string): Promise<void> {
   const original = button.textContent ?? "";
   try {
-    await navigator.clipboard.writeText(text);
+    await writeClipboardText(text);
     button.textContent = "Copied!";
   } catch {
-    button.textContent = "Copy failed";
+    showManualCopyText(text);
+    button.textContent = "Text selected";
   }
   window.setTimeout(() => {
     button.textContent = original;
   }, 1200);
+}
+
+async function writeClipboardText(text: string): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return;
+  } catch {
+    // Embedded browsers can deny the async Clipboard API even after a button
+    // click. Keep a synchronous fallback for those contexts.
+  }
+
+  if (copyWithClipboardEvent(text)) {
+    return;
+  }
+
+  const fallback = document.createElement("textarea");
+  fallback.value = text;
+  fallback.setAttribute("readonly", "");
+  fallback.style.position = "fixed";
+  fallback.style.left = "-9999px";
+  fallback.style.top = "0";
+  document.body.appendChild(fallback);
+  fallback.focus();
+  fallback.select();
+
+  try {
+    if (!document.execCommand("copy")) {
+      throw new Error("copy command failed");
+    }
+  } finally {
+    fallback.remove();
+  }
+}
+
+function copyWithClipboardEvent(text: string): boolean {
+  let handled = false;
+  const listener = (event: ClipboardEvent) => {
+    event.clipboardData?.setData("text/plain", text);
+    event.preventDefault();
+    handled = true;
+  };
+
+  document.addEventListener("copy", listener);
+  try {
+    return document.execCommand("copy") || handled;
+  } catch {
+    return false;
+  } finally {
+    document.removeEventListener("copy", listener);
+  }
+}
+
+function showManualCopyText(text: string): void {
+  document.querySelector(".pg-copy-fallback")?.remove();
+
+  const panel = document.body.createEl("div", {
+    cls: "pg-copy-fallback",
+    attr: {
+      role: "dialog",
+      "aria-label": "Copy fallback"
+    }
+  });
+  const header = panel.createEl("div", { cls: "pg-copy-fallback__head" });
+  header.createEl("strong", { text: "Clipboard blocked" });
+  const close = header.createEl("button", {
+    cls: "pg-btn pg-btn--small",
+    text: "Close",
+    attr: { type: "button" }
+  });
+  const textarea = panel.createEl("textarea", { cls: "pg-copy-fallback__text" }) as HTMLTextAreaElement;
+  textarea.value = text;
+  close.addEventListener("click", () => panel.remove());
+
+  requestAnimationFrame(() => {
+    textarea.focus();
+    textarea.select();
+  });
 }
 
 /* ---------- debounce ---------- */
@@ -600,7 +766,7 @@ function init(): void {
       return null;
     }
   })();
-  editor.value = stored ?? EXAMPLES["Basic rock groove"];
+  editor.value = toAuthoringText(stored ?? EXAMPLES["Basic rock groove"]);
 
   if (localStorage.getItem(THEME_KEY) === "dark") {
     document.body.classList.add("theme-dark");
@@ -613,14 +779,24 @@ function init(): void {
   editor.addEventListener("input", onEdit);
 
   exampleSelect.addEventListener("change", () => {
+    if (!exampleSelect.value) {
+      return;
+    }
+
     const text = EXAMPLES[exampleSelect.value];
     if (text === undefined) {
       return;
     }
-    editor.value = text;
+    editor.value = toAuthoringText(text);
     persist();
     renderPreview();
-    exampleSelect.selectedIndex = 0;
+  });
+
+  titleInput.addEventListener("change", () => {
+    if (!currentBlock) {
+      return;
+    }
+    applyEditedBlock(withTitle(currentBlock, titleInput.value));
   });
 
   tempoInput.addEventListener("change", () => {
@@ -630,11 +806,35 @@ function init(): void {
     applyEditedBlock(setTempo(currentBlock, Number(tempoInput.value)));
   });
 
+  const applyTimeSignature = () => {
+    if (!currentBlock) {
+      return;
+    }
+
+    applyEditedBlock(setTimeSignature(currentBlock, Number(timeTopInput.value), Number(timeBottomInput.value)));
+  };
+  timeTopInput.addEventListener("change", applyTimeSignature);
+  timeBottomInput.addEventListener("change", applyTimeSignature);
+
   gridSelect.addEventListener("change", () => {
     if (!currentBlock) {
       return;
     }
     applyEditedBlock(setGrid(currentBlock, Number(gridSelect.value) as GridResolution));
+  });
+
+  repeatInput.addEventListener("change", () => {
+    if (!currentBlock) {
+      return;
+    }
+    applyEditedBlock(setRepeatCount(currentBlock, Number(repeatInput.value)));
+  });
+
+  legendSelect.addEventListener("change", () => {
+    if (!currentBlock) {
+      return;
+    }
+    applyEditedBlock({ ...currentBlock, legendMode: legendSelect.value as LegendMode });
   });
 
   playBtn.addEventListener("click", play);
@@ -649,7 +849,9 @@ function init(): void {
   });
 
   copyBlockBtn.addEventListener("click", () => {
-    void copyText(copyBlockBtn, "```drums\n" + editor.value.trim() + "\n```");
+    const text = currentBlock ? serializeAuthoringBlock(currentBlock) : editor.value.trim();
+
+    void copyText(copyBlockBtn, "```drums\n" + text.trim() + "\n```");
   });
   copyNormalizedBtn.addEventListener("click", () => {
     void copyText(copyNormalizedBtn, currentBlock ? serializeDrumBlock(currentBlock) : "");
