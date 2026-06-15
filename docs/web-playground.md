@@ -121,11 +121,12 @@ the **first** import in `app.ts`. `engrave.ts` itself was **not** changed.
   between bars, and clicking/tapping a rendered notation bar selects the matching
   edit bar. Empty-cell click adds a normal hit; filled-cell click selects and
   previews the hit. The selected cell highlights the matching rendered SVG note
-  while edit mode is open. The selected-cell tool strip and keyboard shortcuts
-  choose only instrument-valid articulations, with Delete/Backspace for erase.
-  Instrument labels stay visible while horizontally scrolling the grid, and a
-  count ruler above the cells marks beats/subdivisions. Instrument palette adds
-  rows.
+  while edit mode is open. The selected-cell tool strip uses compact notation
+  glyph buttons while grid cells keep text notation characters. Tool buttons and
+  keyboard shortcuts choose only instrument-valid articulations, with
+  Delete/Backspace for erase. Instrument labels stay visible while horizontally
+  scrolling the grid, and a count ruler above the cells marks beats/subdivisions.
+  Instrument palette adds rows.
   Edits live-apply to the editor text and notation preview immediately; Undo/Redo
   replaces the old Save/Cancel flow. The selected-bar editor also exposes compact
   bar actions for adding, duplicating, adding on a new line/system, toggling

@@ -618,9 +618,9 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 2rem;
-  min-height: 2rem;
-  padding: 0 0.45rem;
+  width: 2.35rem;
+  height: 2.35rem;
+  padding: 0;
   font: inherit;
   font-family: var(--pg-mono);
   font-size: 0.82rem;
@@ -630,6 +630,14 @@ body {
   border: 1px solid var(--pg-border);
   border-radius: 5px;
   cursor: pointer;
+}
+
+.pg-grid-editor__tool-icon {
+  width: 1.45rem;
+  height: 1.45rem;
+  display: block;
+  overflow: visible;
+  pointer-events: none;
 }
 
 .pg-grid-editor__tool:hover {

@@ -60,6 +60,8 @@ const ARTICULATION_LABELS: Record<DrumArticulation, string> = {
   choke: "Choke"
 };
 
+const SVG_NS = "http://www.w3.org/2000/svg";
+
 interface SelectedCell {
   slotIndex: number;
   instrumentId: string;
@@ -454,23 +456,23 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
 
     getAllowedArticulations(instrument).forEach((articulation) => {
       const button = tools.createEl("button", {
-        cls: `pg-grid-editor__tool ${hit?.articulation === articulation ? "is-active" : ""}`,
-        text: getHitChar(instrument, articulation)
+        cls: `pg-grid-editor__tool ${hit?.articulation === articulation ? "is-active" : ""}`
       }) as HTMLButtonElement;
 
       button.dataset.articulation = articulation;
       button.title = ARTICULATION_LABELS[articulation];
       button.setAttr("aria-label", ARTICULATION_LABELS[articulation]);
+      button.appendChild(createArticulationIcon(articulation));
       button.addEventListener("click", () => applyArticulationToSelection(articulation));
     });
 
     const deleteButton = tools.createEl("button", {
-      cls: "pg-grid-editor__tool pg-grid-editor__tool--delete",
-      text: "×"
+      cls: "pg-grid-editor__tool pg-grid-editor__tool--delete"
     }) as HTMLButtonElement;
 
     deleteButton.title = "Delete";
     deleteButton.setAttr("aria-label", "Delete");
+    deleteButton.appendChild(createDeleteIcon());
     deleteButton.disabled = !hit;
     deleteButton.addEventListener("click", clearSelectionHit);
   };
@@ -647,4 +649,214 @@ function clampBarIndex(block: DrumBlock, barIndex: number): number {
   }
 
   return Math.min(block.bars.length - 1, Math.max(0, Math.round(barIndex)));
+}
+
+function createArticulationIcon(articulation: DrumArticulation): SVGSVGElement {
+  const svg = createSvg("svg", {
+    class: "pg-grid-editor__tool-icon",
+    viewBox: "0 0 36 36",
+    "aria-hidden": "true",
+    focusable: "false"
+  });
+
+  switch (articulation) {
+    case "accent":
+      appendSvg(svg, "polyline", {
+        points: "12 13 25 18 12 23",
+        fill: "none",
+        stroke: "currentColor",
+        "stroke-width": "3.3",
+        "stroke-linecap": "round",
+        "stroke-linejoin": "round"
+      });
+      break;
+    case "ghost":
+      appendNotehead(svg, 18, 19, 8, 5);
+      appendSvg(svg, "path", {
+        d: "M11 8 C6 13 6 24 11 29",
+        fill: "none",
+        stroke: "currentColor",
+        "stroke-width": "2.3",
+        "stroke-linecap": "round"
+      });
+      appendSvg(svg, "path", {
+        d: "M25 8 C30 13 30 24 25 29",
+        fill: "none",
+        stroke: "currentColor",
+        "stroke-width": "2.3",
+        "stroke-linecap": "round"
+      });
+      break;
+    case "flam":
+      appendGraceNote(svg, 11, 24, 0.72);
+      appendMainNote(svg, 25, 24);
+      appendSvg(svg, "path", {
+        d: "M15 21 C18 17 21 17 24 21",
+        fill: "none",
+        stroke: "currentColor",
+        "stroke-width": "1.8",
+        "stroke-linecap": "round"
+      });
+      break;
+    case "drag":
+      appendGraceNote(svg, 8, 24, 0.65);
+      appendGraceNote(svg, 15, 24, 0.65);
+      appendSvg(svg, "polygon", {
+        points: "11 9 22 9 22 12 11 12",
+        fill: "currentColor"
+      });
+      appendMainNote(svg, 27, 24);
+      appendSvg(svg, "path", {
+        d: "M11 28 C16 31 23 31 28 27",
+        fill: "none",
+        stroke: "currentColor",
+        "stroke-width": "1.8",
+        "stroke-linecap": "round"
+      });
+      break;
+    case "diddle":
+      appendSvg(svg, "line", {
+        x1: "13",
+        y1: "23",
+        x2: "24",
+        y2: "13",
+        stroke: "currentColor",
+        "stroke-width": "5.5",
+        "stroke-linecap": "round"
+      });
+      break;
+    case "buzz":
+      appendSvg(svg, "path", {
+        d: "M10 13 H25 L11 23 H26",
+        fill: "none",
+        stroke: "currentColor",
+        "stroke-width": "3.5",
+        "stroke-linecap": "round",
+        "stroke-linejoin": "round"
+      });
+      break;
+    case "choke":
+      appendSvg(svg, "line", {
+        x1: "11",
+        y1: "12",
+        x2: "25",
+        y2: "26",
+        stroke: "currentColor",
+        "stroke-width": "3",
+        "stroke-linecap": "round"
+      });
+      appendSvg(svg, "line", {
+        x1: "25",
+        y1: "12",
+        x2: "11",
+        y2: "26",
+        stroke: "currentColor",
+        "stroke-width": "3",
+        "stroke-linecap": "round"
+      });
+      appendSvg(svg, "path", {
+        d: "M14 8 C17 6 21 6 24 8",
+        fill: "none",
+        stroke: "currentColor",
+        "stroke-width": "2",
+        "stroke-linecap": "round"
+      });
+      break;
+    case "normal":
+    default:
+      appendNotehead(svg, 18, 18, 8.5, 5.3);
+      break;
+  }
+
+  return svg;
+}
+
+function createDeleteIcon(): SVGSVGElement {
+  const svg = createSvg("svg", {
+    class: "pg-grid-editor__tool-icon",
+    viewBox: "0 0 36 36",
+    "aria-hidden": "true",
+    focusable: "false"
+  });
+
+  appendSvg(svg, "line", {
+    x1: "13",
+    y1: "13",
+    x2: "23",
+    y2: "23",
+    stroke: "currentColor",
+    "stroke-width": "3.2",
+    "stroke-linecap": "round"
+  });
+  appendSvg(svg, "line", {
+    x1: "23",
+    y1: "13",
+    x2: "13",
+    y2: "23",
+    stroke: "currentColor",
+    "stroke-width": "3.2",
+    "stroke-linecap": "round"
+  });
+
+  return svg;
+}
+
+function appendGraceNote(svg: SVGSVGElement, x: number, y: number, scale: number): void {
+  appendNotehead(svg, x, y, 5.2 * scale, 3.5 * scale);
+  appendSvg(svg, "line", {
+    x1: String(x + 3.2 * scale),
+    y1: String(y - 1.8 * scale),
+    x2: String(x + 3.2 * scale),
+    y2: String(y - 15 * scale),
+    stroke: "currentColor",
+    "stroke-width": String(1.9 * scale),
+    "stroke-linecap": "round"
+  });
+}
+
+function appendMainNote(svg: SVGSVGElement, x: number, y: number): void {
+  appendNotehead(svg, x, y, 7.2, 4.8);
+  appendSvg(svg, "line", {
+    x1: String(x + 4.5),
+    y1: String(y - 2.4),
+    x2: String(x + 4.5),
+    y2: "7",
+    stroke: "currentColor",
+    "stroke-width": "2",
+    "stroke-linecap": "round"
+  });
+}
+
+function appendNotehead(svg: SVGSVGElement, cx: number, cy: number, rx: number, ry: number): void {
+  appendSvg(svg, "ellipse", {
+    cx: String(cx),
+    cy: String(cy),
+    rx: String(rx),
+    ry: String(ry),
+    transform: `rotate(-18 ${cx} ${cy})`,
+    fill: "currentColor"
+  });
+}
+
+function appendSvg<K extends keyof SVGElementTagNameMap>(
+  parent: SVGElement,
+  name: K,
+  attrs: Record<string, string>
+): SVGElementTagNameMap[K] {
+  const element = createSvg(name, attrs);
+
+  parent.appendChild(element);
+
+  return element;
+}
+
+function createSvg<K extends keyof SVGElementTagNameMap>(
+  name: K,
+  attrs: Record<string, string>
+): SVGElementTagNameMap[K] {
+  const element = document.createElementNS(SVG_NS, name);
+
+  Object.entries(attrs).forEach(([key, value]) => element.setAttribute(key, value));
+
+  return element;
 }
