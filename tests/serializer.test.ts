@@ -62,6 +62,12 @@ HH | x---`);
     expect(out).toContain("HFS | xX--");
   });
 
+  it("round-trips second kick rows as drum-notehead hits", () => {
+    const out = roundTrips("BD  | o---\nBD2 | --O-");
+
+    expect(out).toContain("BD2 | --O-");
+  });
+
   it("round-trips choked cymbal hits with the choke character", () => {
     const out = roundTrips("CC | c---\nBD | o---");
 

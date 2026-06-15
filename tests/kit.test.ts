@@ -57,6 +57,8 @@ describe("INSTRUMENTS_BY_ALIAS", () => {
     expect(INSTRUMENTS_BY_ALIAS.get("bd")?.id).toBe("kick");
     expect(INSTRUMENTS_BY_ALIAS.get("bass")?.id).toBe("kick");
     expect(INSTRUMENTS_BY_ALIAS.get("kick")?.id).toBe("kick");
+    expect(INSTRUMENTS_BY_ALIAS.get("bd2")?.id).toBe("second-kick");
+    expect(INSTRUMENTS_BY_ALIAS.get("secondbassdrum")?.id).toBe("second-kick");
     expect(INSTRUMENTS_BY_ALIAS.get("hh")?.id).toBe("closed-hat");
     expect(INSTRUMENTS_BY_ALIAS.get("ho")?.id).toBe("half-open-hat");
     expect(INSTRUMENTS_BY_ALIAS.get("hho")?.id).toBe("half-open-hat");
@@ -78,6 +80,7 @@ describe("getAllowedArticulations", () => {
     expect(getAllowedArticulations(instrument("sd"))).toEqual(["normal", "accent", "ghost", "flam", "drag", "diddle", "buzz"]);
     expect(getAllowedArticulations(instrument("ft"))).toEqual(["normal", "accent", "flam", "drag", "diddle"]);
     expect(getAllowedArticulations(instrument("bd"))).toEqual(["normal", "accent", "flam"]);
+    expect(getAllowedArticulations(instrument("bd2"))).toEqual(["normal", "accent", "flam"]);
     expect(getAllowedArticulations(instrument("hh"))).toEqual(["normal", "accent"]);
     expect(getAllowedArticulations(instrument("hfs"))).toEqual(["normal", "accent"]);
   });

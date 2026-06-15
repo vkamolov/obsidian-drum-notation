@@ -70,6 +70,7 @@ The pattern is one character per grid slot. By default one character is a sixtee
 | Labels | Instrument |
 | --- | --- |
 | `BD`, `KD`, `Kick` | Kick |
+| `BD2`, `KD2`, `Kick2`, `Bass Drum 2` | Second kick / second bass drum |
 | `HF`, `HHF`, `Foot Hat`, `Hi-hat Foot` | Hi-hat foot |
 | `HFS`, `HHFS`, `Foot Splash`, `Hi-hat Splash` | Hi-hat foot splash |
 | `SD`, `SN`, `Snare` | Snare |
@@ -90,7 +91,7 @@ The pattern is one character per grid slot. By default one character is a sixtee
 | `LFT`, `Low Floor Tom` | Low floor tom |
 | `CB`, `Cowbell` | Cowbell |
 
-`SD` uses a fuller synthesized snare sound. `RS` / cross-stick stays shorter and clickier. `CR`, `SP`, `China`, and `Stack` use separate synthesized cymbal voices so their playback is distinguishable. `OH` / open hi-hat renders with the standard open-circle mark above the note. `HO` / half-open hi-hat renders the open circle with a vertical line through it. `HFS` / hi-hat foot splash renders as a circled x on the foot-hat line.
+`SD` uses a fuller synthesized snare sound. `RS` / cross-stick stays shorter and clickier. `BD2` / second kick is for double-bass-pedal notation and renders below the main kick while using the same synthesized kick voice. `CR`, `SP`, `China`, and `Stack` use separate synthesized cymbal voices so their playback is distinguishable. `OH` / open hi-hat renders with the standard open-circle mark above the note. `HO` / half-open hi-hat renders the open circle with a vertical line through it. `HFS` / hi-hat foot splash renders as a circled x on the foot-hat line.
 
 ## Color Legend
 
@@ -123,6 +124,7 @@ FT    | ---------------o | ----------------
 LFT   | ---------------- | x---------------
 CB    | ---------------- | -x--------------
 BD    | ---------------- | --o-------------
+BD2   | ---------------- | ----o-----------
 ```
 ````
 
@@ -283,7 +285,7 @@ Combinations:
 
 ## Full Kit Example
 
-This example is inspired by the reference image and includes every supported row: cymbals, hi-hats, ride bell, cowbell, snare, cross-stick, ghost/flam/drag/choke strokes, rack toms, floor toms, kick, foot hi-hat, foot splash, and a stacked kick plus foot-hat hit.
+This example is inspired by the reference image and includes every supported row: cymbals, hi-hats, ride bell, cowbell, snare, cross-stick, ghost/flam/drag/choke strokes, rack toms, floor toms, kick, second kick, foot hi-hat, foot splash, and a stacked kick plus foot-hat hit.
 
 ````
 ```drums
@@ -311,6 +313,7 @@ LT    | --------------o-----------------
 FT    | ---------------o----------------
 LFT   | ----------------o---------------
 BD    | -----------------o-------------X
+BD2   | --------------------o-----------
 HF    | ------------------x------------X
 HFS   | -------------------x------------
 ```

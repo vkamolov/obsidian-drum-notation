@@ -1,4 +1,5 @@
 import { getHitChar, normalizePattern } from "./kit";
+import { getSlotsPerBar } from "./music";
 import { finalizeDrumBlock } from "./parser";
 import {
   DrumArticulation,
@@ -193,8 +194,8 @@ export function insertBarAfter(block: DrumBlock, barIndex: number, placement: Ba
   }
 
   const sourceView = views[location.system];
-  const sourceBar = sourceView.bars[location.bar];
-  const emptyBar = emptyBarLike(sourceBar);
+  const emptyBar = emptyBarForBlock(block);
+  const restPattern = "-".repeat(emptyBar.width);
 
   if (placement === "new-system") {
     views.splice(location.system + 1, 0, {
@@ -202,12 +203,12 @@ export function insertBarAfter(block: DrumBlock, barIndex: number, placement: Ba
       rows: rowsForBar(sourceView, location.bar).map((row) => ({
         instrument: row.instrument,
         label: row.label,
-        patterns: ["-".repeat(sourceBar.width)]
+        patterns: [restPattern]
       }))
     });
   } else {
     insertPatternsIntoSystem(sourceView, location.bar + 1, emptyBar, rowsForBar(sourceView, location.bar), (row) =>
-      "-".repeat(sourceBar.width)
+      restPattern
     );
   }
 
@@ -458,6 +459,10 @@ function rowsForBar(view: SystemView, barIndex: number): RowView[] {
 
 function emptyBarLike(bar: BarView): BarView {
   return { width: bar.width, start: 0 };
+}
+
+function emptyBarForBlock(block: DrumBlock): BarView {
+  return { width: getSlotsPerBar(block.timeSignature, block.gridResolution), start: 0 };
 }
 
 function insertPatternsIntoSystem(

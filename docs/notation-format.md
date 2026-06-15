@@ -111,6 +111,7 @@ rows to stack simultaneous hits (e.g. kick + hi-hat foot).
 | Floor tom | `ft`, `floor` | ● | 41 |
 | Low floor tom | `lft`, `ft2`, `low floor` | ● | 43 |
 | Kick | `bd`, `kd`, `kick`, `bass` | ● | 36 |
+| Second kick | `bd2`, `kd2`, `kick2`, `bass drum 2` | ●, below kick | 36 |
 | Cowbell | `cb`, `cowbell` | × | 56 |
 
 > "Cross-stick" is **not** a separate instrument — it is the existing `rim`
@@ -406,11 +407,11 @@ To stay deterministic and diff-friendly, serialization **normalizes**:
   text.
 - Model-level bar edits serialize through the same row/bar invariants as parsed
   text: inserted empty bars are represented as rest patterns for the selected
-  bar's instruments, duplicated bars copy the selected bar's row patterns, and
-  deleted bars remove empty systems when no rows remain. A model-level repeat
-  toggle marks a normal bar as `%` by copying the previous bar's playable
-  pattern, and clearing that marker leaves the copied bar as normal editable
-  row text.
+  bar's instruments and are sized from the block's current `Time` and `Grid`,
+  duplicated bars copy the selected bar's exact row patterns, and deleted bars
+  remove empty systems when no rows remain. A model-level repeat toggle marks a
+  normal bar as `%` by copying the previous bar's playable pattern, and clearing
+  that marker leaves the copied bar as normal editable row text.
 
 This means a hand-authored block that uses `>` for accents or `.` for rests will
 come back from a serialize pass using `X`/`O` and `-`. That is expected. (A

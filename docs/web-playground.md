@@ -157,8 +157,9 @@ In the browser at `localhost:5173`:
    diddle, and buzz. Horizontally scroll the grid → instrument labels remain
    pinned while count markers and cells scroll. Use the bar action buttons to
    add, duplicate, add-on-new-line, mark/unmark one-bar repeats, and delete bars;
-   the selected bar follows the changed bar. Click **Undo** → the previous
-   text/preview returns.
+   added empty bars use the current Time/Grid slot count while duplicated bars
+   preserve the selected bar exactly. The selected bar follows the changed bar.
+   Click **Undo** → the previous text/preview returns.
 4. Toggle theme, change Title/Tempo/Time/Grid/Repeat/Legend, switch examples,
    and copy the block for Obsidian.
 

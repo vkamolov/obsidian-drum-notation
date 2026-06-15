@@ -100,6 +100,18 @@ BD  | o---`);
   });
 });
 
+describe("parseDrumBlock - second kick", () => {
+  it("recognizes a second bass drum row for double-pedal notation", () => {
+    const block = parseDrumBlock(`BD  | o---
+BD2 | --o-`);
+
+    expect(block.rows[1].instrument.id).toBe("second-kick");
+    expect(block.rows[1].instrument.playback).toBe("kick");
+    expect(block.rows[1].instrument.vexKey).toBe("d/4");
+    expect(block.slots[2].hits.map((hit) => hit.instrument.id)).toEqual(["second-kick"]);
+  });
+});
+
 describe("parseDrumBlock - multiple bars", () => {
   it("splits a row into bars on the | segment separator", () => {
     const block = parseDrumBlock("HH | x-x- | x-x-");

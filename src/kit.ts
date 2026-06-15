@@ -174,6 +174,15 @@ export const DRUM_KIT: DrumInstrument[] = [
     playback: "kick"
   },
   {
+    id: "second-kick",
+    label: "Second kick",
+    aliases: ["bd2", "kd2", "kick2", "bass2", "bass drum 2", "second kick", "second bass", "second bass drum"],
+    vexKey: "d/4",
+    midi: 36,
+    color: "#ef4444",
+    playback: "kick"
+  },
+  {
     id: "cowbell",
     label: "Cowbell",
     aliases: ["cb", "cowbell"],
@@ -199,6 +208,7 @@ const KICK_ARTICULATIONS: DrumArticulation[] = ["normal", "accent", "flam"];
 
 const CYMBAL_INSTRUMENT_IDS = new Set(["crash", "splash", "china", "stack", "ride"]);
 const TOM_INSTRUMENT_IDS = new Set(["high-tom", "mid-tom", "low-tom", "floor-tom", "low-floor-tom"]);
+const KICK_INSTRUMENT_IDS = new Set(["kick", "second-kick"]);
 
 // Instrument-aware articulation capabilities for visual editors. This keeps
 // the model alphabet global while letting UI surfaces offer only useful choices
@@ -216,7 +226,7 @@ export function getAllowedArticulations(instrument: DrumInstrument): DrumArticul
     return [...TOM_ARTICULATIONS];
   }
 
-  if (instrument.id === "kick") {
+  if (KICK_INSTRUMENT_IDS.has(instrument.id)) {
     return [...KICK_ARTICULATIONS];
   }
 

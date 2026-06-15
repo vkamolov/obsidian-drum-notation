@@ -136,14 +136,16 @@ describe("setting edits", () => {
 });
 
 describe("bar edits", () => {
-  it("insertBarAfter adds an empty bar in the same system", () => {
+  it("insertBarAfter adds an empty bar sized from the current time and grid", () => {
     const block = parseDrumBlock("HH | x--- | --x-\nSD | ---- | --o-");
     const edited = insertBarAfter(block, 0);
 
     expect(edited.systems).toHaveLength(1);
     expect(edited.bars).toHaveLength(3);
-    expect(edited.bars.map((bar) => bar.slots.length)).toEqual([4, 4, 4]);
-    expect(serializeDrumBlock(edited)).toBe("HH | x--- | ---- | --x-\nSD | ---- | ---- | --o-");
+    expect(edited.bars.map((bar) => bar.slots.length)).toEqual([4, 16, 4]);
+    expect(serializeDrumBlock(edited)).toBe(
+      "HH | x--- | ---------------- | --x-\nSD | ---- | ---------------- | --o-"
+    );
   });
 
   it("insertBarAfter can place an empty bar in a new system", () => {
@@ -151,7 +153,18 @@ describe("bar edits", () => {
     const edited = insertBarAfter(block, 0, "new-system");
 
     expect(edited.systems).toHaveLength(2);
-    expect(serializeDrumBlock(edited)).toBe("HH | x---\nSD | --o-\nBar\nHH | ----\nSD | ----");
+    expect(serializeDrumBlock(edited)).toBe(
+      "HH | x---\nSD | --o-\nBar\nHH | ----------------\nSD | ----------------"
+    );
+  });
+
+  it("insertBarAfter uses 32 slots for empty bars when Grid is 32", () => {
+    const block = parseDrumBlock("Grid: 32\nHH | x---");
+    const edited = insertBarAfter(block, 0);
+
+    expect(edited.bars.map((bar) => bar.slots.length)).toEqual([4, 32]);
+    expect(serializeDrumBlock(edited)).toBe(`Grid: 32
+HH | x--- | --------------------------------`);
   });
 
   it("duplicateBar copies a bar in the same system", () => {
