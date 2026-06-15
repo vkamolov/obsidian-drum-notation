@@ -159,7 +159,10 @@ In the browser at `localhost:5173`:
    add, duplicate, add-on-new-line, mark/unmark one-bar repeats, and delete bars;
    added empty bars use the current Time/Grid slot count while duplicated bars
    preserve the selected bar exactly. The selected bar follows the changed bar.
-   Click **Undo** → the previous text/preview returns.
+   If playback is running, visual edits and debounced text-code edits restart the
+   active play/loop mode against the updated notation so new hits are heard
+   without a manual stop/start. Click **Undo** → the previous text/preview
+   returns.
 4. Toggle theme, change Title/Tempo/Time/Grid/Repeat/Legend, switch examples,
    and copy the block for Obsidian.
 

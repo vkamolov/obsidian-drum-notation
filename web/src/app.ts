@@ -304,13 +304,14 @@ function stopPlayback(): void {
   clearVisuals();
 }
 
-function play(): void {
+function play(startSlot = 0): void {
   stopPlayback();
   if (!currentBlock || currentBlock.rows.length === 0) {
     return;
   }
 
   const block = currentBlock;
+  currentSlotIndex = clampSlotIndex(block, startSlot);
   setPlaying(playBtn, true);
   player = new DrumPlayer(
     getAudioContext(),
@@ -324,7 +325,7 @@ function play(): void {
       currentSlotIndex = slotIndex;
       moveCursor(slotIndex);
     },
-    { repeatCount: block.repeatCount }
+    { startSlot: currentSlotIndex, repeatCount: block.repeatCount }
   );
   void player.play();
 }
@@ -338,8 +339,18 @@ function loopBar(): void {
     return;
   }
 
+  startLoopBar();
+}
+
+function startLoopBar(barIndex = selectedBarIndex): void {
+  if (!currentBlock || currentBlock.rows.length === 0) {
+    return;
+  }
+
   stopPlayback();
   const block = currentBlock;
+  const bar = block.bars[clampBarIndex(block, barIndex)];
+  currentSlotIndex = bar?.startSlot ?? clampSlotIndex(block, currentSlotIndex);
   const range = getBarRange(block, currentSlotIndex);
   isLooping = true;
   setPlaying(loopBtn, true);
@@ -359,6 +370,35 @@ function loopBar(): void {
     { startSlot: range.startSlot, endSlot: range.endSlot, loop: true }
   );
   void player.play();
+}
+
+function restartPlaybackAfterEdit(wasPlaying: boolean, wasLooping: boolean, restartSlotIndex: number, restartBarIndex: number): void {
+  if (!wasPlaying || lastRenderError || !currentBlock || currentBlock.rows.length === 0) {
+    return;
+  }
+
+  if (wasLooping) {
+    startLoopBar(restartBarIndex);
+  } else {
+    play(restartSlotIndex);
+  }
+}
+
+function capturePlaybackRestart(): (barIndex?: number) => void {
+  const wasPlaying = player !== null;
+  const wasLooping = isLooping;
+  const restartSlotIndex = currentSlotIndex;
+  const restartBarIndex = selectedBarIndex;
+
+  return (barIndex = restartBarIndex) => restartPlaybackAfterEdit(wasPlaying, wasLooping, restartSlotIndex, barIndex);
+}
+
+function clampSlotIndex(block: DrumBlock, slotIndex: number): number {
+  if (block.slots.length === 0) {
+    return 0;
+  }
+
+  return Math.min(block.slots.length - 1, Math.max(0, Math.round(slotIndex)));
 }
 
 async function previewSlot(block: DrumBlock, slot: DrumSlot): Promise<void> {
@@ -417,11 +457,14 @@ function applyEditedBlock(next: DrumBlock): void {
 }
 
 function applyGridEditedBlock(next: DrumBlock, changedSlotIndex?: number, nextSelectedBarIndex?: number): void {
+  const restartPlayback = capturePlaybackRestart();
+
   if (nextSelectedBarIndex !== undefined) {
     selectedBarIndex = clampBarIndex(next, nextSelectedBarIndex);
   } else if (changedSlotIndex !== undefined) {
     selectedBarIndex = barIndexForSlot(next, changedSlotIndex);
   }
+
   editor.value = serializeAuthoringBlock(next);
   persist();
   isApplyingGridEdit = true;
@@ -431,6 +474,8 @@ function applyGridEditedBlock(next: DrumBlock, changedSlotIndex?: number, nextSe
     isApplyingGridEdit = false;
   }
 
+  restartPlayback(selectedBarIndex);
+
   if (changedSlotIndex === undefined || !currentBlock) {
     return;
   }
@@ -438,7 +483,7 @@ function applyGridEditedBlock(next: DrumBlock, changedSlotIndex?: number, nextSe
   selectEditSlot(changedSlotIndex);
   const slot = currentBlock.slots.find((candidate) => candidate.index === changedSlotIndex);
 
-  if (slot) {
+  if (slot && player === null) {
     void previewSlot(currentBlock, slot);
   }
 }
@@ -773,8 +818,10 @@ function init(): void {
   }
 
   const onEdit = debounce(() => {
+    const restartPlayback = capturePlaybackRestart();
     persist();
     renderPreview();
+    restartPlayback();
   }, 250);
   editor.addEventListener("input", onEdit);
 
@@ -837,7 +884,7 @@ function init(): void {
     applyEditedBlock({ ...currentBlock, legendMode: legendSelect.value as LegendMode });
   });
 
-  playBtn.addEventListener("click", play);
+  playBtn.addEventListener("click", () => play());
   stopBtn.addEventListener("click", stopPlayback);
   loopBtn.addEventListener("click", loopBar);
   editBtn.addEventListener("click", () => {
