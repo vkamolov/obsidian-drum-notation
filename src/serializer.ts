@@ -12,6 +12,13 @@ import {
   DrumInstrument,
   DrumSystem
 } from "./types";
+import { normalizeLabel } from "./util";
+
+export type SerializationMode = "minimal" | "authoring";
+
+export interface SerializeDrumBlockOptions {
+  mode?: SerializationMode;
+}
 
 // Pure, DOM-free model -> text serializer. It is the inverse of parseDrumBlock
 // at the *model* level: parse(serialize(parse(x))) is structurally equal to
@@ -19,11 +26,16 @@ import {
 // goal — output is normalized (canonical hit characters, default settings
 // dropped, whitespace regularized) so it stays deterministic and diff-friendly.
 //
-// NOTE: this is intentionally not wired into the live render/play path yet. It
-// exists so the parse -> edit -> serialize loop can be built and tested in
-// isolation, with zero risk to the working renderer.
-export function serializeDrumBlock(block: DrumBlock): string {
-  const lines = [...serializeHeader(block)];
+export function serializeDrumBlock(block: DrumBlock, options: SerializeDrumBlockOptions = {}): string {
+  if (options.mode === "authoring") {
+    return serializeAuthoringBlock(block);
+  }
+
+  return serializeMinimalBlock(block);
+}
+
+function serializeMinimalBlock(block: DrumBlock): string {
+  const lines = [...serializeMinimalHeader(block)];
 
   block.systems.forEach((system, index) => {
     if (index > 0) {
@@ -36,7 +48,7 @@ export function serializeDrumBlock(block: DrumBlock): string {
   return lines.join("\n");
 }
 
-function serializeHeader(block: DrumBlock): string[] {
+function serializeMinimalHeader(block: DrumBlock): string[] {
   // Unknown/unmodeled lines (Title, Author, Count, Engraving, comments…) are
   // preserved verbatim and in order so hand-written metadata is never dropped.
   const lines = [...block.metadata];
@@ -73,6 +85,66 @@ function serializeHeader(block: DrumBlock): string[] {
   }
 
   return lines;
+}
+
+function serializeAuthoringBlock(block: DrumBlock): string {
+  const requiredLines = [
+    `Title: ${getMetadataTitle(block)}`,
+    `Tempo: ${block.tempo}`,
+    `Time: ${block.timeSignature}`,
+    `Grid: ${block.gridResolution}`
+  ];
+
+  if (block.repeatCount !== DEFAULT_REPEAT_COUNT) {
+    requiredLines.push(`Repeat: ${block.repeatCount}`);
+  }
+
+  if (block.legendMode !== DEFAULT_LEGEND_MODE) {
+    requiredLines.push(`Legend: ${block.legendMode}`);
+  }
+
+  const bodyLines = serializeMinimalBlock(block)
+    .split("\n")
+    .filter((line) => line.trim().length > 0)
+    .filter((line) => !isManagedAuthoringLine(line));
+
+  return [...requiredLines, ...bodyLines].join("\n");
+}
+
+function getMetadataTitle(block: DrumBlock): string {
+  const title = block.metadata.find((line) => normalizeLabel(line.split(":")[0] ?? "") === "title");
+
+  if (!title) {
+    return "Drum notation";
+  }
+
+  return title.slice(title.indexOf(":") + 1).trim() || "Drum notation";
+}
+
+function isManagedAuthoringLine(line: string): boolean {
+  const divider = line.indexOf(":");
+
+  if (divider <= 0) {
+    return false;
+  }
+
+  return new Set([
+    "title",
+    "tempo",
+    "bpm",
+    "time",
+    "timesignature",
+    "meter",
+    "repeat",
+    "repeats",
+    "grid",
+    "subdivision",
+    "resolution",
+    "legend",
+    "instrumentlegend",
+    "kitlegend",
+    "colorlegend"
+  ]).has(normalizeLabel(line.slice(0, divider)));
 }
 
 function serializeSystem(system: DrumSystem): string[] {

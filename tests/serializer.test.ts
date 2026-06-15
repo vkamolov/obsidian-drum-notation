@@ -146,6 +146,50 @@ HH | x---`));
     expect(out).toBe("HH | x---");
   });
 
+  it("can serialize an authoring block with visible playground settings", () => {
+    const out = serializeDrumBlock(
+      parseDrumBlock(`Title: Basic rock groove
+Tempo: 100
+Time: 4/4
+Grid: 16
+Count: 1 e & a 2 e & a 3 e & a 4 e & a
+HH | x-x-
+SD | --o-`),
+      { mode: "authoring" }
+    );
+
+    expect(out).toBe(`Title: Basic rock groove
+Tempo: 100
+Time: 4/4
+Grid: 16
+Count: 1 e & a 2 e & a 3 e & a 4 e & a
+HH | x-x-
+SD | --o-`);
+  });
+
+  it("keeps non-default authoring settings visible once", () => {
+    const out = serializeDrumBlock(
+      parseDrumBlock(`Title: Loud
+Tempo: 120
+Time: 7/8
+Repeat: 2
+Grid: 32
+Legend: used
+Cursor: on
+HH | x---`),
+      { mode: "authoring" }
+    );
+
+    expect(out).toBe(`Title: Loud
+Tempo: 120
+Time: 7/8
+Grid: 32
+Repeat: 2
+Legend: used
+Cursor: on
+HH | x---`);
+  });
+
   it("serializes an empty block to an empty string", () => {
     expect(serializeDrumBlock(parseDrumBlock(""))).toBe("");
   });

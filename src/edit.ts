@@ -10,13 +10,14 @@ import {
   DrumRowInput,
   DrumSystem,
   GridResolution,
-  MeasureRepeat
+  MeasureRepeat,
+  MeasureRepeatInput
 } from "./types";
 
 // Pure, DOM-free editing layer over the parsed model. Every helper takes a
 // block and returns a NEW block; none mutate their input and none touch the
-// renderer, player, or Obsidian. They are the building blocks for a future
-// visual edit mode but are intentionally not wired into the live path yet.
+// renderer, player, or Obsidian. They are used by visual editors and any other
+// model-level write path.
 //
 // Note identity is positional: a hit is uniquely addressed by its global
 // (slot index, instrument id). Because the canonical artifact is text, there is
@@ -140,8 +141,6 @@ interface SystemView {
   bars: BarView[];
   rows: RowView[];
 }
-
-type MeasureRepeatInput = { type: MeasureRepeat; count: number };
 
 export type BarPlacement = "same-system" | "new-system";
 

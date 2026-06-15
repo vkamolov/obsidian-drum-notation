@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { getAllowedArticulations, getArticulation, getVelocity, INSTRUMENTS_BY_ALIAS, isArticulationAllowed, isRest } from "../src/kit";
+import {
+  getAllowedArticulations,
+  getArticulation,
+  getArticulationForKey,
+  getVelocity,
+  INSTRUMENTS_BY_ALIAS,
+  isArticulationAllowed,
+  isRest
+} from "../src/kit";
 
 describe("getArticulation", () => {
   it("maps accent characters", () => {
@@ -35,6 +43,22 @@ describe("getVelocity", () => {
     expect(getVelocity("d")).toBe(0.75);
     expect(getVelocity("c")).toBe(0.9);
     expect(getVelocity("x")).toBe(0.75);
+  });
+});
+
+describe("getArticulationForKey", () => {
+  it("maps explicit notation shortcut keys and rejects unsupported keys", () => {
+    expect(getArticulationForKey("x")).toBe("normal");
+    expect(getArticulationForKey("o")).toBe("normal");
+    expect(getArticulationForKey("X")).toBe("accent");
+    expect(getArticulationForKey("O")).toBe("accent");
+    expect(getArticulationForKey("g")).toBe("ghost");
+    expect(getArticulationForKey("f")).toBe("flam");
+    expect(getArticulationForKey("r")).toBe("drag");
+    expect(getArticulationForKey("d")).toBe("diddle");
+    expect(getArticulationForKey("z")).toBe("buzz");
+    expect(getArticulationForKey("c")).toBe("choke");
+    expect(getArticulationForKey("?")).toBeNull();
   });
 });
 

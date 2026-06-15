@@ -451,7 +451,7 @@ function syncControls(block: DrumBlock): void {
 // rewrite the editor in authoring form. The core serializer still owns the
 // deterministic normalized form used in diagnostics.
 function applyEditedBlock(next: DrumBlock): void {
-  editor.value = serializeAuthoringBlock(next);
+  editor.value = serializeDrumBlock(next, { mode: "authoring" });
   persist();
   renderPreview();
 }
@@ -465,7 +465,7 @@ function applyGridEditedBlock(next: DrumBlock, changedSlotIndex?: number, nextSe
     selectedBarIndex = barIndexForSlot(next, changedSlotIndex);
   }
 
-  editor.value = serializeAuthoringBlock(next);
+  editor.value = serializeDrumBlock(next, { mode: "authoring" });
   persist();
   isApplyingGridEdit = true;
   try {
@@ -486,56 +486,6 @@ function applyGridEditedBlock(next: DrumBlock, changedSlotIndex?: number, nextSe
   if (slot && player === null) {
     void previewSlot(currentBlock, slot);
   }
-}
-
-function serializeAuthoringBlock(block: DrumBlock): string {
-  const requiredLines = [
-    `Title: ${getTitle(block)}`,
-    `Tempo: ${block.tempo}`,
-    `Time: ${block.timeSignature}`,
-    `Grid: ${block.gridResolution}`
-  ];
-
-  if (block.repeatCount !== 1) {
-    requiredLines.push(`Repeat: ${block.repeatCount}`);
-  }
-
-  if (block.legendMode !== "off") {
-    requiredLines.push(`Legend: ${block.legendMode}`);
-  }
-
-  const bodyLines = serializeDrumBlock(block)
-    .split("\n")
-    .filter((line) => line.trim().length > 0)
-    .filter((line) => !isManagedAuthoringLine(line));
-
-  return [...requiredLines, ...bodyLines].join("\n");
-}
-
-function isManagedAuthoringLine(line: string): boolean {
-  const divider = line.indexOf(":");
-
-  if (divider <= 0) {
-    return false;
-  }
-
-  return new Set([
-    "title",
-    "tempo",
-    "bpm",
-    "time",
-    "timesignature",
-    "meter",
-    "repeat",
-    "repeats",
-    "grid",
-    "subdivision",
-    "resolution",
-    "legend",
-    "instrumentlegend",
-    "kitlegend",
-    "colorlegend"
-  ]).has(normalizeLabel(line.slice(0, divider)));
 }
 
 function withTitle(block: DrumBlock, title: string): DrumBlock {
@@ -574,7 +524,8 @@ function enterEditMode(): void {
         void previewSlot(block, slot);
       }
     },
-    onSelectBar: (barIndex) => selectBar(barIndex, false)
+    onSelectBar: (barIndex) => selectBar(barIndex, false),
+    confirmAction: (message) => window.confirm(message)
   });
 
   if (scoreEl) {
@@ -695,7 +646,7 @@ function syncExampleSelection(raw: string): void {
 }
 
 function toAuthoringText(raw: string): string {
-  return serializeAuthoringBlock(parseDrumBlock(raw));
+  return serializeDrumBlock(parseDrumBlock(raw), { mode: "authoring" });
 }
 
 async function copyText(button: HTMLButtonElement, text: string): Promise<void> {
@@ -896,7 +847,7 @@ function init(): void {
   });
 
   copyBlockBtn.addEventListener("click", () => {
-    const text = currentBlock ? serializeAuthoringBlock(currentBlock) : editor.value.trim();
+    const text = currentBlock ? serializeDrumBlock(currentBlock, { mode: "authoring" }) : editor.value.trim();
 
     void copyText(copyBlockBtn, "```drums\n" + text.trim() + "\n```");
   });

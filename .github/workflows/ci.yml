@@ -30,3 +30,6 @@ jobs:
 
       - name: Build web playground
         run: npm run web:build
+
+      - name: Typecheck web playground
+        run: npm run web:typecheck

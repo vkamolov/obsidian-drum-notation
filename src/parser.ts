@@ -17,7 +17,7 @@ import {
   DrumSystem,
   GridResolution,
   LegendMode,
-  MeasureRepeat
+  MeasureRepeatInput
 } from "./types";
 import { normalizeLabel } from "./util";
 
@@ -28,11 +28,6 @@ interface BarSnapshotRow {
 }
 
 type BarSnapshot = BarSnapshotRow[];
-
-interface MeasureRepeatInput {
-  type: MeasureRepeat;
-  count: number;
-}
 
 export function parseDrumBlock(source: string): DrumBlock {
   const metadata: string[] = [];

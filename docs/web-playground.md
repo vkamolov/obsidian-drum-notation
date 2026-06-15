@@ -29,17 +29,17 @@ web/src/editor-grid.ts    grid edit mode (consumes src/edit.ts)
 web/src/examples.ts       example notation for the dropdown
 web/src/obsidian-dom.ts   Obsidian DOM-helper shim (the browser port surface)
 web/src/playground.css    workbench + grid-editor styles, theme variables
-web/tsconfig.json         web-only TS config (editor / optional typecheck; NOT in CI)
+web/tsconfig.json         web-only TS config (editor support + CI typecheck)
 .claude/launch.json       local preview/dev-server config (Claude Code only)
 ```
 
 **Modified**
 
 ```
-package.json              + scripts (web, web:build, web:preview); vite@^6 added to devDependencies
+package.json              + scripts (web, web:build, web:preview, web:typecheck); vite@^6 added to devDependencies
 package-lock.json         vite + transitive deps
 .gitignore                + web/dist/
-.github/workflows/ci.yml  + "Build web playground" step (npm run web:build)
+.github/workflows/ci.yml  + web build/typecheck steps
 ```
 
 ## Folder structure (web concerns)
@@ -62,7 +62,7 @@ obsidian-drum-notation/
 │       ├─ examples.ts
 │       ├─ obsidian-dom.ts
 │       └─ playground.css
-├─ .github/workflows/ci.yml  # now also runs web:build
+├─ .github/workflows/ci.yml  # now also runs web:build + web:typecheck
 └─ package.json              # web scripts + vite devDep
 ```
 
@@ -90,7 +90,7 @@ the **first** import in `app.ts`. `engrave.ts` itself was **not** changed.
   `base: "./"` (relative asset paths for a future subpath deploy),
   `build.outDir: "dist"` → `web/dist`.
 - Scripts: `npm run web` (dev server, HMR), `npm run web:build` (production
-  build), `npm run web:preview`.
+  build), `npm run web:preview`, and `npm run web:typecheck`.
 - The root `tsconfig.json` includes only `main.ts` and `src/**/*.ts`, so `web/`
   is excluded from the plugin's `tsc` typecheck. The plugin esbuild entry
   remains `main.ts`. The plugin build/output is therefore unaffected.
@@ -136,9 +136,10 @@ the **first** import in `app.ts`. `engrave.ts` itself was **not** changed.
 
 ```bash
 npm ci
-npm test            # expect: 81 passed
+npm test            # expect: 87 passed
 npm run build       # plugin build: tsc + esbuild, no errors; emits main.js
 npm run web:build   # vite build, no errors; emits web/dist/ (JS ~1.17MB — VexFlow; size warning is advisory only)
+npm run web:typecheck
 npm run web         # dev server at http://localhost:5173
 ```
 
@@ -177,14 +178,12 @@ Console should be free of errors/warnings.
 - **`%` measure-repeat bars:** repeat bars are read-only for cell edits, but the
   bar action row can convert a selected repeat back into a normal copied bar.
   Count editing for `%xN` is still deferred.
-- The notation textarea uses a web-only authoring serializer. The core
-  `serializeDrumBlock` contract is unchanged and remains visible in advanced
-  diagnostics as the normalized form.
+- The notation textarea uses `serializeDrumBlock(..., { mode: "authoring" })`;
+  advanced diagnostics still show the default normalized form.
 - Edit mode uses a selected-cell tool strip; direct SVG/grid overlay editing is
   still deferred to the visual-edit roadmap.
-- `web/tsconfig.json` exists for editor support but is **not** run in CI — Vite
-  transpiles without type-checking, so a pure type error in `web/` would not
-  fail CI (only the plugin's `tsc` runs).
+- `web/tsconfig.json` is checked in CI with `npm run web:typecheck`; Vite still
+  owns the browser bundle build.
 - Bundle-size warning on `web:build` is expected (VexFlow) and non-blocking.
 - The serializer normalizes characters, so non-canonical input (e.g. `o` on a
   cross-notehead row) round-trips to a *semantically* equal model but a

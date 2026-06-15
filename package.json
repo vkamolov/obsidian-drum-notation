@@ -12,7 +12,8 @@
     "test:watch": "vitest",
     "web": "vite",
     "web:build": "vite build",
-    "web:preview": "vite preview"
+    "web:preview": "vite preview",
+    "web:typecheck": "tsc -p web/tsconfig.json"
   },
   "keywords": [
     "obsidian",

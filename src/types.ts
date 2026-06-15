@@ -26,6 +26,11 @@ export interface DrumRowInput {
   instrument: DrumInstrument;
 }
 
+export interface MeasureRepeatInput {
+  type: MeasureRepeat;
+  count: number;
+}
+
 export interface DrumSystem {
   bars: DrumBar[];
 }

@@ -394,6 +394,11 @@ Its contract is **semantic**, not textual:
   string differs. The hits, articulations, and structure are unaffected.
 - **Byte-for-byte fidelity with the input is not a goal.**
 
+`serializeDrumBlock(block)` defaults to minimal normalized output. The optional
+`serializeDrumBlock(block, { mode: "authoring" })` form emits Obsidian-ready
+authoring text with visible `Title`, `Tempo`, `Time`, and `Grid` lines even when
+those settings are defaults.
+
 To stay deterministic and diff-friendly, serialization **normalizes**:
 
 - Hit characters collapse to the canonical glyph for their articulation and

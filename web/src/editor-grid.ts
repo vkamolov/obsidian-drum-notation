@@ -18,7 +18,7 @@ import {
   setBarRepeat,
   setHit
 } from "../../src/edit";
-import { DRUM_KIT, getAllowedArticulations, getHitChar, isArticulationAllowed } from "../../src/kit";
+import { DRUM_KIT, getAllowedArticulations, getArticulationForKey, getHitChar, isArticulationAllowed } from "../../src/kit";
 import { getSlotsPerBeat } from "../../src/music";
 import { DrumArticulation, DrumBlock, DrumInstrument } from "../../src/types";
 
@@ -35,6 +35,7 @@ interface GridEditorOptions {
   onChange: (block: DrumBlock, changedSlotIndex?: number, selectedBarIndex?: number) => void;
   onPreview: (block: DrumBlock, slotIndex: number) => void;
   onSelectBar?: (barIndex: number) => void;
+  confirmAction?: (message: string) => boolean;
 }
 
 const ARTICULATION_CLASS: Record<DrumArticulation, string> = {
@@ -79,6 +80,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
   // Instruments shown as rows: those already in the block, plus any the user
   // adds from the palette (kept visible even before they have a hit).
   const extraInstruments: DrumInstrument[] = [];
+  const confirmAction = options.confirmAction ?? (() => false);
 
   const applyChange = (next: DrumBlock, slotIndex?: number, nextSelectedBarIndex = selectedBarIndex) => {
     if (next === working) {
@@ -215,7 +217,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     }
 
     const hasHits = bar.slots.some((slot) => slot.hits.length > 0);
-    if (hasHits && !window.confirm(`Delete bar ${selectedBarIndex + 1}?`)) {
+    if (hasHits && !confirmAction(`Delete bar ${selectedBarIndex + 1}?`)) {
       return;
     }
 
@@ -239,7 +241,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     }
 
     const hasHits = bar.slots.some((slot) => slot.hits.length > 0);
-    if (hasHits && !window.confirm(`Replace bar ${selectedBarIndex + 1} with a repeat of the previous bar?`)) {
+    if (hasHits && !confirmAction(`Replace bar ${selectedBarIndex + 1} with a repeat of the previous bar?`)) {
       return;
     }
 
@@ -285,7 +287,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
       event.preventDefault();
       clearSelectionHit();
     } else if (!event.metaKey && !event.ctrlKey && !event.altKey && selectedCell) {
-      const articulation = articulationFromKey(event.key);
+      const articulation = getArticulationForKey(event.key);
 
       if (articulation) {
         event.preventDefault();
@@ -645,29 +647,4 @@ function clampBarIndex(block: DrumBlock, barIndex: number): number {
   }
 
   return Math.min(block.bars.length - 1, Math.max(0, Math.round(barIndex)));
-}
-
-function articulationFromKey(key: string): DrumArticulation | null {
-  switch (key) {
-    case "x":
-    case "o":
-      return "normal";
-    case "X":
-    case "O":
-      return "accent";
-    case "g":
-      return "ghost";
-    case "f":
-      return "flam";
-    case "r":
-      return "drag";
-    case "d":
-      return "diddle";
-    case "z":
-      return "buzz";
-    case "c":
-      return "choke";
-    default:
-      return null;
-  }
 }

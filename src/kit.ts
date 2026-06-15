@@ -272,6 +272,14 @@ export function getArticulation(value: string): DrumArticulation {
   return ARTICULATION_BY_CHAR[value] ?? "normal";
 }
 
+export function getArticulationForKey(value: string): DrumArticulation | null {
+  if (value === "x" || value === "o") {
+    return "normal";
+  }
+
+  return ARTICULATION_BY_CHAR[value] ?? null;
+}
+
 export function getVelocity(value: string): number {
   return VELOCITY_BY_ARTICULATION[getArticulation(value)];
 }

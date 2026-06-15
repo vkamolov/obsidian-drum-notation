@@ -23,11 +23,15 @@ Use these commands after relevant changes:
 ```bash
 npm test
 npm run build
+npm run web:build
+npm run web:typecheck
 ```
 
 `npm run build` is important after source edits because Obsidian loads the
 generated local `main.js`. The generated `main.js` is gitignored and should not
 be committed.
+
+Use the web commands after playground/editor changes.
 
 ## Source Layout
 
