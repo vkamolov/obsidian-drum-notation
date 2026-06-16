@@ -20,7 +20,7 @@ import { DrumSynth } from "../../src/synth";
 import { CursorPosition, DrumBlock, DrumSlot, GridResolution, LegendMode, ScoreBarRegion } from "../../src/types";
 import { normalizeLabel } from "../../src/util";
 import { EXAMPLES } from "./examples";
-import { GridEditorHandle, mountGridEditor } from "./editor-grid";
+import { GridEditorHandle, mountGridEditor } from "../../src/editor-grid";
 
 const STORAGE_KEY = "drum-playground.notation";
 const THEME_KEY = "drum-playground.theme";

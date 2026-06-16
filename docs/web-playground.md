@@ -25,10 +25,10 @@ Earlier related commits: `fb5ef38` (CI workflow / README badge / spec examples),
 vite.config.ts            Vite config, root = web
 web/index.html            page markup
 web/src/app.ts            app wiring: editor -> render -> diagnostics, playback, edit-mode glue
-web/src/editor-grid.ts    grid edit mode (consumes src/edit.ts)
 web/src/examples.ts       example notation for the dropdown
 web/src/obsidian-dom.ts   Obsidian DOM-helper shim (the browser port surface)
-web/src/playground.css    workbench + grid-editor styles, theme variables
+web/src/playground.css    workbench styles and theme variables
+src/editor-grid.ts        shared grid edit mode (consumes src/edit.ts)
 web/tsconfig.json         web-only TS config (editor support + CI typecheck)
 .claude/launch.json       local preview/dev-server config (Claude Code only)
 ```
@@ -48,6 +48,7 @@ package-lock.json         vite + transitive deps
 obsidian-drum-notation/
 ├─ src/                      # SHARED core + renderer + audio (UNCHANGED by web work)
 │   ├─ parser.ts  serializer.ts  edit.ts  kit.ts  music.ts  types.ts  util.ts
+│   ├─ editor-grid.ts         # shared selected-bar visual editor
 │   ├─ engrave.ts            # VexFlow/SVG renderer (uses Obsidian DOM sugar — see shim)
 │   ├─ player.ts  synth.ts   # WebAudio (standard AudioContext, already portable)
 ├─ main.ts                   # Obsidian plugin adapter (only file importing "obsidian")
@@ -58,7 +59,6 @@ obsidian-drum-notation/
 │   ├─ dist/                 # build output (gitignored)
 │   └─ src/
 │       ├─ app.ts
-│       ├─ editor-grid.ts
 │       ├─ examples.ts
 │       ├─ obsidian-dom.ts
 │       └─ playground.css
@@ -116,7 +116,7 @@ the **first** import in `app.ts`. `engrave.ts` itself was **not** changed.
   diagnostics, and light/dark theme toggle (persisted). If the browser blocks
   programmatic clipboard writes, Copy for Obsidian opens a selected fallback
   textarea containing the fenced block.
-- **Edit mode** (`editor-grid.ts`): fixed HTML grid, rows = instruments,
+- **Edit mode** (`src/editor-grid.ts`): fixed HTML grid, rows = instruments,
   columns = slots, and the grid edits one selected bar at a time. Bar chips page
   between bars, and clicking/tapping a rendered notation bar selects the matching
   edit bar. Empty-cell click adds a normal hit; filled-cell click selects and
@@ -137,7 +137,7 @@ the **first** import in `app.ts`. `engrave.ts` itself was **not** changed.
 
 ```bash
 npm ci
-npm test            # expect: 87 passed
+npm test            # expect: 95 passed
 npm run build       # plugin build: tsc + esbuild, no errors; emits main.js
 npm run web:build   # vite build, no errors; emits web/dist/ (JS ~1.17MB — VexFlow; size warning is advisory only)
 npm run web:typecheck

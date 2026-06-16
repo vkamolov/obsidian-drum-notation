@@ -7,8 +7,8 @@ the text and serialized back to it.
 
 This document specifies the format as implemented by `src/parser.ts`,
 `src/kit.ts`, and (for the model → text direction) `src/serializer.ts`. It is the
-reference for hand-authoring, for the future visual editor, and for importers
-that emit `drums` text.
+reference for hand-authoring, the visual editor, and importers that emit
+`drums` text.
 
 ---
 

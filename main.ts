@@ -1,10 +1,25 @@
-import { Editor, MarkdownPostProcessorContext, MarkdownRenderChild, Notice, Plugin } from "obsidian";
+import {
+  App,
+  Editor,
+  MarkdownPostProcessorContext,
+  MarkdownRenderChild,
+  MarkdownView,
+  Modal,
+  Notice,
+  Plugin,
+  PluginSettingTab,
+  Setting,
+  TFile
+} from "obsidian";
 import { colorRenderedNoteheads, makeRenderedNotesInteractive, renderInstrumentLegend, renderVexflowScore } from "./src/engrave";
+import { GridEditorHandle, GridEditorSessionState, mountGridEditor } from "./src/editor-grid";
+import { getDrumsBlockEditStatus, replaceDrumsBlockBody, ReplaceDrumsBlockFailure } from "./src/markdown";
 import { getBarRange, getSecondsPerSlot, getSlotVisualDurationSeconds } from "./src/music";
 import { getTitle, parseDrumBlock } from "./src/parser";
 import { DrumPlayer } from "./src/player";
+import { serializeDrumBlock } from "./src/serializer";
 import { DrumSynth } from "./src/synth";
-import { CursorPosition, DrumBlock, DrumSlot } from "./src/types";
+import { CursorPosition, DrumBlock, DrumSlot, ScoreBarRegion } from "./src/types";
 
 const DEFAULT_TEMPLATE = `\`\`\`drums
 Title: Basic rock groove
@@ -16,13 +31,48 @@ SD | ----o-------o---
 BD | o-------o-o-----
 \`\`\``;
 
+const WRITEBACK_DEBOUNCE_MS = 450;
+const PLAYBACK_RESTART_DEBOUNCE_MS = 220;
+
+interface DrumNotationSettings {
+  enableVisualEditMode: boolean;
+}
+
+const DEFAULT_SETTINGS: DrumNotationSettings = {
+  enableVisualEditMode: false
+};
+
 interface RenderState {
   cursorPositions: Array<CursorPosition | undefined>;
+  barRegions: ScoreBarRegion[];
   noteElements: Array<SVGGElement | undefined>;
   cursor: HTMLElement | null;
 }
 
+interface RestoredEditSession {
+  body: string;
+  session: GridEditorSessionState;
+  selectedSlotIndex: number | null;
+  selectedBarIndex: number;
+  playback: {
+    wasPlaying: boolean;
+    wasLooping: boolean;
+    slotIndex: number;
+    barIndex: number;
+  };
+}
+
+type EditAvailability =
+  | {
+      ok: true;
+    }
+  | {
+      ok: false;
+      reason: string;
+    };
+
 export default class DrumNotationPlugin extends Plugin {
+  settings: DrumNotationSettings = { ...DEFAULT_SETTINGS };
   private activePlayer: DrumPlayer | null = null;
   private activePlaybackReset: (() => void) | null = null;
   private activePlaybackOwner: symbol | null = null;
@@ -30,8 +80,12 @@ export default class DrumNotationPlugin extends Plugin {
   private activePreviewTimer: number | null = null;
   private activePreviewOwner: symbol | null = null;
   private audioContext: AudioContext | null = null;
+  private readonly editRestoreSessions = new Map<string, RestoredEditSession>();
 
   async onload(): Promise<void> {
+    await this.loadSettings();
+    this.addSettingTab(new DrumNotationSettingTab(this.app, this));
+
     this.registerMarkdownCodeBlockProcessor("drums", (source, el, ctx) => {
       this.renderDrumNotation(source, el, ctx);
     });
@@ -52,81 +106,215 @@ export default class DrumNotationPlugin extends Plugin {
     this.closeAudioContext();
   }
 
+  async loadSettings(): Promise<void> {
+    this.settings = {
+      ...DEFAULT_SETTINGS,
+      ...(await this.loadData())
+    };
+  }
+
+  async saveSettings(): Promise<void> {
+    await this.saveData(this.settings);
+  }
+
   private renderDrumNotation(source: string, el: HTMLElement, ctx: MarkdownPostProcessorContext): void {
-    const block = parseDrumBlock(source);
+    let block = parseDrumBlock(source);
+    let sourceBody = source;
+    const initialSection = ctx.getSectionInfo(el);
+    const initialSessionKey = initialSection ? this.getEditSessionKey(ctx.sourcePath, initialSection.lineStart) : null;
+    const restored = initialSessionKey ? this.editRestoreSessions.get(initialSessionKey) : undefined;
+    const shouldRestoreEdit = !!restored && restored.body === source;
+
+    if (initialSessionKey && restored && !shouldRestoreEdit) {
+      this.editRestoreSessions.delete(initialSessionKey);
+    }
+
+    const editAvailability = this.getEditAvailability(el, ctx, initialSection, block);
 
     el.empty();
 
     const root = el.createEl("div", { cls: "drum-notation" });
-    if (block.legendMode !== "off") {
-      root.addClass("drum-notation--legend-color");
-    }
     const toolbar = root.createEl("div", { cls: "drum-notation__toolbar" });
     const title = toolbar.createEl("div", { cls: "drum-notation__title" });
-    title.createEl("span", { text: getTitle(block) });
-    const gridSlotLabel = block.gridResolution === 32 ? "thirty-second" : "sixteenth";
-    title.createEl("small", {
-      text: `${block.tempo} BPM · ${block.timeSignature} · ${block.bars.length} bar${block.bars.length === 1 ? "" : "s"} · ${block.slots.length} ${gridSlotLabel} slots${block.repeatCount > 1 ? ` · repeat ${block.repeatCount}x` : ""}`
-    });
-
     const controls = toolbar.createEl("div", { cls: "drum-notation__controls" });
     const playButton = controls.createEl("button", {
       cls: "drum-notation__button",
       text: "Play"
-    });
+    }) as HTMLButtonElement;
     const stopButton = controls.createEl("button", {
       cls: "drum-notation__button",
       text: "Stop"
-    });
+    }) as HTMLButtonElement;
     const loopButton = controls.createEl("button", {
       cls: "drum-notation__button",
       text: "Loop Bar"
-    });
+    }) as HTMLButtonElement;
+    const editButton = controls.createEl("button", {
+      cls: "drum-notation__button",
+      text: "Edit"
+    }) as HTMLButtonElement;
 
     const notationViewport = root.createEl("div", { cls: "drum-notation__score-viewport" });
     const notation = notationViewport.createEl("div", { cls: "drum-notation__score" });
-
-    if (block.rows.length === 0) {
-      notation.createEl("div", {
-        cls: "drum-notation__empty",
-        text: "No supported drum rows found. Try HH, SD, and BD rows."
-      });
-      playButton.disabled = true;
-      stopButton.disabled = true;
-      return;
-    }
-
-    // A MarkdownRenderChild ties cleanup to this block's lifecycle, so the
-    // observers/listeners below are released when the element is detached rather
-    // than accumulating on the plugin until it unloads.
-    const child = new MarkdownRenderChild(el);
-    ctx.addChild(child);
-    const renderOwner = Symbol("drum-notation-render");
+    const editRoot = root.createEl("div", { cls: "drum-notation__edit-root" });
+    editRoot.hidden = true;
 
     const state: RenderState = {
       cursorPositions: [],
+      barRegions: [],
       noteElements: [],
       cursor: null
     };
-    let currentSlotIndex = 0;
+    let currentSlotIndex = clampSlotIndex(block, restored?.playback.slotIndex ?? 0);
+    let selectedBarIndex = clampBarIndex(block, restored?.selectedBarIndex ?? barIndexForSlot(block, currentSlotIndex));
+    let editSelectedSlotIndex: number | null = restored?.selectedSlotIndex ?? restored?.session.selectedCell?.slotIndex ?? null;
+    let highlightedEditNote: SVGGElement | null = null;
+    let gridEditor: GridEditorHandle | null = null;
+    let visuals = makePlaybackVisuals(block, state);
     let isLoopingBar = false;
-    let legendRendered = false;
+    let resizeTimer: number | null = null;
+    let writebackTimer: number | null = null;
+    let playbackRestartTimer: number | null = null;
+    const child = new MarkdownRenderChild(el);
+    const renderOwner = Symbol("drum-notation-render");
+
+    ctx.addChild(child);
+
+    const updateHeader = () => {
+      root.classList.toggle("drum-notation--legend-color", block.legendMode !== "off");
+      title.empty();
+      title.createEl("span", { text: getTitle(block) });
+      const gridSlotLabel = block.gridResolution === 32 ? "thirty-second" : "sixteenth";
+      title.createEl("small", {
+        text: `${block.tempo} BPM · ${block.timeSignature} · ${block.bars.length} bar${block.bars.length === 1 ? "" : "s"} · ${block.slots.length} ${gridSlotLabel} slots${block.repeatCount > 1 ? ` · repeat ${block.repeatCount}x` : ""}`
+      });
+
+      const hasRows = block.rows.length > 0;
+      playButton.disabled = !hasRows;
+      stopButton.disabled = !hasRows;
+      loopButton.disabled = !hasRows;
+      editButton.disabled = !hasRows || !editAvailability.ok;
+      editButton.title = !editAvailability.ok ? editAvailability.reason : "Edit notation visually";
+    };
+
+    const clearEditHighlight = () => {
+      highlightedEditNote?.classList.remove("is-edit-selected");
+      highlightedEditNote = null;
+    };
+
+    const applyEditHighlight = () => {
+      clearEditHighlight();
+
+      if (editSelectedSlotIndex === null) {
+        return;
+      }
+
+      highlightedEditNote = state.noteElements[editSelectedSlotIndex] ?? null;
+      highlightedEditNote?.classList.add("is-edit-selected");
+    };
+
+    const selectEditSlot = (slotIndex: number | null) => {
+      editSelectedSlotIndex = slotIndex;
+      applyEditHighlight();
+    };
+
+    const clearBarSelectors = () => {
+      notation.querySelector(".pg-bar-selectors")?.remove();
+    };
+
+    const updateBarSelectorState = () => {
+      selectedBarIndex = clampBarIndex(block, selectedBarIndex);
+      notation.querySelectorAll<HTMLButtonElement>(".pg-bar-selector").forEach((button) => {
+        const indexes = (button.dataset.barIndexes ?? "")
+          .split(/\s+/)
+          .map((value) => Number.parseInt(value, 10))
+          .filter((value) => Number.isFinite(value));
+        const selected = indexes.includes(selectedBarIndex);
+
+        button.classList.toggle("is-selected", selected);
+        button.setAttr("aria-pressed", selected ? "true" : "false");
+      });
+    };
+
+    const selectBar = (barIndex: number, syncGrid: boolean) => {
+      selectedBarIndex = clampBarIndex(block, barIndex);
+      currentSlotIndex = block.bars[selectedBarIndex]?.startSlot ?? currentSlotIndex;
+      selectEditSlot(null);
+      if (syncGrid) {
+        gridEditor?.selectBar(selectedBarIndex);
+      }
+      updateBarSelectorState();
+    };
+
+    const renderBarSelectors = () => {
+      clearBarSelectors();
+
+      if (!gridEditor || state.barRegions.length === 0) {
+        return;
+      }
+
+      const layer = notation.createEl("div", { cls: "pg-bar-selectors" });
+
+      state.barRegions.forEach((region) => {
+        const button = layer.createEl("button", {
+          cls: "pg-bar-selector",
+          attr: {
+            "aria-label": `Select bar ${region.barIndex + 1}`,
+            type: "button"
+          }
+        }) as HTMLButtonElement;
+
+        button.dataset.barIndex = String(region.barIndex);
+        button.dataset.barIndexes = region.barIndexes.join(" ");
+        button.style.left = `${Math.round(region.x)}px`;
+        button.style.top = `${Math.round(region.y)}px`;
+        button.style.width = `${Math.round(region.width)}px`;
+        button.style.height = `${Math.round(region.height)}px`;
+        button.addEventListener("click", () => selectBar(region.barIndex, true));
+      });
+
+      updateBarSelectorState();
+    };
 
     const renderScore = () => {
+      root.querySelector(".drum-notation__legend")?.remove();
+      clearEditHighlight();
+      clearBarSelectors();
+
+      if (block.rows.length === 0) {
+        notation.empty();
+        notation.createEl("div", {
+          cls: "drum-notation__empty",
+          text: "No supported drum rows found. Try HH, SD, and BD rows."
+        });
+        state.cursorPositions = [];
+        state.barRegions = [];
+        state.noteElements = [];
+        state.cursor = null;
+        return;
+      }
+
       try {
-        state.cursorPositions = renderVexflowScore(block, notation).cursorPositions;
+        const result = renderVexflowScore(block, notation);
+        state.cursorPositions = result.cursorPositions;
+        state.barRegions = result.barRegions;
         if (block.legendMode !== "off") {
           colorRenderedNoteheads(block, notation);
         }
         state.cursor = block.showCursor ? notation.createEl("div", { cls: "drum-notation__cursor" }) : null;
         state.noteElements = makeRenderedNotesInteractive(block, notation, (slot) => {
           currentSlotIndex = slot.index;
+          if (gridEditor) {
+            selectBar(barIndexForSlot(block, slot.index), true);
+          }
           void this.previewSlot(block, slot, renderOwner);
         });
-        if (!legendRendered) {
+        if (block.legendMode !== "off") {
           renderInstrumentLegend(block, root);
-          legendRendered = true;
         }
+        visuals = makePlaybackVisuals(block, state);
+        renderBarSelectors();
+        applyEditHighlight();
       } catch (error) {
         notation.empty();
         notation.createEl("pre", {
@@ -134,24 +322,272 @@ export default class DrumNotationPlugin extends Plugin {
           text: error instanceof Error ? error.message : String(error)
         });
         state.cursorPositions = [];
+        state.barRegions = [];
         state.noteElements = [];
         state.cursor = null;
       }
     };
 
-    renderScore();
-
-    const visuals = makePlaybackVisuals(block, state);
     const handleSlotChange = (slotIndex: number) => {
       currentSlotIndex = slotIndex;
       visuals.moveCursor(slotIndex);
     };
 
-    // Re-fit the score when the pane width changes. Skipped while a width is
-    // unchanged to avoid redundant VexFlow re-renders, and debounced so a drag
-    // resize only redraws once it settles.
+    const stopLocalPlayback = () => {
+      this.stopActivePlayer(renderOwner);
+      playButton.removeClass("is-playing");
+      loopButton.removeClass("is-playing");
+      isLoopingBar = false;
+    };
+
+    const startPlayback = (startSlot = 0) => {
+      this.stopActivePlayer();
+
+      isLoopingBar = false;
+      currentSlotIndex = clampSlotIndex(block, startSlot);
+      this.activePlaybackOwner = renderOwner;
+      this.activePlayer = new DrumPlayer(this.getAudioContext(), block, () => {
+        if (this.activePlaybackOwner !== renderOwner) {
+          return;
+        }
+
+        playButton.removeClass("is-playing");
+        loopButton.removeClass("is-playing");
+        visuals.clearCursor();
+        this.activePlayer = null;
+        this.activePlaybackReset = null;
+        this.activePlaybackOwner = null;
+      }, handleSlotChange, { startSlot: currentSlotIndex, repeatCount: block.repeatCount });
+      this.activePlaybackReset = () => {
+        playButton.removeClass("is-playing");
+        loopButton.removeClass("is-playing");
+        isLoopingBar = false;
+        visuals.clearCursor();
+      };
+      playButton.addClass("is-playing");
+      void this.activePlayer.play();
+    };
+
+    const startLoopBar = (barIndex = selectedBarIndex) => {
+      this.stopActivePlayer();
+
+      const bar = block.bars[clampBarIndex(block, barIndex)];
+      currentSlotIndex = bar?.startSlot ?? clampSlotIndex(block, currentSlotIndex);
+      const barRange = getBarRange(block, currentSlotIndex);
+
+      isLoopingBar = true;
+      loopButton.addClass("is-playing");
+      playButton.removeClass("is-playing");
+      this.activePlaybackOwner = renderOwner;
+      this.activePlayer = new DrumPlayer(this.getAudioContext(), block, () => {
+        if (this.activePlaybackOwner !== renderOwner) {
+          return;
+        }
+
+        loopButton.removeClass("is-playing");
+        playButton.removeClass("is-playing");
+        visuals.clearCursor();
+        isLoopingBar = false;
+        this.activePlayer = null;
+        this.activePlaybackReset = null;
+        this.activePlaybackOwner = null;
+      }, handleSlotChange, {
+        startSlot: barRange.startSlot,
+        endSlot: barRange.endSlot,
+        loop: true
+      });
+      this.activePlaybackReset = () => {
+        loopButton.removeClass("is-playing");
+        playButton.removeClass("is-playing");
+        visuals.clearCursor();
+        isLoopingBar = false;
+      };
+      void this.activePlayer.play();
+    };
+
+    const schedulePlaybackRestart = (wasPlaying: boolean, wasLooping: boolean, slotIndex: number, barIndex: number) => {
+      if (!wasPlaying || block.rows.length === 0) {
+        return;
+      }
+
+      if (playbackRestartTimer !== null) {
+        window.clearTimeout(playbackRestartTimer);
+      }
+
+      playbackRestartTimer = window.setTimeout(() => {
+        playbackRestartTimer = null;
+        if (wasLooping) {
+          startLoopBar(barIndex);
+        } else {
+          startPlayback(slotIndex);
+        }
+      }, PLAYBACK_RESTART_DEBOUNCE_MS);
+    };
+
+    const persistEditedBlock = async () => {
+      if (!editAvailability.ok) {
+        return;
+      }
+
+      const file = this.getSourceFile(ctx.sourcePath);
+      const section = ctx.getSectionInfo(el) ?? initialSection;
+
+      if (!file || !section) {
+        new Notice("Could not locate the source drums block to update.");
+        return;
+      }
+
+      const nextBody = serializeDrumBlock(block, { mode: "authoring" });
+      if (nextBody === sourceBody) {
+        return;
+      }
+
+      const sessionKey = this.getEditSessionKey(ctx.sourcePath, section.lineStart);
+      let failure: ReplaceDrumsBlockFailure | null = null;
+      let wrote = false;
+
+      try {
+        await this.app.vault.process(file, (current) => {
+          const result = replaceDrumsBlockBody(current, section, sourceBody, nextBody);
+
+          if (!result.ok) {
+            failure = result.reason;
+            return current;
+          }
+
+          wrote = true;
+          const session = gridEditor?.getSessionState();
+          if (session) {
+            this.editRestoreSessions.set(sessionKey, {
+              body: nextBody,
+              session,
+              selectedSlotIndex: editSelectedSlotIndex,
+              selectedBarIndex,
+              playback: {
+                wasPlaying: this.activePlaybackOwner === renderOwner && this.activePlayer !== null,
+                wasLooping: isLoopingBar,
+                slotIndex: currentSlotIndex,
+                barIndex: selectedBarIndex
+              }
+            });
+          }
+
+          return result.text;
+        });
+      } catch (error) {
+        new Notice(`Could not update drums block: ${error instanceof Error ? error.message : String(error)}`);
+        return;
+      }
+
+      if (wrote) {
+        sourceBody = nextBody;
+      } else if (failure) {
+        new Notice(formatWritebackFailure(failure));
+      }
+    };
+
+    const scheduleWriteback = () => {
+      if (writebackTimer !== null) {
+        window.clearTimeout(writebackTimer);
+      }
+
+      writebackTimer = window.setTimeout(() => {
+        writebackTimer = null;
+        void persistEditedBlock();
+      }, WRITEBACK_DEBOUNCE_MS);
+    };
+
+    const applyGridEditedBlock = (next: DrumBlock, changedSlotIndex?: number, nextSelectedBarIndex?: number) => {
+      const wasPlaying = this.activePlaybackOwner === renderOwner && this.activePlayer !== null;
+      const wasLooping = isLoopingBar;
+      const restartSlotIndex = currentSlotIndex;
+      const restartBarIndex = selectedBarIndex;
+
+      if (wasPlaying) {
+        this.stopActivePlayer(renderOwner);
+      }
+
+      block = next;
+      selectedBarIndex =
+        nextSelectedBarIndex !== undefined
+          ? clampBarIndex(block, nextSelectedBarIndex)
+          : changedSlotIndex !== undefined
+            ? barIndexForSlot(block, changedSlotIndex)
+            : clampBarIndex(block, selectedBarIndex);
+      currentSlotIndex = changedSlotIndex ?? block.bars[selectedBarIndex]?.startSlot ?? clampSlotIndex(block, currentSlotIndex);
+      updateHeader();
+      renderScore();
+      scheduleWriteback();
+      schedulePlaybackRestart(wasPlaying, wasLooping, restartSlotIndex, restartBarIndex);
+
+      if (changedSlotIndex === undefined || wasPlaying) {
+        selectEditSlot(null);
+        return;
+      }
+
+      selectEditSlot(changedSlotIndex);
+      const slot = block.slots.find((candidate) => candidate.index === changedSlotIndex);
+      if (slot) {
+        void this.previewSlot(block, slot, renderOwner);
+      }
+    };
+
+    const enterEditMode = (session?: GridEditorSessionState) => {
+      if (gridEditor || !editAvailability.ok || block.slots.length === 0) {
+        if (!editAvailability.ok) {
+          new Notice(editAvailability.reason);
+        }
+        return;
+      }
+
+      stopLocalPlayback();
+      this.stopActivePreview(renderOwner);
+      selectedBarIndex = clampBarIndex(block, session?.selectedBarIndex ?? selectedBarIndex);
+      editSelectedSlotIndex = session?.selectedCell?.slotIndex ?? editSelectedSlotIndex;
+      root.addClass("is-editing");
+      editButton.addClass("is-playing");
+      editRoot.hidden = false;
+
+      gridEditor = mountGridEditor({
+        container: editRoot,
+        block,
+        initialBarIndex: selectedBarIndex,
+        initialSessionState: session,
+        onChange: applyGridEditedBlock,
+        onPreview: (previewBlock, slotIndex) => {
+          const slot = previewBlock.slots.find((candidate) => candidate.index === slotIndex);
+          if (slot) {
+            selectEditSlot(slotIndex);
+            void this.previewSlot(previewBlock, slot, renderOwner);
+          }
+        },
+        onSelectBar: (barIndex) => selectBar(barIndex, false),
+        confirmAction: (message) => confirmWithModal(this.app, message)
+      });
+
+      renderBarSelectors();
+      applyEditHighlight();
+    };
+
+    const exitEditMode = () => {
+      gridEditor?.destroy();
+      gridEditor = null;
+      selectEditSlot(null);
+      clearBarSelectors();
+      root.removeClass("is-editing");
+      editButton.removeClass("is-playing");
+      editRoot.hidden = true;
+
+      const section = ctx.getSectionInfo(el);
+      if (section) {
+        this.editRestoreSessions.delete(this.getEditSessionKey(ctx.sourcePath, section.lineStart));
+      }
+    };
+
+    updateHeader();
+    renderScore();
+
     let lastWidth = Math.round(notationViewport.clientWidth);
-    let resizeTimer: number | null = null;
     const observer = new ResizeObserver((entries) => {
       const width = Math.round(entries[0]?.contentRect.width ?? 0);
 
@@ -178,84 +614,113 @@ export default class DrumNotationPlugin extends Plugin {
         window.clearTimeout(resizeTimer);
         resizeTimer = null;
       }
+      if (writebackTimer !== null) {
+        window.clearTimeout(writebackTimer);
+        writebackTimer = null;
+        void persistEditedBlock();
+      }
+      if (playbackRestartTimer !== null) {
+        window.clearTimeout(playbackRestartTimer);
+        playbackRestartTimer = null;
+      }
+      gridEditor?.destroy();
       this.stopActivePlayer(renderOwner);
       this.stopActivePreview(renderOwner);
     });
 
-    playButton.addEventListener("click", () => {
-      this.stopActivePlayer();
-
-      isLoopingBar = false;
-      this.activePlaybackOwner = renderOwner;
-      this.activePlayer = new DrumPlayer(this.getAudioContext(), block, () => {
-        if (this.activePlaybackOwner !== renderOwner) {
-          return;
-        }
-
-        playButton.removeClass("is-playing");
-        loopButton.removeClass("is-playing");
-        visuals.clearCursor();
-        this.activePlayer = null;
-        this.activePlaybackReset = null;
-        this.activePlaybackOwner = null;
-      }, handleSlotChange, { repeatCount: block.repeatCount });
-      this.activePlaybackReset = () => {
-        playButton.removeClass("is-playing");
-        loopButton.removeClass("is-playing");
-        isLoopingBar = false;
-        visuals.clearCursor();
-      };
-      playButton.addClass("is-playing");
-      void this.activePlayer.play();
-    });
+    playButton.addEventListener("click", () => startPlayback());
 
     stopButton.addEventListener("click", () => {
-      this.stopActivePlayer();
-      playButton.removeClass("is-playing");
-      loopButton.removeClass("is-playing");
-      isLoopingBar = false;
+      stopLocalPlayback();
     });
 
     loopButton.addEventListener("click", () => {
       if (isLoopingBar) {
-        this.stopActivePlayer();
-        loopButton.removeClass("is-playing");
-        isLoopingBar = false;
+        stopLocalPlayback();
         return;
       }
 
-      this.stopActivePlayer();
-
-      const barRange = getBarRange(block, currentSlotIndex);
-
-      isLoopingBar = true;
-      loopButton.addClass("is-playing");
-      playButton.removeClass("is-playing");
-      this.activePlaybackOwner = renderOwner;
-      this.activePlayer = new DrumPlayer(this.getAudioContext(), block, () => {
-        if (this.activePlaybackOwner !== renderOwner) {
-          return;
-        }
-
-        loopButton.removeClass("is-playing");
-        visuals.clearCursor();
-        isLoopingBar = false;
-        this.activePlayer = null;
-        this.activePlaybackReset = null;
-        this.activePlaybackOwner = null;
-      }, handleSlotChange, {
-        startSlot: barRange.startSlot,
-        endSlot: barRange.endSlot,
-        loop: true
-      });
-      this.activePlaybackReset = () => {
-        loopButton.removeClass("is-playing");
-        playButton.removeClass("is-playing");
-        visuals.clearCursor();
-        isLoopingBar = false;
-      };
-      void this.activePlayer.play();
+      startLoopBar();
     });
+
+    editButton.addEventListener("click", () => {
+      if (gridEditor) {
+        exitEditMode();
+      } else {
+        enterEditMode();
+      }
+    });
+
+    if (shouldRestoreEdit && restored) {
+      enterEditMode(restored.session);
+      selectedBarIndex = clampBarIndex(block, restored.selectedBarIndex);
+      selectEditSlot(restored.selectedSlotIndex);
+      if (restored.playback.wasPlaying) {
+        window.setTimeout(() => {
+          schedulePlaybackRestart(true, restored.playback.wasLooping, restored.playback.slotIndex, restored.playback.barIndex);
+        }, 0);
+      }
+    }
+  }
+
+  private getEditAvailability(
+    el: HTMLElement,
+    ctx: MarkdownPostProcessorContext,
+    section: ReturnType<MarkdownPostProcessorContext["getSectionInfo"]>,
+    block: DrumBlock
+  ): EditAvailability {
+    if (block.rows.length === 0) {
+      return { ok: false, reason: "Visual edit mode needs at least one parsed drum row." };
+    }
+
+    if (!this.settings.enableVisualEditMode) {
+      return { ok: false, reason: "Visual edit mode is disabled in Drum Notation settings." };
+    }
+
+    if (!this.isReadingViewRender(el, ctx)) {
+      return { ok: false, reason: "Visual edit mode is available in Reading view only." };
+    }
+
+    if (!this.getSourceFile(ctx.sourcePath)) {
+      return { ok: false, reason: "Could not locate the source note for this drums block." };
+    }
+
+    if (!section) {
+      return { ok: false, reason: "Could not locate the source drums block." };
+    }
+
+    const status = getDrumsBlockEditStatus(section.text);
+    if (!status.ok && status.reason === "nested-or-indented-fence") {
+      return { ok: false, reason: formatEditAvailabilityFailure(status.reason) };
+    }
+
+    return { ok: true };
+  }
+
+  private isReadingViewRender(el: HTMLElement, ctx: MarkdownPostProcessorContext): boolean {
+    if (el.closest(".markdown-source-view")) {
+      return false;
+    }
+
+    if (el.closest(".markdown-preview-view, .markdown-reading-view")) {
+      return true;
+    }
+
+    return this.app.workspace.getLeavesOfType("markdown").some((leaf) => {
+      const view = leaf.view;
+
+      return view instanceof MarkdownView && view.file?.path === ctx.sourcePath && view.getMode() === "preview";
+    });
+  }
+
+  private getSourceFile(path: string): TFile | null {
+    const file = this.app.vault.getAbstractFileByPath(path);
+
+    return file instanceof TFile ? file : null;
+  }
+
+  private getEditSessionKey(sourcePath: string, lineStart: number): string {
+    return `${sourcePath}:${lineStart}`;
   }
 
   private stopActivePlayer(owner?: symbol): void {
@@ -377,4 +842,127 @@ function makePlaybackVisuals(
   };
 
   return { clearCursor, moveCursor };
+}
+
+function clampBarIndex(block: DrumBlock, barIndex: number): number {
+  if (block.bars.length === 0) {
+    return 0;
+  }
+
+  return Math.min(block.bars.length - 1, Math.max(0, Math.round(barIndex)));
+}
+
+function clampSlotIndex(block: DrumBlock, slotIndex: number): number {
+  if (block.slots.length === 0) {
+    return 0;
+  }
+
+  return Math.min(block.slots.length - 1, Math.max(0, Math.round(slotIndex)));
+}
+
+function barIndexForSlot(block: DrumBlock, slotIndex: number): number {
+  const index = block.bars.findIndex((bar) => slotIndex >= bar.startSlot && slotIndex < bar.startSlot + bar.slots.length);
+
+  return index >= 0 ? index : 0;
+}
+
+function formatEditAvailabilityFailure(reason: ReplaceDrumsBlockFailure): string {
+  switch (reason) {
+    case "nested-or-indented-fence":
+      return "Visual edit mode is not available for nested drums blocks in callouts, lists, or indented Markdown.";
+    case "not-drums-fence":
+    case "missing-closing-fence":
+    case "invalid-section":
+      return "Could not safely identify the source drums fence.";
+    case "stale-body":
+      return "The source drums block changed before edit mode opened.";
+  }
+}
+
+function formatWritebackFailure(reason: ReplaceDrumsBlockFailure): string {
+  switch (reason) {
+    case "nested-or-indented-fence":
+      return "Could not update drums block because nested blocks are read-only in visual edit mode.";
+    case "stale-body":
+      return "Could not update drums block because the note changed outside visual edit mode.";
+    case "not-drums-fence":
+    case "missing-closing-fence":
+    case "invalid-section":
+      return "Could not update drums block because the source fence no longer matches the rendered block.";
+  }
+}
+
+function confirmWithModal(app: App, message: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    new DrumConfirmModal(app, message, resolve).open();
+  });
+}
+
+class DrumConfirmModal extends Modal {
+  private settled = false;
+
+  constructor(
+    app: App,
+    private readonly message: string,
+    private readonly resolve: (confirmed: boolean) => void
+  ) {
+    super(app);
+  }
+
+  onOpen(): void {
+    this.titleEl.setText("Confirm edit");
+    this.contentEl.empty();
+    this.contentEl.createEl("p", { text: this.message });
+
+    const buttons = this.contentEl.createEl("div", { cls: "drum-notation__confirm-buttons" });
+    const cancel = buttons.createEl("button", { text: "Cancel" });
+    const confirm = buttons.createEl("button", { cls: "mod-warning", text: "Confirm" });
+
+    cancel.addEventListener("click", () => this.finish(false));
+    confirm.addEventListener("click", () => this.finish(true));
+  }
+
+  onClose(): void {
+    this.contentEl.empty();
+    if (!this.settled) {
+      this.resolve(false);
+      this.settled = true;
+    }
+  }
+
+  private finish(confirmed: boolean): void {
+    if (!this.settled) {
+      this.resolve(confirmed);
+      this.settled = true;
+    }
+    this.close();
+  }
+}
+
+class DrumNotationSettingTab extends PluginSettingTab {
+  constructor(
+    app: App,
+    private readonly drumPlugin: DrumNotationPlugin
+  ) {
+    super(app, drumPlugin);
+  }
+
+  display(): void {
+    const { containerEl } = this;
+
+    containerEl.empty();
+    containerEl.createEl("h2", { text: "Drum Notation" });
+
+    new Setting(containerEl)
+      .setName("Enable visual edit mode")
+      .setDesc("Show the visual editor in Reading view and allow it to write changes back to top-level drums code blocks.")
+      .addToggle((toggle) => {
+        toggle
+          .setValue(this.drumPlugin.settings.enableVisualEditMode)
+          .onChange(async (value) => {
+            this.drumPlugin.settings.enableVisualEditMode = value;
+            await this.drumPlugin.saveSettings();
+          });
+      });
+  }
 }

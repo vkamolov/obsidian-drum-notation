@@ -17,25 +17,35 @@ import {
   insertBarAfter,
   setBarRepeat,
   setHit
-} from "../../src/edit";
-import { DRUM_KIT, getAllowedArticulations, getArticulationForKey, getHitChar, isArticulationAllowed } from "../../src/kit";
-import { getSlotsPerBeat } from "../../src/music";
-import { DrumArticulation, DrumBlock, DrumInstrument } from "../../src/types";
+} from "./edit";
+import { DRUM_KIT, getAllowedArticulations, getArticulationForKey, getHitChar, isArticulationAllowed } from "./kit";
+import { getSlotsPerBeat } from "./music";
+import { DrumArticulation, DrumBlock, DrumInstrument } from "./types";
 
 export interface GridEditorHandle {
   destroy(): void;
+  getSessionState(): GridEditorSessionState;
   selectBar(barIndex: number): void;
   syncBlock(block: DrumBlock, selectedBarIndex?: number): void;
 }
 
-interface GridEditorOptions {
+export interface GridEditorSessionState {
+  selectedBarIndex: number;
+  selectedCell: SelectedCell | null;
+  undoStack: HistoryEntry[];
+  redoStack: HistoryEntry[];
+  extraInstrumentIds: string[];
+}
+
+export interface GridEditorOptions {
   container: HTMLElement;
   block: DrumBlock;
   initialBarIndex?: number;
+  initialSessionState?: GridEditorSessionState;
   onChange: (block: DrumBlock, changedSlotIndex?: number, selectedBarIndex?: number) => void;
   onPreview: (block: DrumBlock, slotIndex: number) => void;
   onSelectBar?: (barIndex: number) => void;
-  confirmAction?: (message: string) => boolean;
+  confirmAction?: (message: string) => boolean | Promise<boolean>;
 }
 
 const ARTICULATION_CLASS: Record<DrumArticulation, string> = {
@@ -62,12 +72,12 @@ const ARTICULATION_LABELS: Record<DrumArticulation, string> = {
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
-interface SelectedCell {
+export interface SelectedCell {
   slotIndex: number;
   instrumentId: string;
 }
 
-interface HistoryEntry {
+export interface HistoryEntry {
   block: DrumBlock;
   slotIndex?: number;
   barIndex: number;
@@ -75,14 +85,25 @@ interface HistoryEntry {
 
 export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
   let working = options.block;
-  const undoStack: HistoryEntry[] = [];
-  const redoStack: HistoryEntry[] = [];
-  let selectedCell: SelectedCell | null = null;
-  let selectedBarIndex = clampBarIndex(working, options.initialBarIndex ?? 0);
+  const initialSession = options.initialSessionState;
+  const undoStack: HistoryEntry[] = initialSession?.undoStack ? [...initialSession.undoStack] : [];
+  const redoStack: HistoryEntry[] = initialSession?.redoStack ? [...initialSession.redoStack] : [];
+  let selectedCell: SelectedCell | null = initialSession?.selectedCell ? { ...initialSession.selectedCell } : null;
+  let selectedBarIndex = clampBarIndex(working, initialSession?.selectedBarIndex ?? options.initialBarIndex ?? 0);
   // Instruments shown as rows: those already in the block, plus any the user
   // adds from the palette (kept visible even before they have a hit).
-  const extraInstruments: DrumInstrument[] = [];
+  const extraInstruments: DrumInstrument[] = (initialSession?.extraInstrumentIds ?? [])
+    .map((id) => DRUM_KIT.find((instrument) => instrument.id === id))
+    .filter((instrument): instrument is DrumInstrument => !!instrument);
   const confirmAction = options.confirmAction ?? (() => false);
+
+  const getSessionState = (): GridEditorSessionState => ({
+    selectedBarIndex,
+    selectedCell: selectedCell ? { ...selectedCell } : null,
+    undoStack: [...undoStack],
+    redoStack: [...redoStack],
+    extraInstrumentIds: extraInstruments.map((instrument) => instrument.id)
+  });
 
   const applyChange = (next: DrumBlock, slotIndex?: number, nextSelectedBarIndex = selectedBarIndex) => {
     if (next === working) {
@@ -97,7 +118,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
       selectedCell = null;
     }
     options.onChange(working, slotIndex, selectedBarIndex);
-    render();
+    render(true);
   };
 
   const undo = () => {
@@ -114,7 +135,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
       selectedCell = null;
     }
     options.onChange(working, previous.slotIndex, selectedBarIndex);
-    render();
+    render(true);
   };
 
   const redo = () => {
@@ -131,7 +152,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
       selectedCell = null;
     }
     options.onChange(working, next.slotIndex, selectedBarIndex);
-    render();
+    render(true);
   };
 
   const selectBar = (barIndex: number, notify = false) => {
@@ -146,7 +167,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     if (notify) {
       options.onSelectBar?.(selectedBarIndex);
     }
-    render();
+    render(true);
   };
 
   const syncBlock = (block: DrumBlock, nextSelectedBarIndex = selectedBarIndex) => {
@@ -211,7 +232,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     applyChange(insertBarAfter(working, selectedBarIndex, "new-system"), undefined, barIndexAfterSelectedSystem());
   };
 
-  const deleteSelectedBar = () => {
+  const deleteSelectedBar = async () => {
     const bar = selectedBar();
 
     if (!bar) {
@@ -219,14 +240,14 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     }
 
     const hasHits = bar.slots.some((slot) => slot.hits.length > 0);
-    if (hasHits && !confirmAction(`Delete bar ${selectedBarIndex + 1}?`)) {
+    if (hasHits && !(await confirmAction(`Delete bar ${selectedBarIndex + 1}?`))) {
       return;
     }
 
     applyChange(deleteBar(working, selectedBarIndex), undefined, Math.max(0, selectedBarIndex - 1));
   };
 
-  const toggleSelectedBarRepeat = () => {
+  const toggleSelectedBarRepeat = async () => {
     const bar = selectedBar();
 
     if (!bar) {
@@ -243,7 +264,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     }
 
     const hasHits = bar.slots.some((slot) => slot.hits.length > 0);
-    if (hasHits && !confirmAction(`Replace bar ${selectedBarIndex + 1} with a repeat of the previous bar?`)) {
+    if (hasHits && !(await confirmAction(`Replace bar ${selectedBarIndex + 1} with a repeat of the previous bar?`))) {
       return;
     }
 
@@ -266,8 +287,18 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     return selectedBarIndex + 1;
   };
 
+  const previousTabIndex = options.container.getAttribute("tabindex");
+  if (previousTabIndex === null) {
+    options.container.tabIndex = -1;
+  }
+
   const onKeyDown = (event: KeyboardEvent) => {
     const target = event.target as HTMLElement | null;
+
+    if (!target || !options.container.contains(target)) {
+      return;
+    }
+
     const tagName = target?.tagName.toLowerCase();
 
     if (tagName === "input" || tagName === "select" || tagName === "textarea") {
@@ -298,11 +329,12 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     }
   };
 
-  document.addEventListener("keydown", onKeyDown);
+  options.container.addEventListener("keydown", onKeyDown);
 
-  const render = () => {
+  const render = (restoreFocus = false) => {
     options.container.empty();
     const root = options.container.createEl("div", { cls: "pg-grid-editor" });
+    root.tabIndex = -1;
 
     renderHeader(root);
     renderBarPager(root);
@@ -335,12 +367,16 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     }
 
     renderGrid(root);
+    if (restoreFocus) {
+      focusEditor(root);
+    }
   };
 
   const renderHeader = (root: HTMLElement) => {
     const bar = root.createEl("div", { cls: "pg-grid-editor__bar" });
 
-    const palette = bar.createEl("select", { cls: "pg-grid-editor__palette" }) as HTMLSelectElement;
+    const paletteWrap = bar.createEl("span", { cls: "pg-grid-editor__palette-wrap" });
+    const palette = paletteWrap.createEl("select", { cls: "pg-grid-editor__palette" }) as HTMLSelectElement;
     palette.createEl("option", { text: "+ add instrument", value: "" });
     palette.disabled = !!selectedBar()?.measureRepeat;
     for (const instrument of DRUM_KIT) {
@@ -352,9 +388,10 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
       const instrument = DRUM_KIT.find((candidate) => candidate.id === palette.value);
       if (instrument) {
         extraInstruments.push(instrument);
-        render();
+        render(true);
       }
     });
+    paletteWrap.createEl("span", { cls: "pg-grid-editor__palette-caret", attr: { "aria-hidden": "true" } });
 
     const spacer = bar.createEl("span", { cls: "pg-grid-editor__spacer" });
     spacer.textContent = "Live edit";
@@ -425,7 +462,9 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     repeatButton.disabled = selectedBarIndex === 0 && !selectedBar()?.measureRepeat;
     repeatButton.title = selectedBar()?.measureRepeat ? "Make repeat bar editable" : "Repeat previous bar";
     repeatButton.setAttr("aria-label", selectedBar()?.measureRepeat ? "Make repeat bar editable" : "Repeat previous bar");
-    repeatButton.addEventListener("click", toggleSelectedBarRepeat);
+    repeatButton.addEventListener("click", () => {
+      void toggleSelectedBarRepeat();
+    });
 
     const deleteButton = actions.createEl("button", {
       cls: "pg-grid-editor__bar-action pg-grid-editor__bar-action--delete",
@@ -434,7 +473,9 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     deleteButton.type = "button";
     deleteButton.title = "Delete bar";
     deleteButton.setAttr("aria-label", "Delete bar");
-    deleteButton.addEventListener("click", deleteSelectedBar);
+    deleteButton.addEventListener("click", () => {
+      void deleteSelectedBar();
+    });
   };
 
   const renderArticulationTools = (root: HTMLElement) => {
@@ -545,7 +586,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
 
           if (hit) {
             options.onPreview(working, slot.index);
-            render();
+            render(true);
             return;
           }
 
@@ -558,7 +599,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
           if (hit) {
             options.onPreview(working, slot.index);
           }
-          render();
+          render(true);
         });
       }
     }
@@ -591,6 +632,9 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
   render();
 
   return {
+    getSessionState() {
+      return getSessionState();
+    },
     selectBar(barIndex: number) {
       selectBar(barIndex);
     },
@@ -598,10 +642,20 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
       syncBlock(block, nextSelectedBarIndex);
     },
     destroy() {
-      document.removeEventListener("keydown", onKeyDown);
+      options.container.removeEventListener("keydown", onKeyDown);
+      if (previousTabIndex === null) {
+        options.container.removeAttribute("tabindex");
+      } else {
+        options.container.setAttribute("tabindex", previousTabIndex);
+      }
       options.container.empty();
     }
   };
+}
+
+function focusEditor(root: HTMLElement): void {
+  const selected = root.querySelector<HTMLElement>(".pg-grid__cell.is-selected");
+  (selected ?? root).focus({ preventScroll: true });
 }
 
 function addBoundaryClasses(

@@ -22,7 +22,18 @@ BD | o-------o-o-----
 ```
 ````
 
-In reading view, the plugin renders the block as page-width percussion staff notation and adds **Play**, **Stop**, and **Loop Bar** controls. Add `Cursor: on` if you want a blinking cursor to follow playback. Click a rendered note to preview that hit or stacked chord.
+In reading view, the plugin renders the block as page-width percussion staff notation and adds **Play**, **Stop**, **Loop Bar**, and **Edit** controls. Add `Cursor: on` if you want a blinking cursor to follow playback. Click a rendered note to preview that hit or stacked chord.
+
+## Visual Edit Mode
+
+Visual edit mode is opt-in because it writes changes back to your notes. Enable **Drum Notation → Enable visual edit mode** in the plugin settings first. Then, in Obsidian reading view, press **Edit** to open a selected-bar grid below the rendered score. Click or tap a rendered bar to choose which bar the grid edits. Empty cells add a normal hit; filled cells select the hit and show the articulation tool strip. Edits apply immediately to the rendered notation and are saved back into the fenced `drums` block after a short debounce.
+
+Visual edit mode is intentionally limited in v1:
+
+- It is available in reading view only. Live Preview/source-mode blocks remain read-only because writing to the file underneath the active text editor can conflict with Obsidian's editor state.
+- It edits only top-level `drums` fences. Blocks nested inside callouts, lists, or indented Markdown are rendered and playable, but visual editing is disabled.
+- The first visual edit serializes the whole block in the plugin's canonical authoring form. This keeps the model safe and deterministic, but it may normalize spacing, labels, header order, and equivalent hit characters.
+- One-bar repeat bars are selectable and can be marked/unmarked with the grid controls, but the repeated bar body itself remains read-only.
 
 ## Settings
 
