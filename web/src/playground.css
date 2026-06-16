@@ -357,6 +357,12 @@ body {
   margin: 0 auto;
 }
 
+#pg-edit-root .pg-grid-editor {
+  --pg-editor-control-bg: color-mix(in srgb, var(--pg-bg) 84%, var(--pg-border));
+
+  margin-top: 0.65rem;
+}
+
 /* ---- status / diagnostics ---- */
 .pg-footer {
   min-width: 0;
