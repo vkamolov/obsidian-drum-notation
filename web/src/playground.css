@@ -561,13 +561,24 @@ body {
     grid-template-columns: minmax(10rem, 1fr) 2.2rem;
   }
 
+  html,
   body {
-    grid-template-rows: auto auto 1fr auto;
+    height: auto;
+  }
+
+  body {
+    display: block;
+    min-height: 100vh;
+    overflow: auto;
   }
 
   .pg-main {
     grid-template-columns: 1fr;
-    grid-auto-rows: minmax(180px, 40vh);
+    grid-auto-rows: auto;
+  }
+
+  .pg-pane--editor {
+    min-height: 22rem;
   }
 
   .pg-pane--editor {
@@ -575,8 +586,16 @@ body {
     border-bottom: 1px solid var(--pg-border);
   }
 
+  .pg-editor {
+    min-height: 18rem;
+  }
+
+  .pg-preview-scroll {
+    overflow: visible;
+  }
+
   .pg-diagnostics {
     grid-template-columns: 1fr;
-    max-height: 34vh;
+    max-height: none;
   }
 }
