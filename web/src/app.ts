@@ -21,6 +21,7 @@ import { CursorPosition, DrumBlock, DrumSlot, GridResolution, LegendMode, ScoreB
 import { normalizeLabel } from "../../src/util";
 import { EXAMPLES } from "./examples";
 import { GridEditorHandle, mountGridEditor } from "../../src/editor-grid";
+import { iconSvg } from "./icons";
 
 const STORAGE_KEY = "drum-playground.notation";
 const THEME_KEY = "drum-playground.theme";
@@ -47,6 +48,7 @@ const legendSelect = $<HTMLSelectElement>("pg-legend");
 const playBtn = $<HTMLButtonElement>("pg-play");
 const stopBtn = $<HTMLButtonElement>("pg-stop");
 const loopBtn = $<HTMLButtonElement>("pg-loop");
+const loopAllBtn = $<HTMLButtonElement>("pg-loop-all");
 const editBtn = $<HTMLButtonElement>("pg-edit");
 const editRoot = $<HTMLDivElement>("pg-edit-root");
 const copyBlockBtn = $<HTMLButtonElement>("pg-copy-block");
@@ -71,6 +73,7 @@ let selectedBarIndex = 0;
 let currentSlotIndex = 0;
 let lastRenderError: string | null = null;
 let isLooping = false;
+let isLoopingAll = false;
 let gridEditor: GridEditorHandle | null = null;
 let isApplyingGridEdit = false;
 
@@ -107,6 +110,7 @@ function renderPreview(): void {
   playBtn.disabled = !hasRows;
   stopBtn.disabled = !hasRows;
   loopBtn.disabled = !hasRows;
+  loopAllBtn.disabled = !hasRows;
   editBtn.disabled = !hasRows;
 
   if (!hasRows) {
@@ -299,8 +303,10 @@ function stopPlayback(): void {
   player?.stop();
   player = null;
   isLooping = false;
+  isLoopingAll = false;
   setPlaying(playBtn, false);
   setPlaying(loopBtn, false);
+  setPlaying(loopAllBtn, false);
   clearVisuals();
 }
 
@@ -372,12 +378,60 @@ function startLoopBar(barIndex = selectedBarIndex): void {
   void player.play();
 }
 
-function restartPlaybackAfterEdit(wasPlaying: boolean, wasLooping: boolean, restartSlotIndex: number, restartBarIndex: number): void {
+function loopAll(): void {
+  if (isLoopingAll) {
+    stopPlayback();
+    return;
+  }
+  if (!currentBlock || currentBlock.rows.length === 0) {
+    return;
+  }
+
+  startLoopAll();
+}
+
+function startLoopAll(): void {
+  if (!currentBlock || currentBlock.rows.length === 0) {
+    return;
+  }
+
+  stopPlayback();
+  const block = currentBlock;
+  currentSlotIndex = 0;
+  isLoopingAll = true;
+  setPlaying(loopAllBtn, true);
+  player = new DrumPlayer(
+    getAudioContext(),
+    block,
+    () => {
+      setPlaying(loopAllBtn, false);
+      clearVisuals();
+      isLoopingAll = false;
+      player = null;
+    },
+    (slotIndex) => {
+      currentSlotIndex = slotIndex;
+      moveCursor(slotIndex);
+    },
+    { startSlot: 0, endSlot: block.slots.length, loop: true }
+  );
+  void player.play();
+}
+
+function restartPlaybackAfterEdit(
+  wasPlaying: boolean,
+  wasLooping: boolean,
+  wasLoopingAll: boolean,
+  restartSlotIndex: number,
+  restartBarIndex: number
+): void {
   if (!wasPlaying || lastRenderError || !currentBlock || currentBlock.rows.length === 0) {
     return;
   }
 
-  if (wasLooping) {
+  if (wasLoopingAll) {
+    startLoopAll();
+  } else if (wasLooping) {
     startLoopBar(restartBarIndex);
   } else {
     play(restartSlotIndex);
@@ -387,10 +441,11 @@ function restartPlaybackAfterEdit(wasPlaying: boolean, wasLooping: boolean, rest
 function capturePlaybackRestart(): (barIndex?: number) => void {
   const wasPlaying = player !== null;
   const wasLooping = isLooping;
+  const wasLoopingAll = isLoopingAll;
   const restartSlotIndex = currentSlotIndex;
   const restartBarIndex = selectedBarIndex;
 
-  return (barIndex = restartBarIndex) => restartPlaybackAfterEdit(wasPlaying, wasLooping, restartSlotIndex, barIndex);
+  return (barIndex = restartBarIndex) => restartPlaybackAfterEdit(wasPlaying, wasLooping, wasLoopingAll, restartSlotIndex, barIndex);
 }
 
 function clampSlotIndex(block: DrumBlock, slotIndex: number): number {
@@ -740,6 +795,18 @@ function showManualCopyText(text: string): void {
   });
 }
 
+/* ---------- buttons ---------- */
+// Prepends a Lucide icon before the existing button label (icon + text).
+function decorateButton(button: HTMLButtonElement, icon: string): void {
+  const label = button.textContent ?? "";
+  button.textContent = "";
+  button.insertAdjacentHTML("afterbegin", iconSvg(icon));
+  const span = document.createElement("span");
+  span.className = "pg-btn__label";
+  span.textContent = label;
+  button.appendChild(span);
+}
+
 /* ---------- debounce ---------- */
 function debounce(fn: () => void, ms: number): () => void {
   let timer: number | null = null;
@@ -835,9 +902,16 @@ function init(): void {
     applyEditedBlock({ ...currentBlock, legendMode: legendSelect.value as LegendMode });
   });
 
+  decorateButton(playBtn, "play");
+  decorateButton(stopBtn, "square");
+  decorateButton(loopBtn, "repeat-1");
+  decorateButton(loopAllBtn, "repeat");
+  decorateButton(editBtn, "pencil");
+
   playBtn.addEventListener("click", () => play());
   stopBtn.addEventListener("click", stopPlayback);
   loopBtn.addEventListener("click", loopBar);
+  loopAllBtn.addEventListener("click", loopAll);
   editBtn.addEventListener("click", () => {
     if (gridEditor) {
       exitEditMode();
