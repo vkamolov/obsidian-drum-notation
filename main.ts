@@ -8,6 +8,8 @@ import {
   Notice,
   Plugin,
   PluginSettingTab,
+  setIcon,
+  setTooltip,
   Setting,
   TFile
 } from "obsidian";
@@ -57,6 +59,7 @@ interface RestoredEditSession {
   playback: {
     wasPlaying: boolean;
     wasLooping: boolean;
+    wasLoopingAll: boolean;
     slotIndex: number;
     barIndex: number;
   };
@@ -137,22 +140,19 @@ export default class DrumNotationPlugin extends Plugin {
     const toolbar = root.createEl("div", { cls: "drum-notation__toolbar" });
     const title = toolbar.createEl("div", { cls: "drum-notation__title" });
     const controls = toolbar.createEl("div", { cls: "drum-notation__controls" });
-    const playButton = controls.createEl("button", {
-      cls: "drum-notation__button",
-      text: "Play"
-    }) as HTMLButtonElement;
-    const stopButton = controls.createEl("button", {
-      cls: "drum-notation__button",
-      text: "Stop"
-    }) as HTMLButtonElement;
-    const loopButton = controls.createEl("button", {
-      cls: "drum-notation__button",
-      text: "Loop Bar"
-    }) as HTMLButtonElement;
-    const editButton = controls.createEl("button", {
-      cls: "drum-notation__button",
-      text: "Edit"
-    }) as HTMLButtonElement;
+    const makeIconButton = (icon: string, tooltip: string): HTMLButtonElement => {
+      const button = controls.createEl("button", { cls: "drum-notation__button clickable-icon" }) as HTMLButtonElement;
+      setIcon(button, icon);
+      setTooltip(button, tooltip, { placement: "top" });
+      button.setAttribute("aria-label", tooltip);
+      return button;
+    };
+    const playButton = makeIconButton("play", "Play");
+    const stopButton = makeIconButton("square", "Stop");
+    const loopButton = makeIconButton("repeat-1", "Loop current bar");
+    const loopAllButton = makeIconButton("repeat", "Loop whole notation");
+    controls.createEl("span", { cls: "drum-notation__control-divider" });
+    const editButton = makeIconButton("pencil", "Edit notation");
 
     const notationViewport = root.createEl("div", { cls: "drum-notation__score-viewport" });
     const notation = notationViewport.createEl("div", { cls: "drum-notation__score" });
@@ -172,6 +172,7 @@ export default class DrumNotationPlugin extends Plugin {
     let gridEditor: GridEditorHandle | null = null;
     let visuals = makePlaybackVisuals(block, state);
     let isLoopingBar = false;
+    let isLoopingAll = false;
     let resizeTimer: number | null = null;
     let writebackTimer: number | null = null;
     let playbackRestartTimer: number | null = null;
@@ -193,6 +194,7 @@ export default class DrumNotationPlugin extends Plugin {
       playButton.disabled = !hasRows;
       stopButton.disabled = !hasRows;
       loopButton.disabled = !hasRows;
+      loopAllButton.disabled = !hasRows;
       editButton.disabled = !hasRows || !editAvailability.ok;
       editButton.title = !editAvailability.ok ? editAvailability.reason : "Edit notation visually";
     };
@@ -333,17 +335,24 @@ export default class DrumNotationPlugin extends Plugin {
       visuals.moveCursor(slotIndex);
     };
 
-    const stopLocalPlayback = () => {
-      this.stopActivePlayer(renderOwner);
+    const clearTransportHighlights = () => {
       playButton.removeClass("is-playing");
       loopButton.removeClass("is-playing");
+      loopAllButton.removeClass("is-playing");
+    };
+
+    const stopLocalPlayback = () => {
+      this.stopActivePlayer(renderOwner);
+      clearTransportHighlights();
       isLoopingBar = false;
+      isLoopingAll = false;
     };
 
     const startPlayback = (startSlot = 0) => {
       this.stopActivePlayer();
 
       isLoopingBar = false;
+      isLoopingAll = false;
       currentSlotIndex = clampSlotIndex(block, startSlot);
       this.activePlaybackOwner = renderOwner;
       this.activePlayer = new DrumPlayer(this.getAudioContext(), block, () => {
@@ -351,19 +360,19 @@ export default class DrumNotationPlugin extends Plugin {
           return;
         }
 
-        playButton.removeClass("is-playing");
-        loopButton.removeClass("is-playing");
+        clearTransportHighlights();
         visuals.clearCursor();
         this.activePlayer = null;
         this.activePlaybackReset = null;
         this.activePlaybackOwner = null;
       }, handleSlotChange, { startSlot: currentSlotIndex, repeatCount: block.repeatCount });
       this.activePlaybackReset = () => {
-        playButton.removeClass("is-playing");
-        loopButton.removeClass("is-playing");
+        clearTransportHighlights();
         isLoopingBar = false;
+        isLoopingAll = false;
         visuals.clearCursor();
       };
+      clearTransportHighlights();
       playButton.addClass("is-playing");
       void this.activePlayer.play();
     };
@@ -376,18 +385,19 @@ export default class DrumNotationPlugin extends Plugin {
       const barRange = getBarRange(block, currentSlotIndex);
 
       isLoopingBar = true;
+      isLoopingAll = false;
+      clearTransportHighlights();
       loopButton.addClass("is-playing");
-      playButton.removeClass("is-playing");
       this.activePlaybackOwner = renderOwner;
       this.activePlayer = new DrumPlayer(this.getAudioContext(), block, () => {
         if (this.activePlaybackOwner !== renderOwner) {
           return;
         }
 
-        loopButton.removeClass("is-playing");
-        playButton.removeClass("is-playing");
+        clearTransportHighlights();
         visuals.clearCursor();
         isLoopingBar = false;
+        isLoopingAll = false;
         this.activePlayer = null;
         this.activePlaybackReset = null;
         this.activePlaybackOwner = null;
@@ -397,15 +407,56 @@ export default class DrumNotationPlugin extends Plugin {
         loop: true
       });
       this.activePlaybackReset = () => {
-        loopButton.removeClass("is-playing");
-        playButton.removeClass("is-playing");
+        clearTransportHighlights();
         visuals.clearCursor();
         isLoopingBar = false;
+        isLoopingAll = false;
       };
       void this.activePlayer.play();
     };
 
-    const schedulePlaybackRestart = (wasPlaying: boolean, wasLooping: boolean, slotIndex: number, barIndex: number) => {
+    const startLoopAll = () => {
+      this.stopActivePlayer();
+
+      isLoopingBar = false;
+      isLoopingAll = true;
+      currentSlotIndex = 0;
+      clearTransportHighlights();
+      loopAllButton.addClass("is-playing");
+      this.activePlaybackOwner = renderOwner;
+      this.activePlayer = new DrumPlayer(this.getAudioContext(), block, () => {
+        if (this.activePlaybackOwner !== renderOwner) {
+          return;
+        }
+
+        clearTransportHighlights();
+        visuals.clearCursor();
+        isLoopingBar = false;
+        isLoopingAll = false;
+        this.activePlayer = null;
+        this.activePlaybackReset = null;
+        this.activePlaybackOwner = null;
+      }, handleSlotChange, {
+        startSlot: 0,
+        endSlot: block.slots.length,
+        loop: true
+      });
+      this.activePlaybackReset = () => {
+        clearTransportHighlights();
+        visuals.clearCursor();
+        isLoopingBar = false;
+        isLoopingAll = false;
+      };
+      void this.activePlayer.play();
+    };
+
+    const schedulePlaybackRestart = (
+      wasPlaying: boolean,
+      wasLooping: boolean,
+      wasLoopingAll: boolean,
+      slotIndex: number,
+      barIndex: number
+    ) => {
       if (!wasPlaying || block.rows.length === 0) {
         return;
       }
@@ -416,7 +467,9 @@ export default class DrumNotationPlugin extends Plugin {
 
       playbackRestartTimer = window.setTimeout(() => {
         playbackRestartTimer = null;
-        if (wasLooping) {
+        if (wasLoopingAll) {
+          startLoopAll();
+        } else if (wasLooping) {
           startLoopBar(barIndex);
         } else {
           startPlayback(slotIndex);
@@ -466,6 +519,7 @@ export default class DrumNotationPlugin extends Plugin {
               playback: {
                 wasPlaying: this.activePlaybackOwner === renderOwner && this.activePlayer !== null,
                 wasLooping: isLoopingBar,
+                wasLoopingAll: isLoopingAll,
                 slotIndex: currentSlotIndex,
                 barIndex: selectedBarIndex
               }
@@ -500,6 +554,7 @@ export default class DrumNotationPlugin extends Plugin {
     const applyGridEditedBlock = (next: DrumBlock, changedSlotIndex?: number, nextSelectedBarIndex?: number) => {
       const wasPlaying = this.activePlaybackOwner === renderOwner && this.activePlayer !== null;
       const wasLooping = isLoopingBar;
+      const wasLoopingAll = isLoopingAll;
       const restartSlotIndex = currentSlotIndex;
       const restartBarIndex = selectedBarIndex;
 
@@ -518,7 +573,7 @@ export default class DrumNotationPlugin extends Plugin {
       updateHeader();
       renderScore();
       scheduleWriteback();
-      schedulePlaybackRestart(wasPlaying, wasLooping, restartSlotIndex, restartBarIndex);
+      schedulePlaybackRestart(wasPlaying, wasLooping, wasLoopingAll, restartSlotIndex, restartBarIndex);
 
       if (changedSlotIndex === undefined || wasPlaying) {
         selectEditSlot(null);
@@ -643,6 +698,15 @@ export default class DrumNotationPlugin extends Plugin {
       startLoopBar();
     });
 
+    loopAllButton.addEventListener("click", () => {
+      if (isLoopingAll) {
+        stopLocalPlayback();
+        return;
+      }
+
+      startLoopAll();
+    });
+
     editButton.addEventListener("click", () => {
       if (gridEditor) {
         exitEditMode();
@@ -657,7 +721,13 @@ export default class DrumNotationPlugin extends Plugin {
       selectEditSlot(restored.selectedSlotIndex);
       if (restored.playback.wasPlaying) {
         window.setTimeout(() => {
-          schedulePlaybackRestart(true, restored.playback.wasLooping, restored.playback.slotIndex, restored.playback.barIndex);
+          schedulePlaybackRestart(
+            true,
+            restored.playback.wasLooping,
+            restored.playback.wasLoopingAll,
+            restored.playback.slotIndex,
+            restored.playback.barIndex
+          );
         }, 0);
       }
     }
