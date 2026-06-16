@@ -213,6 +213,7 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
       const formatWidth = Math.min(availableFormatWidth, slotScaledFormatWidth);
       new Formatter().joinVoices([voice]).format([voice], formatWidth);
       voice.draw(context, stave);
+      markDragGraceBeams(system);
       if (bar.measureRepeat && entry.repeatCount > 1) {
         drawMeasureRepeatCount(system, stave, visualBar.notes[0], entry.repeatCount, layout);
       }
@@ -827,6 +828,12 @@ function drawGraceNoteSlurs(system: HTMLElement, notes: StaveNote[], layout: Not
       slur.setAttribute("pointer-events", "none");
       svg.appendChild(slur);
     });
+  });
+}
+
+function markDragGraceBeams(system: HTMLElement): void {
+  system.querySelectorAll<SVGGElement>(".vf-stavenote > .vf-notehead > .vf-beam").forEach((beam) => {
+    beam.classList.add("drum-notation__drag-grace-beam");
   });
 }
 

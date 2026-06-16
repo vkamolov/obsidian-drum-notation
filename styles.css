@@ -157,6 +157,14 @@
   opacity: 0.72;
 }
 
+.drum-notation__score svg .drum-notation__drag-grace-beam > path {
+  fill: var(--drum-notehead-color, var(--drum-ink-note));
+  opacity: 0.86;
+  transform: scaleY(0.66);
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
 .drum-notation__score svg .drum-notation__accent {
   color: var(--drum-ink-stem);
 }
