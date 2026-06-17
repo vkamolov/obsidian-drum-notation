@@ -507,12 +507,17 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
       button.addEventListener("click", () => applyArticulationToSelection(articulation));
     });
 
+    tools.createEl("span", {
+      cls: "pg-grid-editor__tool-separator",
+      attr: { "aria-hidden": "true" }
+    });
+
     const deleteButton = tools.createEl("button", {
       cls: "pg-grid-editor__tool pg-grid-editor__tool--delete"
     }) as HTMLButtonElement;
 
-    deleteButton.title = "Delete";
-    deleteButton.setAttr("aria-label", "Delete");
+    deleteButton.title = "Delete note";
+    deleteButton.setAttr("aria-label", "Delete note");
     deleteButton.appendChild(createDeleteIcon());
     deleteButton.disabled = !hit;
     deleteButton.addEventListener("click", clearSelectionHit);
@@ -833,22 +838,34 @@ function createDeleteIcon(): SVGSVGElement {
     focusable: "false"
   });
 
-  appendSvg(svg, "line", {
-    x1: "13",
-    y1: "13",
-    x2: "23",
-    y2: "23",
+  appendSvg(svg, "path", {
+    d: "M10 13 H26",
+    fill: "none",
     stroke: "currentColor",
-    "stroke-width": "3.2",
+    "stroke-width": "2.5",
     "stroke-linecap": "round"
   });
-  appendSvg(svg, "line", {
-    x1: "23",
-    y1: "13",
-    x2: "13",
-    y2: "23",
+  appendSvg(svg, "path", {
+    d: "M15 13 V10 C15 9.4 15.4 9 16 9 H20 C20.6 9 21 9.4 21 10 V13",
+    fill: "none",
     stroke: "currentColor",
-    "stroke-width": "3.2",
+    "stroke-width": "2.3",
+    "stroke-linecap": "round",
+    "stroke-linejoin": "round"
+  });
+  appendSvg(svg, "path", {
+    d: "M24 13 L23 27 C22.9 28.1 22 29 20.9 29 H15.1 C14 29 13.1 28.1 13 27 L12 13",
+    fill: "none",
+    stroke: "currentColor",
+    "stroke-width": "2.3",
+    "stroke-linecap": "round",
+    "stroke-linejoin": "round"
+  });
+  appendSvg(svg, "path", {
+    d: "M16.5 17 V25 M19.5 17 V25",
+    fill: "none",
+    stroke: "currentColor",
+    "stroke-width": "2.1",
     "stroke-linecap": "round"
   });
 

@@ -394,6 +394,9 @@
 
 .pg-grid-editor {
   --pg-editor-control-bg: var(--pg-panel);
+  --pg-danger: #dc2626;
+  --pg-tool-strip-bg: color-mix(in srgb, var(--pg-panel) 86%, var(--pg-accent));
+  --pg-tool-separator: color-mix(in srgb, var(--pg-tool-strip-bg) 76%, black);
 
   display: flex;
   flex-direction: column;
@@ -401,6 +404,11 @@
   min-width: 0;
   max-width: 100%;
   overflow-x: hidden;
+}
+
+.theme-dark .pg-grid-editor,
+.pg-grid-editor.theme-dark {
+  --pg-tool-separator: color-mix(in srgb, var(--pg-tool-strip-bg) 72%, white);
 }
 
 .pg-grid-editor button,
@@ -572,7 +580,7 @@
   padding: 0.4rem;
   border: 1px solid var(--pg-border);
   border-radius: 6px;
-  background: color-mix(in srgb, var(--pg-panel) 86%, var(--pg-accent));
+  background: var(--pg-tool-strip-bg);
 }
 
 .pg-grid-editor__selection {
@@ -624,7 +632,32 @@
 }
 
 .pg-grid-editor__tool--delete {
-  color: #dc2626;
+  color: var(--pg-text);
+  background: var(--pg-editor-control-bg);
+  border-color: var(--pg-border);
+}
+
+.pg-grid-editor__tool-separator {
+  align-self: stretch;
+  width: 2px;
+  min-height: 1.65rem;
+  margin: 0.35rem 0.25rem;
+  border-radius: 999px;
+  background: var(--pg-tool-separator);
+  pointer-events: none;
+}
+
+.pg-grid-editor__tool--delete:hover,
+.pg-grid-editor__tool--delete:focus-visible {
+  color: var(--pg-danger);
+  background: color-mix(in srgb, var(--pg-danger) 16%, var(--pg-editor-control-bg));
+  border-color: var(--pg-danger);
+}
+
+.pg-grid-editor__tool--delete:disabled {
+  color: var(--pg-muted);
+  background: var(--pg-editor-control-bg);
+  border-color: var(--pg-border);
 }
 
 .pg-grid-editor__bar-pager {
