@@ -8,7 +8,10 @@ export default defineConfig({
   base: "./",
   server: {
     // Allow importing modules from the repo root (../src) while rooted in web/.
-    fs: { allow: [".."] }
+    fs: { allow: [".."] },
+    // Honor a PORT assigned by the tooling (e.g. the preview harness); falls back
+    // to Vite's default (5173) when unset.
+    port: process.env.PORT ? Number(process.env.PORT) : undefined
   },
   build: {
     outDir: "dist",
