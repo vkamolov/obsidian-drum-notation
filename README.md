@@ -104,6 +104,22 @@ The pattern is one character per grid slot. By default one character is a sixtee
 
 `SD` uses a fuller synthesized snare sound. `RS` / cross-stick stays shorter and clickier. `BD2` / second kick is for double-bass-pedal notation and renders below the main kick while using the same synthesized kick voice. `CR`, `SP`, `China`, and `Stack` use separate synthesized cymbal voices so their playback is distinguishable. `OH` / open hi-hat renders with the standard open-circle mark above the note. `HO` / half-open hi-hat renders the open circle with a vertical line through it. `HFS` / hi-hat foot splash renders as a circled x on the foot-hat line.
 
+## Sticking
+
+Add a global right/left/both-hands sticking lane with `ST`, `Stick`, `Sticking`,
+or `Hands`. It is slot-aligned with the drum rows and display-only, so it does
+not affect playback.
+
+````
+```drums
+Title: Sticking example
+ST | R-L-B-L-R-L-B-L-
+HH | x-x-x-x-x-x-x-x-
+SD | ----o-------o---
+BD | o-------o-------
+```
+````
+
 ## Color Legend
 
 The legend is hidden by default. Add `Legend: on` to show a color key for only the instruments used in the block, or `Legend: all` to show every supported instrument. When the legend is visible, noteheads are colored to match the legend while staff lines, stems, beams, and notation marks keep the notation color scheme.

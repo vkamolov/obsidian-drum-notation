@@ -131,6 +131,27 @@ HH | -x-x`);
   });
 });
 
+describe("parseDrumBlock - sticking rows", () => {
+  it("recognizes sticking row aliases before instrument rows", () => {
+    ["ST", "Stick", "Sticking", "Hands"].forEach((label) => {
+      const block = parseDrumBlock(`${label} | Rl-b\nHH | x---`);
+
+      expect(block.rows).toHaveLength(1);
+      expect(block.slots.map((slot) => slot.sticking)).toEqual(["right", "left", undefined, "both"]);
+    });
+  });
+
+  it("keeps sticking display-only without adding hits", () => {
+    const block = parseDrumBlock(`ST | R-B-
+SD | --o-`);
+
+    expect(block.bars[0].stickingPattern).toBe("R-B-");
+    expect(block.slots[0]).toMatchObject({ sticking: "right", hits: [] });
+    expect(block.slots[2]).toMatchObject({ sticking: "both" });
+    expect(block.slots[2].hits.map((hit) => hit.instrument.id)).toEqual(["snare"]);
+  });
+});
+
 describe("parseDrumBlock - measure repeats", () => {
   it("expands a one-bar repeat into playable slots and marks the bar", () => {
     const block = parseDrumBlock(`HH | x-x-
@@ -170,6 +191,15 @@ Bar
     expect(block.systems).toHaveLength(2);
     expect(block.bars[1].measureRepeat).toBe(1);
     expect(block.bars[1].rows[0].pattern).toBe("x---");
+  });
+
+  it("copies sticking into repeated bars for playback/model consistency", () => {
+    const block = parseDrumBlock(`ST | R-B-
+HH | x---
+%`);
+
+    expect(block.bars[1]).toMatchObject({ measureRepeat: 1, stickingPattern: "R-B-" });
+    expect(block.slots.slice(4, 8).map((slot) => slot.sticking)).toEqual(["right", undefined, "both", undefined]);
   });
 });
 

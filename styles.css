@@ -237,6 +237,12 @@
   fill: none;
 }
 
+.drum-notation__score svg .drum-notation__sticking {
+  fill: var(--drum-ink-symbol);
+  stroke: none;
+  font-family: var(--font-monospace, monospace);
+}
+
 .drum-notation__system {
   width: 100%;
 }
@@ -608,6 +614,11 @@
   cursor: pointer;
 }
 
+.pg-grid-editor .pg-grid-editor__tool {
+  width: 2.35rem;
+  height: 2.35rem;
+}
+
 .pg-grid-editor__tool-icon {
   width: 1.45rem;
   height: 1.45rem;
@@ -658,6 +669,10 @@
   color: var(--pg-muted);
   background: var(--pg-editor-control-bg);
   border-color: var(--pg-border);
+}
+
+.pg-grid-editor__tool--sticking {
+  font-weight: 700;
 }
 
 .pg-grid-editor__bar-pager {
@@ -784,6 +799,11 @@
   letter-spacing: 0.04em;
 }
 
+.pg-grid__label--sticking {
+  color: var(--pg-text);
+  font-weight: 700;
+}
+
 .pg-grid__ruler-cells,
 .pg-grid__cells {
   display: grid;
@@ -843,6 +863,26 @@
 
 .pg-grid__cell.is-hit {
   color: #fff !important;
+}
+
+.pg-grid__cell.is-sticking {
+  color: #fff !important;
+  font-weight: 700;
+}
+
+.pg-grid__cell.is-sticking.is-right {
+  background: #0f766e !important;
+  border-color: #0f766e;
+}
+
+.pg-grid__cell.is-sticking.is-left {
+  background: #475569 !important;
+  border-color: #475569;
+}
+
+.pg-grid__cell.is-sticking.is-both {
+  background: #7c3aed !important;
+  border-color: #7c3aed;
 }
 
 .pg-grid__cell.is-hit.is-normal {

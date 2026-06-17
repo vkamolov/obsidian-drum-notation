@@ -8,10 +8,12 @@ import {
   DrumHit,
   DrumInstrument,
   DrumRowInput,
+  DrumStickingInput,
   DrumSystem,
   GridResolution,
   MeasureRepeat,
-  MeasureRepeatInput
+  MeasureRepeatInput,
+  StickingHand
 } from "./types";
 
 // Pure, DOM-free editing layer over the parsed model. Every helper takes a
@@ -32,6 +34,10 @@ export function findHit(block: DrumBlock, slotIndex: number, instrumentId: strin
   const slot = block.slots.find((candidate) => candidate.index === slotIndex);
 
   return slot?.hits.find((hit) => hit.instrument.id === instrumentId);
+}
+
+export function findSticking(block: DrumBlock, slotIndex: number): StickingHand | undefined {
+  return block.slots.find((candidate) => candidate.index === slotIndex)?.sticking;
 }
 
 // --- Header / setting edits -------------------------------------------------
@@ -111,6 +117,16 @@ export function setInstrument(
   return withHitChar(cleared, slotIndex, toInstrument, getHitChar(toInstrument, hit.articulation));
 }
 
+// --- Sticking edits ---------------------------------------------------------
+
+export function setSticking(block: DrumBlock, slotIndex: number, hand: StickingHand): DrumBlock {
+  return withStickingChar(block, slotIndex, getStickingChar(hand));
+}
+
+export function clearSticking(block: DrumBlock, slotIndex: number): DrumBlock {
+  return withStickingChar(block, slotIndex, "-");
+}
+
 // --- Internal rebuild -------------------------------------------------------
 // The model is redundant (rows carry pattern strings, slots carry hits), so an
 // edit must keep both in sync. Rather than patch the structure in place, we
@@ -130,9 +146,15 @@ interface RowSnapshot {
   pattern: string;
 }
 
+interface BarSnapshot {
+  rows: RowSnapshot[];
+  stickingPattern?: string;
+}
+
 interface BarView {
   width: number;
   start: number;
+  stickingPattern?: string;
   measureRepeat?: MeasureRepeat;
   measureRepeatCount?: number;
 }
@@ -182,6 +204,37 @@ function withHitChar(
   return rebuildBlock(block, views);
 }
 
+function withStickingChar(block: DrumBlock, slotIndex: number, char: "R" | "L" | "B" | "-"): DrumBlock {
+  const views = block.systems.map(toSystemView);
+  const location = locate(views, slotIndex);
+
+  if (!location) {
+    return block;
+  }
+
+  const view = views[location.system];
+  const current = view.bars[location.bar].stickingPattern?.[location.local] ?? "-";
+
+  if (current === char) {
+    return block;
+  }
+
+  while (view.bars.length > 0 && view.bars.length <= location.bar) {
+    view.bars.push({ width: getSlotsPerBar(block.timeSignature, block.gridResolution), start: 0 });
+  }
+
+  for (let index = 0; index <= location.bar; index++) {
+    if (view.bars[index].stickingPattern === undefined) {
+      view.bars[index].stickingPattern = "-".repeat(view.bars[index].width);
+    }
+  }
+
+  view.bars[location.bar].stickingPattern = setChar(view.bars[location.bar].stickingPattern ?? "", location.local, char);
+  compactStickingPatterns(view);
+
+  return rebuildBlock(block, views);
+}
+
 // --- Bar edits --------------------------------------------------------------
 
 export function insertBarAfter(block: DrumBlock, barIndex: number, placement: BarPlacement = "same-system"): DrumBlock {
@@ -195,10 +248,11 @@ export function insertBarAfter(block: DrumBlock, barIndex: number, placement: Ba
   const sourceView = views[location.system];
   const emptyBar = emptyBarForBlock(block);
   const restPattern = "-".repeat(emptyBar.width);
+  const hasSticking = systemHasSticking(sourceView);
 
   if (placement === "new-system") {
     views.splice(location.system + 1, 0, {
-      bars: [emptyBar],
+      bars: [{ ...emptyBar, ...(hasSticking ? { stickingPattern: restPattern } : {}) }],
       rows: rowsForBar(sourceView, location.bar).map((row) => ({
         instrument: row.instrument,
         label: row.label,
@@ -206,8 +260,12 @@ export function insertBarAfter(block: DrumBlock, barIndex: number, placement: Ba
       }))
     });
   } else {
-    insertPatternsIntoSystem(sourceView, location.bar + 1, emptyBar, rowsForBar(sourceView, location.bar), (row) =>
-      restPattern
+    insertPatternsIntoSystem(
+      sourceView,
+      location.bar + 1,
+      { ...emptyBar, ...(hasSticking ? { stickingPattern: restPattern } : {}) },
+      rowsForBar(sourceView, location.bar),
+      (row) => restPattern
     );
   }
 
@@ -225,7 +283,10 @@ export function duplicateBar(block: DrumBlock, barIndex: number, placement: BarP
   const sourceView = views[location.system];
   const sourceBar = sourceView.bars[location.bar];
   const sourceRows = rowsForBar(sourceView, location.bar);
-  const normalCopy = emptyBarLike(sourceBar);
+  const normalCopy = {
+    ...emptyBarLike(sourceBar),
+    ...(sourceBar.stickingPattern !== undefined ? { stickingPattern: sourceBar.stickingPattern } : {})
+  };
 
   if (placement === "new-system") {
     views.splice(location.system + 1, 0, {
@@ -330,6 +391,7 @@ function toSystemView(system: DrumSystem): SystemView {
   const bars = system.bars.map((bar) => ({
     width: bar.slots.length,
     start: bar.startSlot,
+    ...(bar.stickingPattern !== undefined ? { stickingPattern: bar.stickingPattern } : {}),
     ...(bar.measureRepeat ? { measureRepeat: bar.measureRepeat } : {}),
     ...(bar.measureRepeatCount ? { measureRepeatCount: bar.measureRepeatCount } : {})
   }));
@@ -361,6 +423,17 @@ function toRowSection(view: SystemView): DrumRowInput[] {
   }));
 }
 
+function toStickingSection(view: SystemView): DrumStickingInput | undefined {
+  if (!systemHasSticking(view)) {
+    return undefined;
+  }
+
+  return {
+    label: "ST",
+    patterns: view.bars.map((bar) => normalizeStickingPattern(bar.stickingPattern ?? "-".repeat(bar.width)))
+  };
+}
+
 function toRepeatSection(view: SystemView): Array<MeasureRepeatInput | undefined> {
   return view.bars.map((bar) =>
     bar.measureRepeat
@@ -374,12 +447,13 @@ function toRepeatSection(view: SystemView): Array<MeasureRepeatInput | undefined
 
 function rebuildBlock(block: DrumBlock, views: SystemView[]): DrumBlock {
   syncMeasureRepeatCopies(views);
+  views.forEach(compactStickingPatterns);
 
-  return finalizeDrumBlock(headerOf(block), views.map(toRowSection), views.map(toRepeatSection));
+  return finalizeDrumBlock(headerOf(block), views.map(toRowSection), views.map(toRepeatSection), views.map(toStickingSection));
 }
 
 function syncMeasureRepeatCopies(views: SystemView[]): void {
-  let previousSnapshot: RowSnapshot[] | null = null;
+  let previousSnapshot: BarSnapshot | null = null;
 
   for (const view of views) {
     for (let barIndex = 0; barIndex < view.bars.length; barIndex++) {
@@ -394,18 +468,21 @@ function syncMeasureRepeatCopies(views: SystemView[]): void {
   }
 }
 
-function snapshotBar(view: SystemView, barIndex: number): RowSnapshot[] {
-  return view.rows
-    .map((row): RowSnapshot | null => {
-      const pattern = row.patterns[barIndex];
+function snapshotBar(view: SystemView, barIndex: number): BarSnapshot {
+  return {
+    rows: view.rows
+      .map((row): RowSnapshot | null => {
+        const pattern = row.patterns[barIndex];
 
-      return pattern === undefined ? null : { instrument: row.instrument, label: row.label, pattern };
-    })
-    .filter((row): row is RowSnapshot => row !== null);
+        return pattern === undefined ? null : { instrument: row.instrument, label: row.label, pattern };
+      })
+      .filter((row): row is RowSnapshot => row !== null),
+    ...(view.bars[barIndex].stickingPattern !== undefined ? { stickingPattern: view.bars[barIndex].stickingPattern } : {})
+  };
 }
 
-function applySnapshotToBar(view: SystemView, barIndex: number, snapshot: RowSnapshot[]): void {
-  snapshot.forEach((snapshotRow) => {
+function applySnapshotToBar(view: SystemView, barIndex: number, snapshot: BarSnapshot): void {
+  snapshot.rows.forEach((snapshotRow) => {
     let row = view.rows.find((candidate) => candidate.instrument.id === snapshotRow.instrument.id);
 
     if (!row) {
@@ -423,10 +500,16 @@ function applySnapshotToBar(view: SystemView, barIndex: number, snapshot: RowSna
 
     row.patterns[barIndex] = snapshotRow.pattern;
   });
+
+  if (snapshot.stickingPattern !== undefined) {
+    view.bars[barIndex].stickingPattern = snapshot.stickingPattern;
+  } else {
+    delete view.bars[barIndex].stickingPattern;
+  }
 }
 
-function replaceBarWithSnapshot(view: SystemView, barIndex: number, snapshot: RowSnapshot[]): void {
-  const snapshotIds = new Set(snapshot.map((row) => row.instrument.id));
+function replaceBarWithSnapshot(view: SystemView, barIndex: number, snapshot: BarSnapshot): void {
+  const snapshotIds = new Set(snapshot.rows.map((row) => row.instrument.id));
 
   view.rows.forEach((row) => {
     if (!snapshotIds.has(row.instrument.id) && row.patterns.length > barIndex) {
@@ -481,6 +564,50 @@ function insertPatternsIntoSystem(
       row.patterns.splice(insertIndex, 0, "-".repeat(bar.width));
     }
   });
+}
+
+function systemHasSticking(view: SystemView): boolean {
+  return view.bars.some((bar) => bar.stickingPattern !== undefined && /[RLB]/.test(bar.stickingPattern));
+}
+
+function compactStickingPatterns(view: SystemView): void {
+  if (!systemHasSticking(view)) {
+    view.bars.forEach((bar) => {
+      delete bar.stickingPattern;
+    });
+  }
+}
+
+function normalizeStickingPattern(pattern: string): string {
+  return Array.from(pattern)
+    .map((char) => {
+      if (char === "R" || char === "r") {
+        return "R";
+      }
+
+      if (char === "L" || char === "l") {
+        return "L";
+      }
+
+      if (char === "B" || char === "b") {
+        return "B";
+      }
+
+      return "-";
+    })
+    .join("");
+}
+
+function getStickingChar(hand: StickingHand): "R" | "L" | "B" {
+  if (hand === "left") {
+    return "L";
+  }
+
+  if (hand === "both") {
+    return "B";
+  }
+
+  return "R";
 }
 
 function setChar(pattern: string, index: number, char: string): string {

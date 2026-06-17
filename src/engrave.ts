@@ -11,7 +11,7 @@ import {
   largestPowerOfTwoAtMost,
   shouldBeamSubdivision
 } from "./music";
-import { CursorPosition, DrumBar, DrumBlock, DrumHit, DrumInstrument, DrumSlot, GridResolution, MeasureRepeat, ScoreRenderResult } from "./types";
+import { CursorPosition, DrumBar, DrumBlock, DrumHit, DrumInstrument, DrumSlot, GridResolution, MeasureRepeat, ScoreRenderResult, StickingHand } from "./types";
 
 interface NotationLayout {
   systemHeight: number;
@@ -62,6 +62,9 @@ interface NotationLayout {
   measureRepeatCountGap: number;
   measureRepeatCountFontSize: number;
   measureRepeatCountFontWeight: string;
+  stickingLaneGap: number;
+  stickingFontSize: number;
+  stickingFontWeight: string;
 }
 
 interface VisualBarNotes {
@@ -238,6 +241,7 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
       drawChokeMarks(system, visualBar.hitNotes, visualBar.noteSlots, layout);
       drawDiddleMarks(system, visualBar.hitNotes, visualBar.noteSlots, layout);
       drawBuzzRollMarks(system, visualBar.hitNotes, visualBar.noteSlots, layout);
+      drawStickingMarks(system, stave, visualBar.cursorNotes, visualBar.cursorSlots, layout, !!bar.measureRepeat);
       visualBar.noteSlots.forEach((slot, noteIndex) => {
         const note = visualBar.hitNotes[noteIndex];
 
@@ -904,6 +908,76 @@ function markDragGraceBeams(system: HTMLElement): void {
   });
 }
 
+function drawStickingMarks(
+  system: HTMLElement,
+  stave: Stave,
+  notes: Tickable[],
+  slots: DrumSlot[],
+  layout: NotationLayout,
+  isMeasureRepeat: boolean
+): void {
+  if (isMeasureRepeat) {
+    return;
+  }
+
+  const svg = system.querySelector<SVGSVGElement>("svg");
+
+  if (!svg) {
+    return;
+  }
+
+  const y = stave.getYForLine(stave.getNumLines() - 1) + layout.stickingLaneGap;
+
+  slots.forEach((slot, index) => {
+    if (!slot.sticking) {
+      return;
+    }
+
+    const note = notes[index];
+
+    if (!note) {
+      return;
+    }
+
+    const x = getStickingAnchorX(note);
+    const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+
+    label.classList.add("drum-notation__sticking");
+    label.setAttribute("x", String(x));
+    label.setAttribute("y", String(y));
+    label.setAttribute("text-anchor", "middle");
+    label.setAttribute("font-size", String(layout.stickingFontSize));
+    label.setAttribute("font-weight", layout.stickingFontWeight);
+    label.setAttribute("pointer-events", "none");
+    label.textContent = getStickingLabel(slot.sticking);
+    svg.appendChild(label);
+  });
+}
+
+function getStickingAnchorX(note: Tickable): number {
+  if (note instanceof StaveNote && note.noteHeads.length > 0) {
+    const boxes = note.noteHeads.map((noteHead) => noteHead.getBoundingBox());
+    const left = Math.min(...boxes.map((box) => box.getX()));
+    const right = Math.max(...boxes.map((box) => box.getX() + box.getW()));
+
+    return (left + right) / 2;
+  }
+
+  return note.getAbsoluteX();
+}
+
+function getStickingLabel(hand: StickingHand): string {
+  if (hand === "left") {
+    return "L";
+  }
+
+  if (hand === "both") {
+    return "B";
+  }
+
+  return "R";
+}
+
 function getStemMarkMiddleY(note: StaveNote, markHeight: number, markThickness: number, noteheadClearance: number): number {
   const { topY, baseY } = note.getStemExtents();
   const noteheadTopY = Math.min(...note.getYs());
@@ -916,7 +990,7 @@ function getStemMarkMiddleY(note: StaveNote, markHeight: number, markThickness: 
 
 function getNotationLayout(): NotationLayout {
   return {
-    systemHeight: 112,
+    systemHeight: 122,
     renderScale: 0.9,
     staveY: 30,
     staveX: 16,
@@ -963,7 +1037,10 @@ function getNotationLayout(): NotationLayout {
     tupletFontWeight: "400",
     measureRepeatCountGap: 8,
     measureRepeatCountFontSize: 11,
-    measureRepeatCountFontWeight: "700"
+    measureRepeatCountFontWeight: "700",
+    stickingLaneGap: 34,
+    stickingFontSize: 10,
+    stickingFontWeight: "600"
   };
 }
 

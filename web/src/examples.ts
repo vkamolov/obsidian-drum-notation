@@ -19,6 +19,15 @@ MT | ------------o-o-
 SD | o-o-o-o---------
 BD | o-------o-------`,
 
+  "Sticking lane": `Title: Sticking lane
+Tempo: 100
+Time: 4/4
+Grid: 16
+ST | R-L-B-L-R-L-B-L-
+HH | x-x-x-x-x-x-x-x-
+SD | ----o-------o---
+BD | o-------o-------`,
+
   "One-bar repeat (%)": `Title: One-bar repeat
 Tempo: 100
 HH | x-x-x-x-x-x-x-x-

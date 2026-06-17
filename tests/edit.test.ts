@@ -5,10 +5,12 @@ import { serializeDrumBlock } from "../src/serializer";
 import {
   applyArticulation,
   clearHit,
+  clearSticking,
   clearBarRepeat,
   deleteBar,
   duplicateBar,
   findHit,
+  findSticking,
   hitKey,
   insertBarAfter,
   removeHit,
@@ -16,6 +18,7 @@ import {
   setBarRepeat,
   setHit,
   setInstrument,
+  setSticking,
   setTempo,
   setTimeSignature,
   toggleHit
@@ -109,6 +112,32 @@ describe("hit edits", () => {
   });
 });
 
+describe("sticking edits", () => {
+  it("setSticking and clearSticking edit the annotation lane without changing hits", () => {
+    const block = parseDrumBlock("HH | x---\nSD | --o-");
+    const withRight = setSticking(block, 0, "right");
+    const withLeft = setSticking(withRight, 2, "left");
+    const withBoth = setSticking(withLeft, 3, "both");
+    const cleared = clearSticking(withBoth, 0);
+
+    expect(findSticking(withBoth, 0)).toBe("right");
+    expect(findSticking(withBoth, 2)).toBe("left");
+    expect(findSticking(withBoth, 3)).toBe("both");
+    expect(findHit(withBoth, 0, HH.id)).toBeTruthy();
+    expect(findHit(withBoth, 2, SD.id)).toBeTruthy();
+    expect(serializeDrumBlock(withBoth)).toBe("ST | R-LB\nHH | x---\nSD | --o-");
+    expect(serializeDrumBlock(cleared)).toBe("ST | --LB\nHH | x---\nSD | --o-");
+  });
+
+  it("removes the sticking row when the last sticking mark is cleared", () => {
+    const block = parseDrumBlock("ST | R---\nHH | x---");
+    const cleared = clearSticking(block, 0);
+
+    expect(findSticking(cleared, 0)).toBeUndefined();
+    expect(serializeDrumBlock(cleared)).toBe("HH | x---");
+  });
+});
+
 describe("setting edits", () => {
   const block = parseDrumBlock("HH | x-x-");
 
@@ -168,12 +197,12 @@ HH | x--- | --------------------------------`);
   });
 
   it("duplicateBar copies a bar in the same system", () => {
-    const block = parseDrumBlock("HH | x--- | --x-\nSD | ---- | --o-");
+    const block = parseDrumBlock("ST | R--- | --L-\nHH | x--- | --x-\nSD | ---- | --o-");
     const edited = duplicateBar(block, 1);
 
     expect(edited.systems).toHaveLength(1);
     expect(edited.bars).toHaveLength(3);
-    expect(serializeDrumBlock(edited)).toBe("HH | x--- | --x- | --x-\nSD | ---- | --o- | --o-");
+    expect(serializeDrumBlock(edited)).toBe("ST | R--- | --L- | --L-\nHH | x--- | --x- | --x-\nSD | ---- | --o- | --o-");
   });
 
   it("duplicateBar can place the copy in a new system", () => {
@@ -202,13 +231,14 @@ HH | x--- | --------------------------------`);
   });
 
   it("preserves measure-repeat notation when editing a source bar", () => {
-    const block = parseDrumBlock("HH | x---\n%x3");
-    const edited = setHit(block, 2, HH);
+    const block = parseDrumBlock("ST | R---\nHH | x---\n%x3");
+    const edited = setSticking(setHit(block, 2, HH), 2, "left");
 
     expect(findHit(edited, 6, HH.id)).toBeTruthy();
     expect(findHit(edited, 10, HH.id)).toBeTruthy();
     expect(findHit(edited, 14, HH.id)).toBeTruthy();
-    expect(serializeDrumBlock(edited)).toBe("HH | x-x-\n%x3");
+    expect(findSticking(edited, 10)).toBe("left");
+    expect(serializeDrumBlock(edited)).toBe("ST | R-L-\nHH | x-x-\n%x3");
   });
 
   it("bar edits remain serialize round-trip stable", () => {

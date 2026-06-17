@@ -200,7 +200,7 @@ function formatMeasureRepeat(count: number): string {
 }
 
 function serializeNormalBars(bars: DrumBar[]): string[] {
-  const rows = toSystemRows(bars);
+  const rows = [toStickingRow(bars), ...toSystemRows(bars)].filter((row): row is SystemRow => row !== null);
   const labelWidth = Math.max(0, ...rows.map((row) => row.label.length));
 
   return rows.map((row) => `${row.label.padEnd(labelWidth)} | ${row.patterns.join(" | ")}`);
@@ -208,8 +208,19 @@ function serializeNormalBars(bars: DrumBar[]): string[] {
 
 interface SystemRow {
   label: string;
-  instrument: DrumInstrument;
+  instrument?: DrumInstrument;
   patterns: string[];
+}
+
+function toStickingRow(bars: DrumBar[]): SystemRow | null {
+  if (!bars.some((bar) => bar.stickingPattern !== undefined)) {
+    return null;
+  }
+
+  return {
+    label: "ST",
+    patterns: bars.map((bar) => normalizeStickingPattern(bar.stickingPattern ?? "-".repeat(bar.slots.length)))
+  };
 }
 
 // Collapses a system's per-bar rows back into one row per instrument, ordered
@@ -241,4 +252,24 @@ function toSystemRows(bars: DrumBar[]): SystemRow[] {
     instrument,
     patterns: patterns.get(instrument.id)!
   }));
+}
+
+function normalizeStickingPattern(pattern: string): string {
+  return Array.from(pattern)
+    .map((char) => {
+      if (char === "R" || char === "r") {
+        return "R";
+      }
+
+      if (char === "L" || char === "l") {
+        return "L";
+      }
+
+      if (char === "B" || char === "b") {
+        return "B";
+      }
+
+      return "-";
+    })
+    .join("");
 }

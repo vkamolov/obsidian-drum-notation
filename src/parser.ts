@@ -14,10 +14,12 @@ import {
   DrumRow,
   DrumRowInput,
   DrumSlot,
+  DrumStickingInput,
   DrumSystem,
   GridResolution,
   LegendMode,
-  MeasureRepeatInput
+  MeasureRepeatInput,
+  StickingHand
 } from "./types";
 import { normalizeLabel } from "./util";
 
@@ -27,13 +29,21 @@ interface BarSnapshotRow {
   pattern: string;
 }
 
-type BarSnapshot = BarSnapshotRow[];
+interface BarSnapshot {
+  rows: BarSnapshotRow[];
+  stickingPattern?: string;
+  width: number;
+}
+
+const STICKING_LABELS = new Set(["st", "stick", "sticking", "hands"]);
 
 export function parseDrumBlock(source: string): DrumBlock {
   const metadata: string[] = [];
   const rowSections: DrumRowInput[][] = [];
+  const stickingSections: Array<DrumStickingInput | undefined> = [];
   const repeatSections: Array<Array<MeasureRepeatInput | undefined>> = [];
   let currentRows: DrumRowInput[] = [];
+  let currentSticking: DrumStickingInput | undefined;
   let currentRepeats: Array<MeasureRepeatInput | undefined> = [];
   const barHistory: BarSnapshot[] = [];
   let tempo = DEFAULT_TEMPO;
@@ -45,15 +55,17 @@ export function parseDrumBlock(source: string): DrumBlock {
   let gridResolution = DEFAULT_GRID_RESOLUTION;
 
   const pushCurrentBar = () => {
-    if (currentRows.length === 0) {
+    if (currentRows.length === 0 && !currentSticking) {
       return;
     }
 
-    syncRepeatMarkers(currentRows, currentRepeats);
+    syncRepeatMarkers(currentRows, currentSticking, currentRepeats);
     rowSections.push(currentRows);
+    stickingSections.push(currentSticking);
     repeatSections.push(currentRepeats);
-    barHistory.push(...snapshotBars(currentRows));
+    barHistory.push(...snapshotBars(currentRows, currentSticking));
     currentRows = [];
+    currentSticking = undefined;
     currentRepeats = [];
   };
 
@@ -94,10 +106,21 @@ export function parseDrumBlock(source: string): DrumBlock {
       const measureRepeat = parseMeasureRepeatLine(line);
 
       if (measureRepeat) {
-        if (!appendMeasureRepeat(currentRows, currentRepeats, barHistory, measureRepeat)) {
+        const repeatedSticking = appendMeasureRepeat(currentRows, currentSticking, currentRepeats, barHistory, measureRepeat);
+
+        if (repeatedSticking === null) {
           metadata.push(line);
+        } else {
+          currentSticking = repeatedSticking;
         }
 
+        return;
+      }
+
+      const sticking = parseStickingRowInput(line);
+
+      if (sticking) {
+        currentSticking = sticking;
         return;
       }
 
@@ -115,7 +138,8 @@ export function parseDrumBlock(source: string): DrumBlock {
   return finalizeDrumBlock(
     { tempo, timeSignature, repeatCount, showCursor, showHighlight, legendMode, gridResolution, metadata },
     rowSections,
-    repeatSections
+    repeatSections,
+    stickingSections
   );
 }
 
@@ -126,9 +150,10 @@ export function parseDrumBlock(source: string): DrumBlock {
 export function finalizeDrumBlock(
   header: DrumBlockHeader,
   rowSections: DrumRowInput[][],
-  repeatSections: Array<Array<MeasureRepeatInput | undefined>> = []
+  repeatSections: Array<Array<MeasureRepeatInput | undefined>> = [],
+  stickingSections: Array<DrumStickingInput | undefined> = []
 ): DrumBlock {
-  const systems = buildSystems(rowSections, repeatSections);
+  const systems = buildSystems(rowSections, repeatSections, stickingSections);
   const bars = systems.flatMap((system) => system.bars);
   const rows = bars.flatMap((bar) => bar.rows);
 
@@ -202,22 +227,53 @@ function parseDrumRowInput(line: string): DrumRowInput | null {
   return { label, patterns, instrument };
 }
 
+function parseStickingRowInput(line: string): DrumStickingInput | null {
+  const dividerIndex = line.indexOf("|");
+
+  if (dividerIndex <= 0) {
+    return null;
+  }
+
+  const label = line.slice(0, dividerIndex).trim();
+
+  if (!STICKING_LABELS.has(normalizeLabel(label))) {
+    return null;
+  }
+
+  const patterns = line
+    .slice(dividerIndex + 1)
+    .split("|")
+    .map((pattern) => pattern.replace(/\s+/g, "").trim())
+    .filter((pattern) => pattern.length > 0)
+    .map(normalizeStickingPattern);
+
+  if (!label || patterns.length === 0) {
+    return null;
+  }
+
+  return { label, patterns };
+}
+
 function buildSystems(
   rowSections: DrumRowInput[][],
-  repeatSections: Array<Array<MeasureRepeatInput | undefined>>
+  repeatSections: Array<Array<MeasureRepeatInput | undefined>>,
+  stickingSections: Array<DrumStickingInput | undefined>
 ): DrumSystem[] {
   let startSlot = 0;
 
   return rowSections.map((rowInputs, systemIndex) => {
-    const segmentCount = Math.max(1, ...rowInputs.map((row) => row.patterns.length));
+    const stickingInput = stickingSections[systemIndex];
+    const segmentCount = Math.max(1, getSegmentCount(rowInputs, stickingInput));
     const bars = Array.from({ length: segmentCount }, (_, segmentIndex) => {
       const rows = buildRowsForSegment(rowInputs, segmentIndex);
-      const slots = buildSlots(rows, startSlot);
+      const stickingPattern = stickingInput?.patterns[segmentIndex];
+      const slots = buildSlots(rows, startSlot, stickingPattern);
       const measureRepeat = repeatSections[systemIndex]?.[segmentIndex];
       const bar = {
         rows,
         slots,
         startSlot,
+        ...(stickingPattern !== undefined ? { stickingPattern } : {}),
         ...(measureRepeat ? { measureRepeat: measureRepeat.type } : {}),
         ...(measureRepeat && measureRepeat.count > 1 ? { measureRepeatCount: measureRepeat.count } : {})
       };
@@ -232,35 +288,42 @@ function buildSystems(
 
 function appendMeasureRepeat(
   currentRows: DrumRowInput[],
+  currentSticking: DrumStickingInput | undefined,
   currentRepeats: Array<MeasureRepeatInput | undefined>,
   barHistory: BarSnapshot[],
   measureRepeat: MeasureRepeatInput
-): boolean {
-  syncRepeatMarkers(currentRows, currentRepeats);
+): DrumStickingInput | undefined | null {
+  syncRepeatMarkers(currentRows, currentSticking, currentRepeats);
 
-  const previousBars = [...barHistory, ...snapshotBars(currentRows)];
+  const previousBars = [...barHistory, ...snapshotBars(currentRows, currentSticking)];
   const previousBar = previousBars[previousBars.length - 1];
 
   if (!previousBar) {
-    return false;
+    return null;
   }
 
+  let nextSticking = currentSticking;
+
   for (let index = 0; index < measureRepeat.count; index++) {
-    appendSnapshotBar(currentRows, previousBar);
+    nextSticking = appendSnapshotBar(currentRows, nextSticking, previousBar);
     currentRepeats.push({
       type: measureRepeat.type,
       count: index === 0 ? measureRepeat.count : 1
     });
   }
 
-  return true;
+  return nextSticking;
 }
 
-function appendSnapshotBar(currentRows: DrumRowInput[], snapshot: BarSnapshot): void {
-  const targetBarIndex = getSegmentCount(currentRows);
-  const widths = getBarWidths(currentRows);
+function appendSnapshotBar(
+  currentRows: DrumRowInput[],
+  currentSticking: DrumStickingInput | undefined,
+  snapshot: BarSnapshot
+): DrumStickingInput | undefined {
+  const targetBarIndex = getSegmentCount(currentRows, currentSticking);
+  const widths = getBarWidths(currentRows, currentSticking);
 
-  snapshot.forEach((snapshotRow) => {
+  snapshot.rows.forEach((snapshotRow) => {
     let row = currentRows.find((candidate) => candidate.instrument.id === snapshotRow.instrument.id);
 
     if (!row) {
@@ -278,10 +341,27 @@ function appendSnapshotBar(currentRows: DrumRowInput[], snapshot: BarSnapshot): 
 
     row.patterns.push(snapshotRow.pattern);
   });
+
+  if (snapshot.stickingPattern !== undefined) {
+    const nextSticking = currentSticking ?? { label: "ST", patterns: [] };
+
+    while (nextSticking.patterns.length < targetBarIndex) {
+      nextSticking.patterns.push("-".repeat(widths[nextSticking.patterns.length] ?? snapshot.width));
+    }
+
+    nextSticking.patterns.push(snapshot.stickingPattern);
+    return nextSticking;
+  }
+
+  return currentSticking;
 }
 
-function syncRepeatMarkers(rows: DrumRowInput[], repeats: Array<MeasureRepeatInput | undefined>): void {
-  const segmentCount = getSegmentCount(rows);
+function syncRepeatMarkers(
+  rows: DrumRowInput[],
+  sticking: DrumStickingInput | undefined,
+  repeats: Array<MeasureRepeatInput | undefined>
+): void {
+  const segmentCount = getSegmentCount(rows, sticking);
 
   while (repeats.length < segmentCount) {
     repeats.push(undefined);
@@ -298,11 +378,12 @@ function parseMeasureRepeatCount(value: string | undefined): number {
   return Math.min(64, Math.max(1, count));
 }
 
-function snapshotBars(rows: DrumRowInput[]): BarSnapshot[] {
-  const segmentCount = getSegmentCount(rows);
+function snapshotBars(rows: DrumRowInput[], sticking: DrumStickingInput | undefined): BarSnapshot[] {
+  const segmentCount = getSegmentCount(rows, sticking);
+  const widths = getBarWidths(rows, sticking);
 
-  return Array.from({ length: segmentCount }, (_, segmentIndex) =>
-    rows
+  return Array.from({ length: segmentCount }, (_, segmentIndex) => ({
+    rows: rows
       .map((row): BarSnapshotRow | null => {
         const pattern = row.patterns[segmentIndex];
 
@@ -312,19 +393,21 @@ function snapshotBars(rows: DrumRowInput[]): BarSnapshot[] {
 
         return { label: row.label, instrument: row.instrument, pattern };
       })
-      .filter((row): row is BarSnapshotRow => row !== null)
-  );
+      .filter((row): row is BarSnapshotRow => row !== null),
+    ...(sticking?.patterns[segmentIndex] !== undefined ? { stickingPattern: sticking.patterns[segmentIndex] } : {}),
+    width: widths[segmentIndex] ?? 0
+  }));
 }
 
-function getSegmentCount(rows: DrumRowInput[]): number {
-  return Math.max(0, ...rows.map((row) => row.patterns.length));
+function getSegmentCount(rows: DrumRowInput[], sticking?: DrumStickingInput): number {
+  return Math.max(0, ...rows.map((row) => row.patterns.length), sticking?.patterns.length ?? 0);
 }
 
-function getBarWidths(rows: DrumRowInput[]): number[] {
-  const segmentCount = getSegmentCount(rows);
+function getBarWidths(rows: DrumRowInput[], sticking?: DrumStickingInput): number[] {
+  const segmentCount = getSegmentCount(rows, sticking);
 
   return Array.from({ length: segmentCount }, (_, segmentIndex) =>
-    Math.max(0, ...rows.map((row) => row.patterns[segmentIndex]?.length ?? 0))
+    Math.max(0, ...rows.map((row) => row.patterns[segmentIndex]?.length ?? 0), sticking?.patterns[segmentIndex]?.length ?? 0)
   );
 }
 
@@ -346,8 +429,8 @@ function buildRowsForSegment(rowInputs: DrumRowInput[], segmentIndex: number): D
     .filter((row): row is DrumRow => row !== null);
 }
 
-function buildSlots(rows: DrumRow[], startSlot: number): DrumSlot[] {
-  const slotCount = Math.max(0, ...rows.map((row) => row.pattern.length));
+function buildSlots(rows: DrumRow[], startSlot: number, stickingPattern?: string): DrumSlot[] {
+  const slotCount = Math.max(0, ...rows.map((row) => row.pattern.length), stickingPattern?.length ?? 0);
 
   return Array.from({ length: slotCount }, (_, index) => {
     const hits = rows
@@ -365,9 +448,50 @@ function buildSlots(rows: DrumRow[], startSlot: number): DrumSlot[] {
         };
       })
       .filter((hit): hit is DrumHit => hit !== null);
+    const sticking = getSticking(stickingPattern?.[index] ?? "-");
 
-    return { index: startSlot + index, hits };
+    return {
+      index: startSlot + index,
+      hits,
+      ...(sticking ? { sticking } : {})
+    };
   });
+}
+
+function normalizeStickingPattern(pattern: string): string {
+  return Array.from(pattern)
+    .map((char) => {
+      if (char === "R" || char === "r") {
+        return "R";
+      }
+
+      if (char === "L" || char === "l") {
+        return "L";
+      }
+
+      if (char === "B" || char === "b") {
+        return "B";
+      }
+
+      return "-";
+    })
+    .join("");
+}
+
+function getSticking(value: string): StickingHand | undefined {
+  if (value === "R") {
+    return "right";
+  }
+
+  if (value === "L") {
+    return "left";
+  }
+
+  if (value === "B") {
+    return "both";
+  }
+
+  return undefined;
 }
 
 export function getTitle(block: DrumBlock): string {

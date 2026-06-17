@@ -79,6 +79,26 @@ HH | x---`);
     expect(out).toContain("HH | x-x- | x-x-");
   });
 
+  it("round-trips and canonicalizes sticking rows", () => {
+    const out = roundTrips("Stick | rlb_\nHH    | x---");
+
+    expect(out).toBe("ST | RLB-\nHH | x---");
+  });
+
+  it("serializes multi-bar and multi-system sticking rows", () => {
+    const out = roundTrips(`ST | R-B- | L-R-
+HH | x--- | --x-
+Bar
+Hands | L-B-
+SD    | --o-`);
+
+    expect(out).toBe(`ST | R-B- | L-R-
+HH | x--- | --x-
+Bar
+ST | L-B-
+SD | --o-`);
+  });
+
   it("round-trips rows that span different numbers of bars", () => {
     roundTrips("HH | x-x-\nSD | ----o--- | ----o---");
   });
@@ -106,6 +126,16 @@ SD | --o-
 
     expect(out).toBe(`HH | x---
 %x3`);
+  });
+
+  it("keeps repeat notation compact when the source bar has sticking", () => {
+    const out = roundTrips(`ST | R-B-
+HH | x---
+%`);
+
+    expect(out).toBe(`ST | R-B-
+HH | x---
+%`);
   });
 
   it("preserves separate one-bar repeats as separate lines", () => {

@@ -22,6 +22,7 @@ A block is a sequence of lines. Each non-empty line is one of:
 | **Metadata**     | `Key: value` with an unknown key, or any other free line   | Preserved verbatim (e.g. `Title`, `Count`, comments) |
 | **Bar separator**| A line matching `[new] bar|measure [N][:...]`               | Starts a new system (line of music) |
 | **Measure repeat**| `%` or `Repeat bar`                                       | Repeats the previous bar |
+| **Sticking row** | `ST \| R-LB...`                                            | Slot-aligned right/left/both-hands annotation |
 | **Row**          | `LABEL \| pattern[ \| pattern…]`                            | One instrument voice |
 
 Leading/trailing whitespace is ignored. Blank lines are ignored. Unknown lines
@@ -117,6 +118,26 @@ rows to stack simultaneous hits (e.g. kick + hi-hat foot).
 > "Cross-stick" is **not** a separate instrument — it is the existing `rim`
 > voice (aliases include `xstick`/`cross`). See `src/kit.ts` for the complete,
 > authoritative alias lists.
+
+### Sticking row
+
+Use `ST`, `Stick`, `Sticking`, or `Hands` for a global right/left/both-hands
+sticking lane. It is slot-aligned like instrument rows but is display-only: it
+does not create hits or affect playback.
+
+```drums
+ST | R-L-B-L-R-L-B-L-
+HH | x-x-x-x-x-x-x-x-
+SD | ----o-------o---
+BD | o-------o-------
+```
+
+Valid sticking characters are `R`/`r` for right hand, `L`/`l` for left hand,
+`B`/`b` for both hands, and rest characters for no mark. The serializer emits a
+canonical `ST` row with upper-case `R`/`L`/`B` and `-` rests. Sticking rows may
+span bars with ` | ` just like instrument rows. One-bar repeat symbols keep
+their `%`/`%xN` notation; the repeated bar inherits the previous bar's sticking
+in the model.
 
 ---
 
@@ -410,6 +431,7 @@ To stay deterministic and diff-friendly, serialization **normalizes**:
 - Bar separators normalize to `Bar`; row patterns are joined with ` | `.
 - One-bar measure repeats normalize to `%` and are not expanded back into row
   text.
+- Sticking annotations serialize as a canonical `ST` row and remain display-only.
 - Model-level bar edits serialize through the same row/bar invariants as parsed
   text: inserted empty bars are represented as rest patterns for the selected
   bar's instruments and are sized from the block's current `Time` and `Grid`,

@@ -26,6 +26,11 @@ export interface DrumRowInput {
   instrument: DrumInstrument;
 }
 
+export interface DrumStickingInput {
+  label: string;
+  patterns: string[];
+}
+
 export interface MeasureRepeatInput {
   type: MeasureRepeat;
   count: number;
@@ -39,6 +44,7 @@ export interface DrumBar {
   rows: DrumRow[];
   slots: DrumSlot[];
   startSlot: number;
+  stickingPattern?: string;
   measureRepeat?: MeasureRepeat;
   measureRepeatCount?: number;
 }
@@ -59,6 +65,7 @@ export interface DrumRow {
 export interface DrumSlot {
   index: number;
   hits: DrumHit[];
+  sticking?: StickingHand;
 }
 
 export interface ScoreRenderResult {
@@ -119,6 +126,7 @@ export type DrumPlaybackKind =
   | "click";
 
 export type DrumArticulation = "normal" | "accent" | "ghost" | "flam" | "drag" | "diddle" | "buzz" | "choke";
+export type StickingHand = "right" | "left" | "both";
 export type GridResolution = 16 | 32;
 export type LegendMode = "off" | "used" | "all";
 export type MeasureRepeat = 1;
