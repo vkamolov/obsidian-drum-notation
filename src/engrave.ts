@@ -88,6 +88,7 @@ interface PendingHitTarget {
 interface GraceSlurAnchor {
   graceNotes: GraceNote[];
   mainNoteheadIndex: number;
+  color?: string;
 }
 
 const graceSlurAnchors = new WeakMap<StaveNote, GraceSlurAnchor[]>();
@@ -230,7 +231,7 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
         tuplet.setStyle({ fillStyle: "currentColor", strokeStyle: "currentColor", lineWidth: layout.strokeWidth });
         tuplet.setContext(context).draw();
       });
-      drawGraceNoteSlurs(system, visualBar.hitNotes, layout);
+      drawGraceNoteSlurs(system, visualBar.hitNotes, layout, block.legendMode !== "off");
       drawHatOpennessMarks(system, visualBar.hitNotes, visualBar.noteSlots, layout);
       drawFootSplashMarks(system, visualBar.hitNotes, visualBar.noteSlots, layout);
       drawAccentMarks(system, visualBar.hitNotes, visualBar.noteSlots, layout);
@@ -399,6 +400,12 @@ export function colorRenderedNoteheads(block: DrumBlock, container: HTMLElement)
       restoreNonNoteheadInk(group);
     }
 
+    const hasTaggedColors = restoreTaggedInstrumentColors(group);
+
+    if (hasTaggedColors) {
+      return;
+    }
+
     coloredHits.forEach((hit, hitIndex) => {
       const noteheadGroup = noteheadGroups[hitIndex];
 
@@ -444,6 +451,25 @@ function tagRenderedNoteSlot(note: Tickable | undefined, slot: DrumSlot): void {
   if (!noteElement.hasAttribute("data-slot-index")) {
     noteElement.setAttribute("data-slot-index", slotIndex);
   }
+
+  if (note instanceof StaveNote) {
+    tagRenderedNoteheadColors(note, slot);
+  }
+}
+
+function tagRenderedNoteheadColors(note: StaveNote, slot: DrumSlot): void {
+  const keys = note.getKeys();
+
+  keys.forEach((key, keyIndex) => {
+    const hit = slot.hits.find((candidate) => candidate.instrument.vexKey === key);
+    const noteheadElement = note.noteHeads[keyIndex]?.getSVGElement();
+
+    if (!hit || !noteheadElement) {
+      return;
+    }
+
+    noteheadElement.setAttribute("data-drum-color", hit.instrument.color);
+  });
 }
 
 function drawNoteHitTargets(system: HTMLElement, note: StaveNote | undefined, slot: DrumSlot, layout: NotationLayout): void {
@@ -496,6 +522,23 @@ function restoreNonNoteheadInk(group: SVGGElement): void {
       shape.style.fill = "currentColor";
       shape.style.stroke = "currentColor";
     });
+}
+
+function restoreTaggedInstrumentColors(group: SVGGElement): boolean {
+  let restored = false;
+
+  group.querySelectorAll<SVGElement>("[data-drum-color]").forEach((element) => {
+    const color = element.getAttribute("data-drum-color");
+
+    if (!color) {
+      return;
+    }
+
+    colorSvgShape(element, color);
+    restored = true;
+  });
+
+  return restored;
 }
 
 function getScoreWidth(container: HTMLElement): number {
@@ -789,7 +832,7 @@ function drawBuzzRollMarks(
   });
 }
 
-function drawGraceNoteSlurs(system: HTMLElement, notes: StaveNote[], layout: NotationLayout): void {
+function drawGraceNoteSlurs(system: HTMLElement, notes: StaveNote[], layout: NotationLayout, colorNoteheads: boolean): void {
   const svg = system.querySelector<SVGSVGElement>("svg");
 
   if (!svg) {
@@ -806,9 +849,14 @@ function drawGraceNoteSlurs(system: HTMLElement, notes: StaveNote[], layout: Not
     anchors.forEach((anchor) => {
       const graceNotehead = anchor.graceNotes[0]?.noteHeads[0];
       const mainNotehead = note.noteHeads[anchor.mainNoteheadIndex];
+      const color = colorNoteheads ? anchor.color : undefined;
 
       if (!graceNotehead || !mainNotehead) {
         return;
+      }
+
+      if (color) {
+        colorGraceNoteElements(anchor.graceNotes, color);
       }
 
       const graceBox = graceNotehead.getBoundingBox();
@@ -823,11 +871,30 @@ function drawGraceNoteSlurs(system: HTMLElement, notes: StaveNote[], layout: Not
 
       slur.classList.add("drum-notation__grace-slur");
       slur.setAttribute("d", `M ${startX} ${baseY} Q ${cpX} ${topY} ${endX} ${baseY} Q ${cpX} ${bottomY} ${startX} ${baseY} Z`);
-      slur.setAttribute("fill", "currentColor");
+      slur.setAttribute("fill", color ?? "currentColor");
       slur.setAttribute("stroke", "none");
       slur.setAttribute("pointer-events", "none");
+
+      if (color) {
+        slur.setAttribute("data-drum-color", color);
+        slur.style.fill = color;
+      }
+
       svg.appendChild(slur);
     });
+  });
+}
+
+function colorGraceNoteElements(graceNotes: GraceNote[], color: string): void {
+  graceNotes.forEach((graceNote) => {
+    const graceElement = graceNote.getSVGElement();
+
+    if (!graceElement) {
+      return;
+    }
+
+    graceElement.setAttribute("data-drum-color", color);
+    colorSvgShape(graceElement, color);
   });
 }
 
@@ -1192,7 +1259,7 @@ function makeStaveNote(slot: DrumSlot, duration = "16", colorNoteheads = false):
     applyLegendNoteheadColors(note, slot.hits);
   }
 
-  applyHitModifiers(note, slot.hits);
+  applyHitModifiers(note, slot.hits, colorNoteheads);
 
   return note;
 }
@@ -1214,9 +1281,9 @@ function applyLegendNoteheadColors(note: StaveNote, hits: DrumHit[]): void {
   });
 }
 
-function applyHitModifiers(note: StaveNote, hits: DrumHit[]): void {
+function applyHitModifiers(note: StaveNote, hits: DrumHit[], colorNoteheads: boolean): void {
   addGhostParentheses(note, hits);
-  addGraceNoteOrnaments(note, hits);
+  addGraceNoteOrnaments(note, hits, colorNoteheads);
 }
 
 function addGhostParentheses(note: StaveNote, hits: DrumHit[]): void {
@@ -1234,7 +1301,7 @@ function addGhostParentheses(note: StaveNote, hits: DrumHit[]): void {
     });
 }
 
-function addGraceNoteOrnaments(note: StaveNote, hits: DrumHit[]): void {
+function addGraceNoteOrnaments(note: StaveNote, hits: DrumHit[], colorNoteheads: boolean): void {
   hits
     .filter((hit) => hit.articulation === "flam" || hit.articulation === "drag")
     .forEach((hit) => {
@@ -1257,20 +1324,30 @@ function addGraceNoteOrnaments(note: StaveNote, hits: DrumHit[]): void {
           })
       );
       const graceGroup = new GraceNoteGroup(graceNotes, false);
+      const color = colorNoteheads ? hit.instrument.color : undefined;
+
+      if (color) {
+        graceNotes.forEach((graceNote) => {
+          graceNote.setKeyStyle(0, {
+            fillStyle: color,
+            strokeStyle: color
+          });
+        });
+      }
 
       if (isDrag) {
         graceGroup.beamNotes();
       }
 
       note.addModifier(graceGroup, noteheadIndex);
-      rememberGraceSlur(note, graceNotes, noteheadIndex);
+      rememberGraceSlur(note, graceNotes, noteheadIndex, color);
     });
 }
 
-function rememberGraceSlur(note: StaveNote, graceNotes: GraceNote[], mainNoteheadIndex: number): void {
+function rememberGraceSlur(note: StaveNote, graceNotes: GraceNote[], mainNoteheadIndex: number, color?: string): void {
   const anchors = graceSlurAnchors.get(note) ?? [];
 
-  anchors.push({ graceNotes, mainNoteheadIndex });
+  anchors.push({ graceNotes, mainNoteheadIndex, color });
   graceSlurAnchors.set(note, anchors);
 }
 
