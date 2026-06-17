@@ -1,9 +1,10 @@
 import { getSecondsPerSlot, getSlotVisualDurationSeconds } from "./music";
-import { DrumSynth } from "./synth";
+import { DrumPlaybackBackend, DrumPlaybackBackendFactory } from "./playback";
+import { createSynthPlaybackBackend } from "./synth";
 import { DEFAULT_REPEAT_COUNT, DrumBlock, DrumSlot, PlaybackOptions } from "./types";
 
 export class DrumPlayer {
-  private synth: DrumSynth | null = null;
+  private backend: DrumPlaybackBackend | null = null;
   private timers: number[] = [];
   private stopped = false;
   private secondsPerSlot = 0;
@@ -18,16 +19,17 @@ export class DrumPlayer {
     private readonly block: DrumBlock,
     private readonly onEnded: () => void,
     private readonly onSlotChange: (slotIndex: number) => void,
-    private readonly options: PlaybackOptions = {}
+    private readonly options: PlaybackOptions = {},
+    private readonly createPlaybackBackend: DrumPlaybackBackendFactory = createSynthPlaybackBackend
   ) {}
 
   async play(): Promise<void> {
-    const synth = new DrumSynth(this.audioContext);
+    const backend = this.createPlaybackBackend(this.audioContext);
 
-    this.synth = synth;
-    await synth.start();
+    this.backend = backend;
+    await backend.start();
 
-    if (this.stopped || this.synth !== synth) {
+    if (this.stopped || this.backend !== backend) {
       return;
     }
 
@@ -36,7 +38,7 @@ export class DrumPlayer {
     this.playSlots = this.block.slots.slice(this.playStartSlot, this.playEndSlot);
     this.secondsPerSlot = getSecondsPerSlot(this.block);
     this.passDurationSeconds = this.playSlots.length * this.secondsPerSlot;
-    this.playbackStartTime = synth.currentTime + 0.08;
+    this.playbackStartTime = backend.currentTime + 0.08;
 
     if (this.playSlots.length === 0) {
       this.stop();
@@ -48,19 +50,20 @@ export class DrumPlayer {
   }
 
   private schedulePass(passIndex: number): void {
-    if (!this.synth || this.stopped) {
+    if (!this.backend || this.stopped) {
       return;
     }
 
     const repeatCount = this.options.loop ? Number.POSITIVE_INFINITY : this.options.repeatCount ?? DEFAULT_REPEAT_COUNT;
     const passStartTime = this.playbackStartTime + passIndex * this.passDurationSeconds;
+    const backend = this.backend;
 
     this.timers.push(
       window.setTimeout(() => {
         if (!this.stopped) {
           this.onSlotChange(this.playStartSlot);
         }
-      }, Math.max(0, (passStartTime - this.synth.currentTime) * 1000))
+      }, Math.max(0, (passStartTime - backend.currentTime) * 1000))
     );
 
     this.playSlots.forEach((slot) => {
@@ -71,10 +74,10 @@ export class DrumPlayer {
             if (!this.stopped) {
               this.onSlotChange(slot.index);
             }
-          }, Math.max(0, (slotTime - this.synth!.currentTime) * 1000))
+          }, Math.max(0, (slotTime - backend.currentTime) * 1000))
         );
       }
-      this.synth?.scheduleHits(slot.hits, slotTime, this.secondsPerSlot, getSlotVisualDurationSeconds(this.block, slot));
+      backend.scheduleHits(slot.hits, slotTime, this.secondsPerSlot, getSlotVisualDurationSeconds(this.block, slot));
     });
 
     this.timers.push(
@@ -89,7 +92,7 @@ export class DrumPlayer {
           this.stop();
           this.onEnded();
         }
-      }, Math.max(0, (passStartTime + this.passDurationSeconds - this.synth.currentTime) * 1000))
+      }, Math.max(0, (passStartTime + this.passDurationSeconds - backend.currentTime) * 1000))
     );
   }
 
@@ -98,7 +101,7 @@ export class DrumPlayer {
     this.timers.forEach((timer) => window.clearTimeout(timer));
     this.timers = [];
 
-    this.synth?.stop();
-    this.synth = null;
+    this.backend?.stop();
+    this.backend = null;
   }
 }

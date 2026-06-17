@@ -13,10 +13,11 @@ import {
 import { INSTRUMENTS_BY_ALIAS } from "../../src/kit";
 import { getBarRange, getSecondsPerSlot, getSlotVisualDurationSeconds } from "../../src/music";
 import { getTitle, parseDrumBlock } from "../../src/parser";
+import { DrumPlaybackBackend } from "../../src/playback";
 import { DrumPlayer } from "../../src/player";
 import { serializeDrumBlock } from "../../src/serializer";
 import { setGrid, setRepeatCount, setTempo, setTimeSignature } from "../../src/edit";
-import { DrumSynth } from "../../src/synth";
+import { createSynthPlaybackBackend } from "../../src/synth";
 import { CursorPosition, DrumBlock, DrumSlot, GridResolution, LegendMode, ScoreBarRegion } from "../../src/types";
 import { normalizeLabel } from "../../src/util";
 import { EXAMPLES } from "./examples";
@@ -80,7 +81,7 @@ let isApplyingGridEdit = false;
 /* ---------- audio (lazy, created on first user gesture) ---------- */
 let audioContext: AudioContext | null = null;
 let player: DrumPlayer | null = null;
-let previewSynth: DrumSynth | null = null;
+let previewSynth: DrumPlaybackBackend | null = null;
 let previewTimer: number | null = null;
 
 function getAudioContext(): AudioContext {
@@ -89,6 +90,10 @@ function getAudioContext(): AudioContext {
   }
   void audioContext.resume();
   return audioContext;
+}
+
+function createPlaybackBackend(audioContext: AudioContext): DrumPlaybackBackend {
+  return createSynthPlaybackBackend(audioContext);
 }
 
 /* ---------- rendering ---------- */
@@ -331,7 +336,8 @@ function play(startSlot = 0): void {
       currentSlotIndex = slotIndex;
       moveCursor(slotIndex);
     },
-    { startSlot: currentSlotIndex, repeatCount: block.repeatCount }
+    { startSlot: currentSlotIndex, repeatCount: block.repeatCount },
+    createPlaybackBackend
   );
   void player.play();
 }
@@ -373,7 +379,8 @@ function startLoopBar(barIndex = selectedBarIndex): void {
       currentSlotIndex = slotIndex;
       moveCursor(slotIndex);
     },
-    { startSlot: range.startSlot, endSlot: range.endSlot, loop: true }
+    { startSlot: range.startSlot, endSlot: range.endSlot, loop: true },
+    createPlaybackBackend
   );
   void player.play();
 }
@@ -413,7 +420,8 @@ function startLoopAll(): void {
       currentSlotIndex = slotIndex;
       moveCursor(slotIndex);
     },
-    { startSlot: 0, endSlot: block.slots.length, loop: true }
+    { startSlot: 0, endSlot: block.slots.length, loop: true },
+    createPlaybackBackend
   );
   void player.play();
 }
@@ -462,7 +470,7 @@ async function previewSlot(block: DrumBlock, slot: DrumSlot): Promise<void> {
     return;
   }
 
-  const synth = new DrumSynth(getAudioContext());
+  const synth = createPlaybackBackend(getAudioContext());
   previewSynth = synth;
   await synth.start();
   if (previewSynth !== synth) {

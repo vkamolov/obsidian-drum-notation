@@ -1,6 +1,7 @@
 import { DrumHit, DrumPlaybackKind } from "./types";
+import { DrumPlaybackBackend, DrumPlaybackBackendFactory } from "./playback";
 
-export class DrumSynth {
+export class DrumSynth implements DrumPlaybackBackend {
   // The AudioContext is owned and shared by the plugin (browsers cap the number
   // of live contexts), so a synth never creates or closes it. Each synth instead
   // routes through its own master gain and tracks the node chains it schedules,
@@ -389,3 +390,5 @@ export class DrumSynth {
     return source;
   }
 }
+
+export const createSynthPlaybackBackend: DrumPlaybackBackendFactory = (audioContext) => new DrumSynth(audioContext);
