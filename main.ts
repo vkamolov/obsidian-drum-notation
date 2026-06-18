@@ -15,24 +15,28 @@ import {
 } from "obsidian";
 import { colorRenderedNoteheads, makeRenderedNotesInteractive, renderInstrumentLegend, renderVexflowScore } from "./src/engrave";
 import { GridEditorHandle, GridEditorSessionState, mountGridEditor } from "./src/editor-grid";
-import { getDrumsBlockEditStatus, replaceDrumsBlockBody, ReplaceDrumsBlockFailure } from "./src/markdown";
+import {
+  getRenderedDrumsBlockEditStatus,
+  replaceDrumsBlockBody,
+  ReplaceDrumsBlockFailure
+} from "./src/markdown";
 import { getBarRange, getSecondsPerSlot, getSlotVisualDurationSeconds } from "./src/music";
 import { getTitle, parseDrumBlock } from "./src/parser";
 import { DrumPlaybackBackend } from "./src/playback";
 import { DrumPlayer } from "./src/player";
 import { serializeDrumBlock } from "./src/serializer";
+import {
+  DEFAULT_DRUM_SETUP_VALUES,
+  DrumSetupTimeDenominator,
+  DrumSetupValues,
+  formatDrumsFenceInsertion,
+  getDrumSetupSlotCount,
+  getDrumSetupValues,
+  isValidDrumSetupValues,
+  serializeInitialDrumBlock
+} from "./src/setup";
 import { createSynthPlaybackBackend } from "./src/synth";
 import { CursorPosition, DrumBlock, DrumSlot, ScoreBarRegion } from "./src/types";
-
-const DEFAULT_TEMPLATE = `\`\`\`drums
-Title: Basic rock groove
-Tempo: 100
-Time: 4/4
-Count: 1 e & a 2 e & a 3 e & a 4 e & a
-HH | x-x-x-x-x-x-x-x-
-SD | ----o-------o---
-BD | o-------o-o-----
-\`\`\``;
 
 const WRITEBACK_DEBOUNCE_MS = 450;
 const PLAYBACK_RESTART_DEBOUNCE_MS = 220;
@@ -95,11 +99,24 @@ export default class DrumNotationPlugin extends Plugin {
     });
 
     this.addCommand({
-      id: "insert-drum-notation-template",
-      name: "Insert drum notation template",
+      id: "create-drum-notation",
+      name: "Create drum notation",
       editorCallback: (editor: Editor) => {
-        editor.replaceSelection(DEFAULT_TEMPLATE);
-        new Notice("Inserted drum notation template");
+        new DrumSetupModal(this.app, {
+          mode: "command",
+          initialValues: DEFAULT_DRUM_SETUP_VALUES,
+          onSubmit: async (values) => {
+            const from = editor.getCursor("from");
+            const to = editor.getCursor("to");
+            const before = editor.getLine(from.line).slice(0, from.ch);
+            const after = editor.getLine(to.line).slice(to.ch);
+            const body = serializeInitialDrumBlock(values);
+
+            editor.replaceSelection(formatDrumsFenceInsertion(body, before, after));
+            new Notice("Created drum notation");
+            return true;
+          }
+        }).open();
       }
     });
   }
@@ -133,9 +150,8 @@ export default class DrumNotationPlugin extends Plugin {
       this.editRestoreSessions.delete(initialSessionKey);
     }
 
-    const editAvailability = this.getEditAvailability(el, ctx, initialSection, block);
-
     el.empty();
+    el.addClass("drum-notation-host");
 
     const root = el.createEl("div", { cls: "drum-notation" });
     const toolbar = root.createEl("div", { cls: "drum-notation__toolbar" });
@@ -154,6 +170,7 @@ export default class DrumNotationPlugin extends Plugin {
     const loopAllButton = makeIconButton("repeat", "Loop whole notation");
     controls.createEl("span", { cls: "drum-notation__control-divider" });
     const editButton = makeIconButton("pencil", "Edit notation");
+    const createButton = makeIconButton("square-plus", "Create first bar");
 
     const notationViewport = root.createEl("div", { cls: "drum-notation__score-viewport" });
     const notation = notationViewport.createEl("div", { cls: "drum-notation__score" });
@@ -177,11 +194,18 @@ export default class DrumNotationPlugin extends Plugin {
     let resizeTimer: number | null = null;
     let writebackTimer: number | null = null;
     let playbackRestartTimer: number | null = null;
+    let modeRefreshFrame: number | null = null;
     const child = new MarkdownRenderChild(el);
     const renderOwner = Symbol("drum-notation-render");
     const playbackBackendFactory = (audioContext: AudioContext) => this.createPlaybackBackend(audioContext);
 
     ctx.addChild(child);
+
+    const getCurrentSection = () => ctx.getSectionInfo(el) ?? initialSection;
+    const getCurrentEditAvailability = () =>
+      this.getEditAvailability(el, ctx, getCurrentSection(), block);
+    const getCurrentCreateAvailability = () =>
+      this.getCreateAvailability(el, ctx, getCurrentSection(), block);
 
     const updateHeader = () => {
       root.classList.toggle("drum-notation--legend-color", block.legendMode !== "off");
@@ -193,12 +217,33 @@ export default class DrumNotationPlugin extends Plugin {
       });
 
       const hasRows = block.rows.length > 0;
+      const isEmptyBlock = block.bars.length === 0;
+      const editAvailability = getCurrentEditAvailability();
+      const createAvailability = getCurrentCreateAvailability();
       playButton.disabled = !hasRows;
       stopButton.disabled = !hasRows;
       loopButton.disabled = !hasRows;
       loopAllButton.disabled = !hasRows;
+      editButton.hidden = isEmptyBlock;
       editButton.disabled = !hasRows || !editAvailability.ok;
       editButton.title = !editAvailability.ok ? editAvailability.reason : "Edit notation visually";
+      editButton.setAttribute(
+        "aria-label",
+        !editAvailability.ok ? editAvailability.reason : "Edit notation"
+      );
+      createButton.hidden = !isEmptyBlock;
+      createButton.disabled = !isEmptyBlock || !createAvailability.ok;
+      createButton.title = !createAvailability.ok ? createAvailability.reason : "Create first bar";
+      createButton.setAttribute(
+        "aria-label",
+        !createAvailability.ok ? createAvailability.reason : "Create first bar"
+      );
+
+      const emptyAction = notation.querySelector<HTMLButtonElement>(".drum-notation__empty-action");
+      if (emptyAction) {
+        emptyAction.disabled = !createAvailability.ok;
+        emptyAction.title = !createAvailability.ok ? createAvailability.reason : "Create first bar";
+      }
     };
 
     const clearEditHighlight = () => {
@@ -220,6 +265,76 @@ export default class DrumNotationPlugin extends Plugin {
     const selectEditSlot = (slotIndex: number | null) => {
       editSelectedSlotIndex = slotIndex;
       applyEditHighlight();
+    };
+
+    const openCreateFirstBarModal = () => {
+      const createAvailability = getCurrentCreateAvailability();
+      if (!createAvailability.ok) {
+        new Notice(createAvailability.reason);
+        return;
+      }
+
+      new DrumSetupModal(this.app, {
+        mode: "first-bar",
+        initialValues: getDrumSetupValues(block),
+        onSubmit: async (values) => {
+          const createAvailability = getCurrentCreateAvailability();
+          if (!createAvailability.ok) {
+            new Notice(createAvailability.reason);
+            return false;
+          }
+
+          const file = this.getSourceFile(ctx.sourcePath);
+          const section = getCurrentSection();
+
+          if (!file || !section) {
+            new Notice("Could not locate the source drums block to update.");
+            return false;
+          }
+
+          const nextBody = serializeInitialDrumBlock(values, block);
+          const sessionKey = this.getEditSessionKey(ctx.sourcePath, section.lineStart);
+          let failure: ReplaceDrumsBlockFailure | null = null;
+          let wrote = false;
+
+          try {
+            await this.app.vault.process(file, (current) => {
+              const result = replaceDrumsBlockBody(current, section, sourceBody, nextBody);
+
+              if (!result.ok) {
+                failure = result.reason;
+                return current;
+              }
+
+              wrote = true;
+              if (this.settings.enableVisualEditMode) {
+                this.editRestoreSessions.set(sessionKey, makeInitialEditSession(nextBody));
+              }
+
+              return result.text;
+            });
+          } catch (error) {
+            new Notice(`Could not create first bar: ${error instanceof Error ? error.message : String(error)}`);
+            return false;
+          }
+
+          if (!wrote) {
+            if (failure) {
+              new Notice(formatCreationFailure(failure));
+            }
+            return false;
+          }
+
+          sourceBody = nextBody;
+          if (!this.settings.enableVisualEditMode) {
+            new Notice(
+              "First bar created. Enable visual edit mode in Drum Notation settings to edit it visually."
+            );
+          }
+
+          return true;
+        }
+      }).open();
     };
 
     const clearBarSelectors = () => {
@@ -287,10 +402,26 @@ export default class DrumNotationPlugin extends Plugin {
 
       if (block.rows.length === 0) {
         notation.empty();
-        notation.createEl("div", {
-          cls: "drum-notation__empty",
-          text: "No supported drum rows found. Try HH, SD, and BD rows."
-        });
+        if (block.bars.length === 0) {
+          const createAvailability = getCurrentCreateAvailability();
+          const empty = notation.createEl("div", { cls: "drum-notation__empty" });
+          empty.createEl("span", {
+            text: "Create an empty first bar, then add notes with visual edit mode."
+          });
+          const action = empty.createEl("button", {
+            cls: "drum-notation__empty-action mod-cta",
+            text: "Create first bar",
+            attr: { type: "button" }
+          }) as HTMLButtonElement;
+          action.disabled = !createAvailability.ok;
+          action.title = !createAvailability.ok ? createAvailability.reason : "Create first bar";
+          action.addEventListener("click", openCreateFirstBarModal);
+        } else {
+          notation.createEl("div", {
+            cls: "drum-notation__empty",
+            text: "No supported drum rows found. Add an instrument row such as HH, SD, or BD."
+          });
+        }
         state.cursorPositions = [];
         state.barRegions = [];
         state.noteElements = [];
@@ -501,6 +632,7 @@ export default class DrumNotationPlugin extends Plugin {
     };
 
     const persistEditedBlock = async () => {
+      const editAvailability = getCurrentEditAvailability();
       if (!editAvailability.ok) {
         return;
       }
@@ -611,6 +743,7 @@ export default class DrumNotationPlugin extends Plugin {
     };
 
     const enterEditMode = (session?: GridEditorSessionState) => {
+      const editAvailability = getCurrentEditAvailability();
       if (gridEditor || !editAvailability.ok || block.slots.length === 0) {
         if (!editAvailability.ok) {
           new Notice(editAvailability.reason);
@@ -662,8 +795,33 @@ export default class DrumNotationPlugin extends Plugin {
       }
     };
 
+    const refreshModeAvailability = () => {
+      const editAvailability = getCurrentEditAvailability();
+
+      if (gridEditor && !editAvailability.ok) {
+        exitEditMode();
+      }
+
+      updateHeader();
+    };
+
+    const queueModeAvailabilityRefresh = () => {
+      refreshModeAvailability();
+
+      if (modeRefreshFrame !== null) {
+        window.cancelAnimationFrame(modeRefreshFrame);
+      }
+
+      modeRefreshFrame = window.requestAnimationFrame(() => {
+        modeRefreshFrame = null;
+        refreshModeAvailability();
+      });
+    };
+
     updateHeader();
     renderScore();
+    child.registerEvent(this.app.workspace.on("layout-change", queueModeAvailabilityRefresh));
+    child.registerEvent(this.app.workspace.on("active-leaf-change", queueModeAvailabilityRefresh));
 
     let lastWidth = Math.round(notationViewport.clientWidth);
     const observer = new ResizeObserver((entries) => {
@@ -700,6 +858,10 @@ export default class DrumNotationPlugin extends Plugin {
       if (playbackRestartTimer !== null) {
         window.clearTimeout(playbackRestartTimer);
         playbackRestartTimer = null;
+      }
+      if (modeRefreshFrame !== null) {
+        window.cancelAnimationFrame(modeRefreshFrame);
+        modeRefreshFrame = null;
       }
       gridEditor?.destroy();
       this.stopActivePlayer(renderOwner);
@@ -738,6 +900,8 @@ export default class DrumNotationPlugin extends Plugin {
       }
     });
 
+    createButton.addEventListener("click", openCreateFirstBarModal);
+
     if (shouldRestoreEdit && restored) {
       enterEditMode(restored.session);
       selectedBarIndex = clampBarIndex(block, restored.selectedBarIndex);
@@ -770,8 +934,29 @@ export default class DrumNotationPlugin extends Plugin {
       return { ok: false, reason: "Visual edit mode is disabled in Drum Notation settings." };
     }
 
-    if (!this.isReadingViewRender(el, ctx)) {
-      return { ok: false, reason: "Visual edit mode is available in Reading view only." };
+    return this.getWriteAvailability(el, ctx, section);
+  }
+
+  private getCreateAvailability(
+    el: HTMLElement,
+    ctx: MarkdownPostProcessorContext,
+    section: ReturnType<MarkdownPostProcessorContext["getSectionInfo"]>,
+    block: DrumBlock
+  ): EditAvailability {
+    if (block.bars.length > 0) {
+      return { ok: false, reason: "This drums block already has a bar." };
+    }
+
+    return this.getWriteAvailability(el, ctx, section);
+  }
+
+  private getWriteAvailability(
+    el: HTMLElement,
+    ctx: MarkdownPostProcessorContext,
+    section: ReturnType<MarkdownPostProcessorContext["getSectionInfo"]>
+  ): EditAvailability {
+    if (!this.isReadingViewRender(el)) {
+      return { ok: false, reason: "This action is available in Reading view only." };
     }
 
     if (!this.getSourceFile(ctx.sourcePath)) {
@@ -782,15 +967,15 @@ export default class DrumNotationPlugin extends Plugin {
       return { ok: false, reason: "Could not locate the source drums block." };
     }
 
-    const status = getDrumsBlockEditStatus(section.text);
-    if (!status.ok && status.reason === "nested-or-indented-fence") {
+    const status = getRenderedDrumsBlockEditStatus(section.text);
+    if (!status.ok) {
       return { ok: false, reason: formatEditAvailabilityFailure(status.reason) };
     }
 
     return { ok: true };
   }
 
-  private isReadingViewRender(el: HTMLElement, ctx: MarkdownPostProcessorContext): boolean {
+  private isReadingViewRender(el: HTMLElement): boolean {
     if (el.closest(".markdown-source-view")) {
       return false;
     }
@@ -799,11 +984,13 @@ export default class DrumNotationPlugin extends Plugin {
       return true;
     }
 
-    return this.app.workspace.getLeavesOfType("markdown").some((leaf) => {
+    const containingLeaf = this.app.workspace.getLeavesOfType("markdown").find((leaf) => {
       const view = leaf.view;
 
-      return view instanceof MarkdownView && view.file?.path === ctx.sourcePath && view.getMode() === "preview";
+      return view instanceof MarkdownView && view.containerEl.contains(el);
     });
+
+    return containingLeaf?.view instanceof MarkdownView && containingLeaf.view.getMode() === "preview";
   }
 
   private getSourceFile(path: string): TFile | null {
@@ -986,6 +1173,203 @@ function formatWritebackFailure(reason: ReplaceDrumsBlockFailure): string {
     case "missing-closing-fence":
     case "invalid-section":
       return "Could not update drums block because the source fence no longer matches the rendered block.";
+  }
+}
+
+function formatCreationFailure(reason: ReplaceDrumsBlockFailure): string {
+  switch (reason) {
+    case "nested-or-indented-fence":
+      return "Could not create first bar because nested drums blocks are read-only.";
+    case "stale-body":
+      return "Could not create first bar because the note changed while the setup window was open.";
+    case "not-drums-fence":
+    case "missing-closing-fence":
+    case "invalid-section":
+      return "Could not create first bar because the source drums fence could not be identified safely.";
+  }
+}
+
+function makeInitialEditSession(body: string): RestoredEditSession {
+  return {
+    body,
+    session: {
+      selectedBarIndex: 0,
+      selectedCell: null,
+      undoStack: [],
+      redoStack: [],
+      extraInstrumentIds: []
+    },
+    selectedSlotIndex: null,
+    selectedBarIndex: 0,
+    playback: {
+      wasPlaying: false,
+      wasLooping: false,
+      wasLoopingAll: false,
+      slotIndex: 0,
+      barIndex: 0
+    }
+  };
+}
+
+interface DrumSetupModalOptions {
+  mode: "command" | "first-bar";
+  initialValues: DrumSetupValues;
+  onSubmit: (values: DrumSetupValues) => Promise<boolean>;
+}
+
+class DrumSetupModal extends Modal {
+  private submitting = false;
+
+  constructor(
+    app: App,
+    private readonly options: DrumSetupModalOptions
+  ) {
+    super(app);
+  }
+
+  onOpen(): void {
+    const isFirstBar = this.options.mode === "first-bar";
+    this.titleEl.setText(isFirstBar ? "Create first bar" : "Create drum notation");
+    this.contentEl.empty();
+    this.contentEl.addClass("drum-notation__setup-modal");
+
+    let titleInput!: HTMLInputElement;
+    let tempoInput!: HTMLInputElement;
+    let numeratorInput!: HTMLInputElement;
+    let denominatorInput!: HTMLSelectElement;
+    let gridInput!: HTMLSelectElement;
+
+    new Setting(this.contentEl).setName("Title").addText((text) => {
+      titleInput = text.inputEl;
+      text.setValue(this.options.initialValues.title).setPlaceholder(DEFAULT_DRUM_SETUP_VALUES.title);
+    });
+
+    new Setting(this.contentEl).setName("Tempo").addText((text) => {
+      tempoInput = text.inputEl;
+      tempoInput.type = "number";
+      tempoInput.min = "30";
+      tempoInput.max = "260";
+      tempoInput.step = "1";
+      tempoInput.inputMode = "numeric";
+      tempoInput.addClass("drum-notation__setup-number");
+      text.setValue(String(this.options.initialValues.tempo));
+    });
+
+    const timeSetting = new Setting(this.contentEl).setName("Time");
+    timeSetting.addText((text) => {
+      numeratorInput = text.inputEl;
+      numeratorInput.type = "number";
+      numeratorInput.min = "1";
+      numeratorInput.max = "32";
+      numeratorInput.step = "1";
+      numeratorInput.inputMode = "numeric";
+      numeratorInput.addClass("drum-notation__setup-number");
+      text.setValue(String(this.options.initialValues.timeNumerator));
+    });
+    timeSetting.controlEl.createSpan({ cls: "drum-notation__setup-divider", text: "/" });
+    timeSetting.addDropdown((dropdown) => {
+      denominatorInput = dropdown.selectEl;
+      dropdown
+        .addOptions({
+          "2": "2",
+          "4": "4",
+          "8": "8",
+          "16": "16",
+          "32": "32"
+        })
+        .setValue(String(this.options.initialValues.timeDenominator));
+    });
+
+    new Setting(this.contentEl).setName("Grid").addDropdown((dropdown) => {
+      gridInput = dropdown.selectEl;
+      dropdown.addOptions({ "16": "16", "32": "32" }).setValue(String(this.options.initialValues.grid));
+    });
+
+    const summary = this.contentEl.createEl("div", {
+      cls: "drum-notation__setup-summary",
+      attr: { "aria-live": "polite" }
+    });
+    const buttons = this.contentEl.createEl("div", { cls: "drum-notation__confirm-buttons" });
+    const cancelButton = buttons.createEl("button", { text: "Cancel", attr: { type: "button" } });
+    const submitButton = buttons.createEl("button", {
+      cls: "mod-cta",
+      text: isFirstBar ? "Create bar" : "Create notation",
+      attr: { type: "button" }
+    }) as HTMLButtonElement;
+    const formControls = [titleInput, tempoInput, numeratorInput, denominatorInput, gridInput];
+
+    const readValues = (): DrumSetupValues => ({
+      title: titleInput.value,
+      tempo: Number(tempoInput.value),
+      timeNumerator: Number(numeratorInput.value),
+      timeDenominator: Number(denominatorInput.value) as DrumSetupTimeDenominator,
+      grid: Number(gridInput.value) === 32 ? 32 : 16
+    });
+
+    const updateState = () => {
+      const values = readValues();
+      const valid = isValidDrumSetupValues(values);
+
+      summary.setText(
+        valid
+          ? `${values.timeNumerator}/${values.timeDenominator} · Grid ${values.grid} · ${getDrumSetupSlotCount(values)} slots`
+          : "Enter a tempo from 30 to 260 and a time numerator from 1 to 32."
+      );
+      submitButton.disabled = this.submitting || !valid;
+    };
+
+    const setSubmitting = (submitting: boolean) => {
+      this.submitting = submitting;
+      formControls.forEach((control) => {
+        control.disabled = submitting;
+      });
+      cancelButton.disabled = submitting;
+      updateState();
+    };
+
+    const submit = async () => {
+      const values = readValues();
+
+      if (this.submitting || !isValidDrumSetupValues(values)) {
+        return;
+      }
+
+      setSubmitting(true);
+      try {
+        const completed = await this.options.onSubmit(values);
+        if (completed) {
+          this.close();
+          return;
+        }
+      } catch (error) {
+        new Notice(`Could not create drum notation: ${error instanceof Error ? error.message : String(error)}`);
+      }
+      setSubmitting(false);
+    };
+
+    formControls.forEach((control) => control.addEventListener("input", updateState));
+    denominatorInput.addEventListener("change", updateState);
+    gridInput.addEventListener("change", updateState);
+    cancelButton.addEventListener("click", () => this.close());
+    submitButton.addEventListener("click", () => {
+      void submit();
+    });
+    this.modalEl.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && !(event.target instanceof HTMLButtonElement)) {
+        event.preventDefault();
+        void submit();
+      }
+    });
+
+    updateState();
+    window.setTimeout(() => {
+      titleInput.focus();
+      titleInput.select();
+    }, 0);
+  }
+
+  onClose(): void {
+    this.contentEl.empty();
   }
 }
 

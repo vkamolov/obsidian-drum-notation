@@ -6,6 +6,22 @@ Render drum kit patterns as graphical SVG percussion staff notation in Obsidian,
 
 See [docs/notation-format.md](docs/notation-format.md) for the full notation format reference.
 
+## Create A Notation
+
+You can start without writing drum rows manually:
+
+- In an open Markdown editor, run **Drum Notation: Create drum notation** from
+  the Command palette. Choose the title, tempo, time signature, and grid, then
+  the plugin inserts a complete fenced `drums` block with one empty HH/SD/BD
+  bar at the cursor.
+- If you already created an empty top-level `drums` block, switch to Reading
+  view and press **Create first bar** in the rendered block. Existing Title,
+  Tempo, Time, and Grid values prefill the setup window.
+
+The setup window shows the calculated bar length before creating it, such as
+`7/8 · Grid 16 · 14 slots`. When visual edit mode is enabled, creating the
+first bar opens it immediately for editing.
+
 ## Basic Example
 
 Create a fenced code block with the language `drums`:

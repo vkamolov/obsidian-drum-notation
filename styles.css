@@ -1,3 +1,38 @@
+.markdown-reading-view .el-p:has(+ .el-pre .drum-notation-host) > p:last-child,
+.markdown-preview-view .el-p:has(+ .el-pre .drum-notation-host) > p:last-child {
+  margin-bottom: 0;
+}
+
+.markdown-reading-view .el-pre:has(.drum-notation-host),
+.markdown-preview-view .el-pre:has(.drum-notation-host) {
+  margin-top: 0;
+}
+
+.markdown-reading-view .el-pre:has(.drum-notation-host) + .el-pre:has(.drum-notation-host),
+.markdown-preview-view .el-pre:has(.drum-notation-host) + .el-pre:has(.drum-notation-host) {
+  margin-top: var(--p-spacing, 1rem);
+}
+
+/* Live Preview / source mode wraps the rendered block in a CodeMirror embed
+   (.cm-embed-block.cm-preview-code-block) with its own padding, border, and
+   background. Reading view has none of that, so switching modes shifted the
+   block vertically. Strip the embed chrome around our host so the block keeps
+   the same vertical footprint in both modes. */
+.markdown-source-view.mod-cm6 .cm-embed-block.cm-preview-code-block:has(.drum-notation-host) {
+  margin: var(--p-spacing, 1rem) 0;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  box-shadow: none;
+}
+
+/* The host element itself carries no extra spacing in either mode; the wrappers
+   above (reading view) and the rule above (Live Preview) own the block margin. */
+.drum-notation-host {
+  margin: 0;
+}
+
 .drum-notation {
   --drum-border: var(--background-modifier-border);
   --drum-panel: var(--background-secondary);
@@ -74,6 +109,10 @@
   box-shadow: none !important;
   line-height: 1;
   cursor: pointer;
+}
+
+.drum-notation__button[hidden] {
+  display: none;
 }
 
 .drum-notation__button svg {
@@ -922,8 +961,40 @@
   font-size: var(--font-small);
 }
 
+.drum-notation__empty {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.2rem;
+}
+
+.drum-notation__empty-action {
+  flex: 0 0 auto;
+}
+
 .drum-notation__error {
   white-space: pre-wrap;
+}
+
+.drum-notation__setup-number {
+  width: 5.5rem;
+}
+
+.drum-notation__setup-divider {
+  align-self: center;
+  color: var(--text-muted);
+}
+
+.drum-notation__setup-summary {
+  margin-top: 0.75rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  color: var(--text-muted);
+  background: var(--background-secondary);
+  font-size: var(--font-small);
+  text-align: center;
 }
 
 .drum-notation__confirm-buttons {
@@ -943,6 +1014,11 @@
 @media (max-width: 560px) {
   .drum-notation__toolbar {
     align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .drum-notation__empty {
+    align-items: stretch;
     flex-direction: column;
   }
 }

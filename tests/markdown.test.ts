@@ -1,10 +1,35 @@
 import { describe, expect, it } from "vitest";
-import { getDrumsBlockEditStatus, replaceDrumsBlockBody } from "../src/markdown";
+import {
+  getDrumsBlockEditStatus,
+  getRenderedDrumsBlockEditStatus,
+  replaceDrumsBlockBody
+} from "../src/markdown";
 
 describe("replaceDrumsBlockBody", () => {
   it("reports whether a rendered section is editable", () => {
     expect(getDrumsBlockEditStatus("```drums\nHH | x---\n```")).toEqual({ ok: true });
     expect(getDrumsBlockEditStatus("> ```drums\n> HH | x---\n> ```")).toEqual({
+      ok: false,
+      reason: "nested-or-indented-fence"
+    });
+  });
+
+  it("accepts Obsidian body-only section text for rendered controls", () => {
+    expect(getRenderedDrumsBlockEditStatus("HH | x---\nSD | --o-")).toEqual({ ok: true });
+    expect(getRenderedDrumsBlockEditStatus("")).toEqual({ ok: true });
+    expect(getRenderedDrumsBlockEditStatus("```drums\nHH | x---\n```")).toEqual({ ok: true });
+  });
+
+  it("refuses malformed and nested rendered fence sections", () => {
+    expect(getRenderedDrumsBlockEditStatus("```drums")).toEqual({
+      ok: false,
+      reason: "missing-closing-fence"
+    });
+    expect(getRenderedDrumsBlockEditStatus("> ```drums\n> ```")).toEqual({
+      ok: false,
+      reason: "nested-or-indented-fence"
+    });
+    expect(getRenderedDrumsBlockEditStatus("- ```drums\n  ```")).toEqual({
       ok: false,
       reason: "nested-or-indented-fence"
     });
@@ -17,6 +42,17 @@ describe("replaceDrumsBlockBody", () => {
     expect(result).toEqual({
       ok: true,
       text: ["before", "```drums", "HH | xxxx", "```", "after"].join("\n")
+    });
+  });
+
+  it("initializes an empty top-level drums fence without changing adjacent Markdown", () => {
+    const input = ["before", "", "```drums", "```", "", "after"].join("\n");
+    const body = ["Title: New groove", "HH | ----", "SD | ----", "BD | ----"].join("\n");
+    const result = replaceDrumsBlockBody(input, { lineStart: 2, lineEnd: 3 }, "", body);
+
+    expect(result).toEqual({
+      ok: true,
+      text: ["before", "", "```drums", body, "```", "", "after"].join("\n")
     });
   });
 

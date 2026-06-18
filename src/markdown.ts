@@ -102,6 +102,29 @@ export function getDrumsBlockEditStatus(sectionText: string): DrumsBlockEditStat
   return getDrumsFenceStatus(lines[0].content, lines[lines.length - 1].content);
 }
 
+// Obsidian's Markdown post-processor may report either the complete fenced
+// section or only the code-block body. Body-only text is valid for enabling
+// controls; replaceDrumsBlockBody() still validates the actual source fence
+// and stale body atomically before any write.
+export function getRenderedDrumsBlockEditStatus(sectionText: string): DrumsBlockEditStatus {
+  const lines = splitMarkdownLines(sectionText);
+  const opening = lines[0]?.content ?? "";
+
+  if (isNestedFenceLikeLine(opening)) {
+    return { ok: false, reason: "nested-or-indented-fence" };
+  }
+
+  if (!isFenceLikeLine(opening)) {
+    return { ok: true };
+  }
+
+  if (lines.length < 2) {
+    return { ok: false, reason: "missing-closing-fence" };
+  }
+
+  return getDrumsFenceStatus(opening, lines[lines.length - 1].content);
+}
+
 function resolveDrumsBlockRange(
   lines: MarkdownLine[],
   section: MarkdownSectionRange
@@ -147,6 +170,10 @@ function resolveDrumsBlockRange(
 
 function isFenceLikeLine(line: string): boolean {
   return /^`{3,}/.test(line);
+}
+
+function isNestedFenceLikeLine(line: string): boolean {
+  return /^(?:\s+|>\s*|(?:[-+*]|\d+[.)])\s+)`{3,}/.test(line);
 }
 
 function splitMarkdownLines(markdown: string): MarkdownLine[] {
