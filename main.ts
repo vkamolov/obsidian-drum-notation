@@ -4,6 +4,7 @@ import {
   MarkdownPostProcessorContext,
   MarkdownRenderChild,
   MarkdownView,
+  Menu,
   Modal,
   Notice,
   Plugin,
@@ -22,7 +23,15 @@ import {
 } from "./src/markdown";
 import { getBarRange, getSecondsPerSlot, getSlotVisualDurationSeconds } from "./src/music";
 import { getTitle, parseDrumBlock } from "./src/parser";
-import { DrumPlaybackBackend } from "./src/playback";
+import {
+  DEFAULT_PLAYBACK_SPEED_PERCENT,
+  DrumPlaybackBackend,
+  getEffectivePlaybackTempo,
+  getPlaybackInstruments,
+  MAX_PLAYBACK_SPEED_PERCENT,
+  MIN_PLAYBACK_SPEED_PERCENT,
+  PLAYBACK_SPEED_STEP_PERCENT
+} from "./src/playback";
 import { DrumPlayer } from "./src/player";
 import { serializeDrumBlock } from "./src/serializer";
 import {
@@ -168,6 +177,18 @@ export default class DrumNotationPlugin extends Plugin {
     const stopButton = makeIconButton("square", "Stop");
     const loopButton = makeIconButton("repeat-1", "Loop current bar");
     const loopAllButton = makeIconButton("repeat", "Loop whole notation");
+    const speedSelect = controls.createEl("select", {
+      cls: "drum-notation__speed",
+      attr: { "aria-label": "Playback speed" }
+    }) as HTMLSelectElement;
+    for (
+      let speed = MAX_PLAYBACK_SPEED_PERCENT;
+      speed >= MIN_PLAYBACK_SPEED_PERCENT;
+      speed -= PLAYBACK_SPEED_STEP_PERCENT
+    ) {
+      speedSelect.createEl("option", { text: `${speed}%`, value: String(speed) });
+    }
+    const muteButton = makeIconButton("volume-2", "Mute instruments");
     controls.createEl("span", { cls: "drum-notation__control-divider" });
     const editButton = makeIconButton("pencil", "Edit notation");
     const createButton = makeIconButton("square-plus", "Create first bar");
@@ -191,6 +212,8 @@ export default class DrumNotationPlugin extends Plugin {
     let visuals = makePlaybackVisuals(block, state);
     let isLoopingBar = false;
     let isLoopingAll = false;
+    let playbackSpeedPercent = DEFAULT_PLAYBACK_SPEED_PERCENT;
+    const mutedInstrumentIds = new Set<string>();
     let resizeTimer: number | null = null;
     let writebackTimer: number | null = null;
     let playbackRestartTimer: number | null = null;
@@ -208,6 +231,14 @@ export default class DrumNotationPlugin extends Plugin {
       this.getCreateAvailability(el, ctx, getCurrentSection(), block);
 
     const updateHeader = () => {
+      const playbackInstruments = getPlaybackInstruments(block);
+      const playableInstrumentIds = new Set(playbackInstruments.map((instrument) => instrument.id));
+      for (const instrumentId of mutedInstrumentIds) {
+        if (!playableInstrumentIds.has(instrumentId)) {
+          mutedInstrumentIds.delete(instrumentId);
+        }
+      }
+
       root.classList.toggle("drum-notation--legend-color", block.legendMode !== "off");
       title.empty();
       title.createEl("span", { text: getTitle(block) });
@@ -224,6 +255,20 @@ export default class DrumNotationPlugin extends Plugin {
       stopButton.disabled = !hasRows;
       loopButton.disabled = !hasRows;
       loopAllButton.disabled = !hasRows;
+      speedSelect.disabled = !hasRows;
+      speedSelect.value = String(playbackSpeedPercent);
+      const effectiveTempo = getEffectivePlaybackTempo(block.tempo, playbackSpeedPercent);
+      const speedDescription = `Playback speed ${playbackSpeedPercent}% · ${formatTempo(effectiveTempo)} BPM`;
+      speedSelect.title = speedDescription;
+      speedSelect.setAttribute("aria-label", speedDescription);
+      muteButton.disabled = !hasRows;
+      setIcon(muteButton, mutedInstrumentIds.size > 0 ? "volume-x" : "volume-2");
+      const muteDescription =
+        mutedInstrumentIds.size > 0
+          ? `${mutedInstrumentIds.size} muted instrument${mutedInstrumentIds.size === 1 ? "" : "s"}`
+          : "Mute instruments";
+      muteButton.title = muteDescription;
+      muteButton.setAttribute("aria-label", muteDescription);
       editButton.hidden = isEmptyBlock;
       editButton.disabled = !hasRows || !editAvailability.ok;
       editButton.title = !editAvailability.ok ? editAvailability.reason : "Edit notation visually";
@@ -481,12 +526,12 @@ export default class DrumNotationPlugin extends Plugin {
       isLoopingAll = false;
     };
 
-    const startPlayback = (startSlot = 0) => {
+    const startPlayback = (initialSlot = 0) => {
       this.stopActivePlayer();
 
       isLoopingBar = false;
       isLoopingAll = false;
-      currentSlotIndex = clampSlotIndex(block, startSlot);
+      currentSlotIndex = clampSlotIndex(block, initialSlot);
       this.activePlaybackOwner = renderOwner;
       this.activePlayer = new DrumPlayer(
         this.getAudioContext(),
@@ -503,7 +548,14 @@ export default class DrumNotationPlugin extends Plugin {
           this.activePlaybackOwner = null;
         },
         handleSlotChange,
-        { startSlot: currentSlotIndex, repeatCount: block.repeatCount },
+        {
+          startSlot: 0,
+          endSlot: block.slots.length,
+          initialSlot: currentSlotIndex,
+          repeatCount: block.repeatCount,
+          speedPercent: playbackSpeedPercent,
+          mutedInstrumentIds
+        },
         playbackBackendFactory
       );
       this.activePlaybackReset = () => {
@@ -517,12 +569,13 @@ export default class DrumNotationPlugin extends Plugin {
       void this.activePlayer.play();
     };
 
-    const startLoopBar = (barIndex = selectedBarIndex) => {
+    const startLoopBar = (barIndex = selectedBarIndex, initialSlot?: number) => {
       this.stopActivePlayer();
 
       const bar = block.bars[clampBarIndex(block, barIndex)];
-      currentSlotIndex = bar?.startSlot ?? clampSlotIndex(block, currentSlotIndex);
-      const barRange = getBarRange(block, currentSlotIndex);
+      const barStartSlot = bar?.startSlot ?? clampSlotIndex(block, currentSlotIndex);
+      const barRange = getBarRange(block, barStartSlot);
+      currentSlotIndex = clampSlotToRange(initialSlot ?? barRange.startSlot, barRange.startSlot, barRange.endSlot);
 
       isLoopingBar = true;
       isLoopingAll = false;
@@ -549,7 +602,10 @@ export default class DrumNotationPlugin extends Plugin {
         {
           startSlot: barRange.startSlot,
           endSlot: barRange.endSlot,
-          loop: true
+          initialSlot: currentSlotIndex,
+          loop: true,
+          speedPercent: playbackSpeedPercent,
+          mutedInstrumentIds
         },
         playbackBackendFactory
       );
@@ -562,12 +618,12 @@ export default class DrumNotationPlugin extends Plugin {
       void this.activePlayer.play();
     };
 
-    const startLoopAll = () => {
+    const startLoopAll = (initialSlot = 0) => {
       this.stopActivePlayer();
 
       isLoopingBar = false;
       isLoopingAll = true;
-      currentSlotIndex = 0;
+      currentSlotIndex = clampSlotIndex(block, initialSlot);
       clearTransportHighlights();
       loopAllButton.addClass("is-playing");
       this.activePlaybackOwner = renderOwner;
@@ -591,7 +647,10 @@ export default class DrumNotationPlugin extends Plugin {
         {
           startSlot: 0,
           endSlot: block.slots.length,
-          loop: true
+          initialSlot: currentSlotIndex,
+          loop: true,
+          speedPercent: playbackSpeedPercent,
+          mutedInstrumentIds
         },
         playbackBackendFactory
       );
@@ -602,6 +661,62 @@ export default class DrumNotationPlugin extends Plugin {
         isLoopingAll = false;
       };
       void this.activePlayer.play();
+    };
+
+    const restartActivePlaybackForControls = () => {
+      if (this.activePlaybackOwner !== renderOwner || !this.activePlayer) {
+        return;
+      }
+
+      const restartSlotIndex = this.activePlayer.getCurrentSlotIndex();
+      const wasLoopingBar = isLoopingBar;
+      const wasLoopingAll = isLoopingAll;
+      const restartBarIndex = barIndexForSlot(block, restartSlotIndex);
+
+      this.stopActivePlayer(renderOwner);
+      if (wasLoopingAll) {
+        startLoopAll(restartSlotIndex);
+      } else if (wasLoopingBar) {
+        startLoopBar(restartBarIndex, restartSlotIndex);
+      } else {
+        startPlayback(restartSlotIndex);
+      }
+    };
+
+    const openMuteMenu = (event: MouseEvent) => {
+      const menu = new Menu();
+      const playbackInstruments = getPlaybackInstruments(block);
+
+      playbackInstruments.forEach((instrument) => {
+        menu.addItem((item) => {
+          item
+            .setTitle(instrument.label)
+            .setChecked(mutedInstrumentIds.has(instrument.id))
+            .onClick(() => {
+              if (mutedInstrumentIds.has(instrument.id)) {
+                mutedInstrumentIds.delete(instrument.id);
+              } else {
+                mutedInstrumentIds.add(instrument.id);
+              }
+              updateHeader();
+              restartActivePlaybackForControls();
+            });
+        });
+      });
+
+      menu.addSeparator();
+      menu.addItem((item) => {
+        item
+          .setTitle("Unmute all")
+          .setIcon("volume-2")
+          .setDisabled(mutedInstrumentIds.size === 0)
+          .onClick(() => {
+            mutedInstrumentIds.clear();
+            updateHeader();
+            restartActivePlaybackForControls();
+          });
+      });
+      menu.showAtMouseEvent(event);
     };
 
     const schedulePlaybackRestart = (
@@ -892,6 +1007,14 @@ export default class DrumNotationPlugin extends Plugin {
       startLoopAll();
     });
 
+    speedSelect.addEventListener("change", () => {
+      playbackSpeedPercent = Number(speedSelect.value);
+      updateHeader();
+      restartActivePlaybackForControls();
+    });
+
+    muteButton.addEventListener("click", openMuteMenu);
+
     editButton.addEventListener("click", () => {
       if (gridEditor) {
         exitEditMode();
@@ -1142,6 +1265,18 @@ function clampSlotIndex(block: DrumBlock, slotIndex: number): number {
   }
 
   return Math.min(block.slots.length - 1, Math.max(0, Math.round(slotIndex)));
+}
+
+function clampSlotToRange(slotIndex: number, startSlot: number, endSlot: number): number {
+  if (endSlot <= startSlot) {
+    return startSlot;
+  }
+
+  return Math.min(endSlot - 1, Math.max(startSlot, Math.round(slotIndex)));
+}
+
+function formatTempo(tempo: number): string {
+  return Number.isInteger(tempo) ? String(tempo) : tempo.toFixed(1);
 }
 
 function barIndexForSlot(block: DrumBlock, slotIndex: number): number {

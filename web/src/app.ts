@@ -13,7 +13,15 @@ import {
 import { INSTRUMENTS_BY_ALIAS } from "../../src/kit";
 import { getBarRange, getSecondsPerSlot, getSlotVisualDurationSeconds } from "../../src/music";
 import { getTitle, parseDrumBlock } from "../../src/parser";
-import { DrumPlaybackBackend } from "../../src/playback";
+import {
+  DEFAULT_PLAYBACK_SPEED_PERCENT,
+  DrumPlaybackBackend,
+  getEffectivePlaybackTempo,
+  getPlaybackInstruments,
+  MAX_PLAYBACK_SPEED_PERCENT,
+  MIN_PLAYBACK_SPEED_PERCENT,
+  PLAYBACK_SPEED_STEP_PERCENT
+} from "../../src/playback";
 import { DrumPlayer } from "../../src/player";
 import { serializeDrumBlock } from "../../src/serializer";
 import { setGrid, setRepeatCount, setTempo, setTimeSignature } from "../../src/edit";
@@ -50,6 +58,9 @@ const playBtn = $<HTMLButtonElement>("pg-play");
 const stopBtn = $<HTMLButtonElement>("pg-stop");
 const loopBtn = $<HTMLButtonElement>("pg-loop");
 const loopAllBtn = $<HTMLButtonElement>("pg-loop-all");
+const speedSelect = $<HTMLSelectElement>("pg-speed");
+const muteBtn = $<HTMLButtonElement>("pg-mute");
+const muteMenu = $<HTMLDivElement>("pg-mute-menu");
 const editBtn = $<HTMLButtonElement>("pg-edit");
 const editRoot = $<HTMLDivElement>("pg-edit-root");
 const copyBlockBtn = $<HTMLButtonElement>("pg-copy-block");
@@ -75,6 +86,8 @@ let currentSlotIndex = 0;
 let lastRenderError: string | null = null;
 let isLooping = false;
 let isLoopingAll = false;
+let playbackSpeedPercent = DEFAULT_PLAYBACK_SPEED_PERCENT;
+const mutedInstrumentIds = new Set<string>();
 let gridEditor: GridEditorHandle | null = null;
 let isApplyingGridEdit = false;
 
@@ -112,11 +125,20 @@ function renderPreview(): void {
   scoreEl = score;
 
   const hasRows = block.rows.length > 0;
+  const playbackInstrumentIds = new Set(getPlaybackInstruments(block).map((instrument) => instrument.id));
+  for (const instrumentId of mutedInstrumentIds) {
+    if (!playbackInstrumentIds.has(instrumentId)) {
+      mutedInstrumentIds.delete(instrumentId);
+    }
+  }
   playBtn.disabled = !hasRows;
   stopBtn.disabled = !hasRows;
   loopBtn.disabled = !hasRows;
   loopAllBtn.disabled = !hasRows;
+  speedSelect.disabled = !hasRows;
+  muteBtn.disabled = !hasRows;
   editBtn.disabled = !hasRows;
+  syncPlaybackControls(block);
 
   if (!hasRows) {
     cursorPositions = [];
@@ -315,14 +337,14 @@ function stopPlayback(): void {
   clearVisuals();
 }
 
-function play(startSlot = 0): void {
+function play(initialSlot = 0): void {
   stopPlayback();
   if (!currentBlock || currentBlock.rows.length === 0) {
     return;
   }
 
   const block = currentBlock;
-  currentSlotIndex = clampSlotIndex(block, startSlot);
+  currentSlotIndex = clampSlotIndex(block, initialSlot);
   setPlaying(playBtn, true);
   player = new DrumPlayer(
     getAudioContext(),
@@ -336,7 +358,14 @@ function play(startSlot = 0): void {
       currentSlotIndex = slotIndex;
       moveCursor(slotIndex);
     },
-    { startSlot: currentSlotIndex, repeatCount: block.repeatCount },
+    {
+      startSlot: 0,
+      endSlot: block.slots.length,
+      initialSlot: currentSlotIndex,
+      repeatCount: block.repeatCount,
+      speedPercent: playbackSpeedPercent,
+      mutedInstrumentIds
+    },
     createPlaybackBackend
   );
   void player.play();
@@ -354,7 +383,7 @@ function loopBar(): void {
   startLoopBar();
 }
 
-function startLoopBar(barIndex = selectedBarIndex): void {
+function startLoopBar(barIndex = selectedBarIndex, initialSlot?: number): void {
   if (!currentBlock || currentBlock.rows.length === 0) {
     return;
   }
@@ -362,8 +391,9 @@ function startLoopBar(barIndex = selectedBarIndex): void {
   stopPlayback();
   const block = currentBlock;
   const bar = block.bars[clampBarIndex(block, barIndex)];
-  currentSlotIndex = bar?.startSlot ?? clampSlotIndex(block, currentSlotIndex);
-  const range = getBarRange(block, currentSlotIndex);
+  const barStartSlot = bar?.startSlot ?? clampSlotIndex(block, currentSlotIndex);
+  const range = getBarRange(block, barStartSlot);
+  currentSlotIndex = clampSlotToRange(initialSlot ?? range.startSlot, range.startSlot, range.endSlot);
   isLooping = true;
   setPlaying(loopBtn, true);
   player = new DrumPlayer(
@@ -379,7 +409,14 @@ function startLoopBar(barIndex = selectedBarIndex): void {
       currentSlotIndex = slotIndex;
       moveCursor(slotIndex);
     },
-    { startSlot: range.startSlot, endSlot: range.endSlot, loop: true },
+    {
+      startSlot: range.startSlot,
+      endSlot: range.endSlot,
+      initialSlot: currentSlotIndex,
+      loop: true,
+      speedPercent: playbackSpeedPercent,
+      mutedInstrumentIds
+    },
     createPlaybackBackend
   );
   void player.play();
@@ -397,14 +434,14 @@ function loopAll(): void {
   startLoopAll();
 }
 
-function startLoopAll(): void {
+function startLoopAll(initialSlot = 0): void {
   if (!currentBlock || currentBlock.rows.length === 0) {
     return;
   }
 
   stopPlayback();
   const block = currentBlock;
-  currentSlotIndex = 0;
+  currentSlotIndex = clampSlotIndex(block, initialSlot);
   isLoopingAll = true;
   setPlaying(loopAllBtn, true);
   player = new DrumPlayer(
@@ -420,7 +457,14 @@ function startLoopAll(): void {
       currentSlotIndex = slotIndex;
       moveCursor(slotIndex);
     },
-    { startSlot: 0, endSlot: block.slots.length, loop: true },
+    {
+      startSlot: 0,
+      endSlot: block.slots.length,
+      initialSlot: currentSlotIndex,
+      loop: true,
+      speedPercent: playbackSpeedPercent,
+      mutedInstrumentIds
+    },
     createPlaybackBackend
   );
   void player.play();
@@ -450,10 +494,30 @@ function capturePlaybackRestart(): (barIndex?: number) => void {
   const wasPlaying = player !== null;
   const wasLooping = isLooping;
   const wasLoopingAll = isLoopingAll;
-  const restartSlotIndex = currentSlotIndex;
+  const restartSlotIndex = player?.getCurrentSlotIndex() ?? currentSlotIndex;
   const restartBarIndex = selectedBarIndex;
 
   return (barIndex = restartBarIndex) => restartPlaybackAfterEdit(wasPlaying, wasLooping, wasLoopingAll, restartSlotIndex, barIndex);
+}
+
+function restartPlaybackForControlChange(): void {
+  if (!player || !currentBlock) {
+    return;
+  }
+
+  const restartSlotIndex = player.getCurrentSlotIndex();
+  const wasLooping = isLooping;
+  const wasLoopingAll = isLoopingAll;
+  const restartBarIndex = barIndexForSlot(currentBlock, restartSlotIndex);
+
+  stopPlayback();
+  if (wasLoopingAll) {
+    startLoopAll(restartSlotIndex);
+  } else if (wasLooping) {
+    startLoopBar(restartBarIndex, restartSlotIndex);
+  } else {
+    play(restartSlotIndex);
+  }
 }
 
 function clampSlotIndex(block: DrumBlock, slotIndex: number): number {
@@ -462,6 +526,112 @@ function clampSlotIndex(block: DrumBlock, slotIndex: number): number {
   }
 
   return Math.min(block.slots.length - 1, Math.max(0, Math.round(slotIndex)));
+}
+
+function clampSlotToRange(slotIndex: number, startSlot: number, endSlot: number): number {
+  if (endSlot <= startSlot) {
+    return startSlot;
+  }
+
+  return Math.min(endSlot - 1, Math.max(startSlot, Math.round(slotIndex)));
+}
+
+function populatePlaybackSpeeds(): void {
+  for (
+    let speed = MAX_PLAYBACK_SPEED_PERCENT;
+    speed >= MIN_PLAYBACK_SPEED_PERCENT;
+    speed -= PLAYBACK_SPEED_STEP_PERCENT
+  ) {
+    speedSelect.createEl("option", { text: `${speed}%`, value: String(speed) });
+  }
+}
+
+function syncPlaybackControls(block: DrumBlock): void {
+  speedSelect.value = String(playbackSpeedPercent);
+  const effectiveTempo = getEffectivePlaybackTempo(block.tempo, playbackSpeedPercent);
+  const speedDescription = `Playback speed ${playbackSpeedPercent}% · ${formatTempo(effectiveTempo)} BPM`;
+
+  speedSelect.title = speedDescription;
+  speedSelect.setAttribute("aria-label", speedDescription);
+  syncMuteButton();
+
+  if (!muteMenu.hidden) {
+    renderMuteMenu();
+  }
+}
+
+function syncMuteButton(): void {
+  const icon = mutedInstrumentIds.size > 0 ? "volume-x" : "volume-2";
+  const label =
+    mutedInstrumentIds.size > 0
+      ? `Mute (${mutedInstrumentIds.size})`
+      : "Mute";
+  const description =
+    mutedInstrumentIds.size > 0
+      ? `${mutedInstrumentIds.size} muted instrument${mutedInstrumentIds.size === 1 ? "" : "s"}`
+      : "Mute instruments";
+
+  muteBtn.innerHTML = `${iconSvg(icon)}<span class="pg-btn__label">${label}</span>`;
+  muteBtn.title = description;
+  muteBtn.setAttribute("aria-label", description);
+}
+
+function renderMuteMenu(): void {
+  muteMenu.empty();
+
+  if (!currentBlock) {
+    return;
+  }
+
+  getPlaybackInstruments(currentBlock).forEach((instrument) => {
+    const item = muteMenu.createEl("button", {
+      cls: "pg-mute-menu__item",
+      attr: {
+        type: "button",
+        role: "menuitemcheckbox",
+        "aria-label": instrument.label,
+        "aria-checked": mutedInstrumentIds.has(instrument.id) ? "true" : "false"
+      }
+    }) as HTMLButtonElement;
+    item.createEl("span", {
+      cls: "pg-mute-menu__check",
+      text: mutedInstrumentIds.has(instrument.id) ? "✓" : ""
+    });
+    item.createEl("span", { text: instrument.label });
+    item.addEventListener("click", () => {
+      if (mutedInstrumentIds.has(instrument.id)) {
+        mutedInstrumentIds.delete(instrument.id);
+      } else {
+        mutedInstrumentIds.add(instrument.id);
+      }
+      syncPlaybackControls(currentBlock!);
+      restartPlaybackForControlChange();
+    });
+  });
+
+  const reset = muteMenu.createEl("button", {
+    cls: "pg-mute-menu__item pg-mute-menu__reset",
+    text: "Unmute all",
+    attr: { type: "button", role: "menuitem" }
+  }) as HTMLButtonElement;
+  reset.disabled = mutedInstrumentIds.size === 0;
+  reset.addEventListener("click", () => {
+    mutedInstrumentIds.clear();
+    syncPlaybackControls(currentBlock!);
+    restartPlaybackForControlChange();
+  });
+}
+
+function setMuteMenuOpen(open: boolean): void {
+  muteMenu.hidden = !open;
+  muteBtn.setAttribute("aria-expanded", open ? "true" : "false");
+  if (open) {
+    renderMuteMenu();
+  }
+}
+
+function formatTempo(tempo: number): string {
+  return Number.isInteger(tempo) ? String(tempo) : tempo.toFixed(1);
 }
 
 async function previewSlot(block: DrumBlock, slot: DrumSlot): Promise<void> {
@@ -829,6 +999,7 @@ function debounce(fn: () => void, ms: number): () => void {
 /* ---------- wiring ---------- */
 function init(): void {
   populateExamples();
+  populatePlaybackSpeeds();
 
   const stored = (() => {
     try {
@@ -915,11 +1086,30 @@ function init(): void {
   decorateButton(loopBtn, "repeat-1");
   decorateButton(loopAllBtn, "repeat");
   decorateButton(editBtn, "pencil");
+  syncMuteButton();
 
   playBtn.addEventListener("click", () => play());
   stopBtn.addEventListener("click", stopPlayback);
   loopBtn.addEventListener("click", loopBar);
   loopAllBtn.addEventListener("click", loopAll);
+  speedSelect.addEventListener("change", () => {
+    playbackSpeedPercent = Number(speedSelect.value);
+    if (currentBlock) {
+      syncPlaybackControls(currentBlock);
+    }
+    restartPlaybackForControlChange();
+  });
+  muteBtn.addEventListener("click", (event) => {
+    event.stopPropagation();
+    setMuteMenuOpen(muteMenu.hidden);
+  });
+  muteMenu.addEventListener("click", (event) => event.stopPropagation());
+  document.addEventListener("click", () => setMuteMenuOpen(false));
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      setMuteMenuOpen(false);
+    }
+  });
   editBtn.addEventListener("click", () => {
     if (gridEditor) {
       exitEditMode();

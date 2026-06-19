@@ -38,7 +38,11 @@ BD | o-------o-o-----
 ```
 ````
 
-In reading view, the plugin renders the block as page-width percussion staff notation and adds **Play**, **Stop**, **Loop Bar**, and **Edit** controls. Add `Cursor: on` if you want a blinking cursor to follow playback. Click a rendered note to preview that hit or stacked chord.
+In reading view, the plugin renders the block as page-width percussion staff notation and adds **Play**, **Stop**, **Loop Bar**, **Loop All**, playback-speed, instrument-mute, and **Edit** controls. For training, playback speed offers 25%, 50%, 75%, and 100% of the written tempo. The mute menu lists only instruments used in the current notation and mutes each canonical voice independently.
+
+Speed and mute choices are playback-only: they do not change the fenced notation text and reset when the rendered block is recreated. Changing either control during playback restarts from the current slot while preserving the active Play/Loop mode. Muting affects transport playback only, so clicking a rendered note or previewing an editor cell remains audible.
+
+Add `Cursor: on` if you want a blinking cursor to follow playback. Click a rendered note to preview that hit or stacked chord.
 
 ## Visual Edit Mode
 

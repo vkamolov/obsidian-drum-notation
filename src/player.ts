@@ -1,7 +1,12 @@
 import { getSecondsPerSlot, getSlotVisualDurationSeconds } from "./music";
-import { DrumPlaybackBackend, DrumPlaybackBackendFactory } from "./playback";
+import {
+  DrumPlaybackBackend,
+  DrumPlaybackBackendFactory,
+  filterMutedHits,
+  normalizePlaybackSpeedPercent
+} from "./playback";
 import { createSynthPlaybackBackend } from "./synth";
-import { DEFAULT_REPEAT_COUNT, DrumBlock, DrumSlot, PlaybackOptions } from "./types";
+import { DEFAULT_REPEAT_COUNT, DrumBlock, PlaybackOptions } from "./types";
 
 export class DrumPlayer {
   private backend: DrumPlaybackBackend | null = null;
@@ -9,10 +14,11 @@ export class DrumPlayer {
   private stopped = false;
   private secondsPerSlot = 0;
   private playbackStartTime = 0;
-  private playStartSlot = 0;
-  private playEndSlot = 0;
-  private playSlots: DrumSlot[] = [];
-  private passDurationSeconds = 0;
+  private rangeStartSlot = 0;
+  private rangeEndSlot = 0;
+  private initialSlot = 0;
+  private firstPassDurationSeconds = 0;
+  private fullPassDurationSeconds = 0;
 
   constructor(
     private readonly audioContext: AudioContext,
@@ -33,14 +39,24 @@ export class DrumPlayer {
       return;
     }
 
-    this.playStartSlot = this.options.startSlot ?? 0;
-    this.playEndSlot = Math.min(this.options.endSlot ?? this.block.slots.length, this.block.slots.length);
-    this.playSlots = this.block.slots.slice(this.playStartSlot, this.playEndSlot);
-    this.secondsPerSlot = getSecondsPerSlot(this.block);
-    this.passDurationSeconds = this.playSlots.length * this.secondsPerSlot;
+    this.rangeStartSlot = clampSlotBoundary(this.options.startSlot ?? 0, this.block.slots.length);
+    this.rangeEndSlot = Math.min(
+      Math.max(this.rangeStartSlot, this.options.endSlot ?? this.block.slots.length),
+      this.block.slots.length
+    );
+    this.initialSlot = clampInitialSlot(
+      this.options.initialSlot ?? this.rangeStartSlot,
+      this.rangeStartSlot,
+      this.rangeEndSlot
+    );
+    const speedPercent = normalizePlaybackSpeedPercent(this.options.speedPercent ?? 100);
+
+    this.secondsPerSlot = getSecondsPerSlot(this.block, speedPercent);
+    this.firstPassDurationSeconds = (this.rangeEndSlot - this.initialSlot) * this.secondsPerSlot;
+    this.fullPassDurationSeconds = (this.rangeEndSlot - this.rangeStartSlot) * this.secondsPerSlot;
     this.playbackStartTime = backend.currentTime + 0.08;
 
-    if (this.playSlots.length === 0) {
+    if (this.rangeEndSlot <= this.rangeStartSlot) {
       this.stop();
       this.onEnded();
       return;
@@ -55,19 +71,25 @@ export class DrumPlayer {
     }
 
     const repeatCount = this.options.loop ? Number.POSITIVE_INFINITY : this.options.repeatCount ?? DEFAULT_REPEAT_COUNT;
-    const passStartTime = this.playbackStartTime + passIndex * this.passDurationSeconds;
+    const passStartSlot = passIndex === 0 ? this.initialSlot : this.rangeStartSlot;
+    const passSlots = this.block.slots.slice(passStartSlot, this.rangeEndSlot);
+    const passDurationSeconds = passSlots.length * this.secondsPerSlot;
+    const passStartTime =
+      passIndex === 0
+        ? this.playbackStartTime
+        : this.playbackStartTime + this.firstPassDurationSeconds + (passIndex - 1) * this.fullPassDurationSeconds;
     const backend = this.backend;
 
     this.timers.push(
       window.setTimeout(() => {
         if (!this.stopped) {
-          this.onSlotChange(this.playStartSlot);
+          this.onSlotChange(passStartSlot);
         }
       }, Math.max(0, (passStartTime - backend.currentTime) * 1000))
     );
 
-    this.playSlots.forEach((slot) => {
-      const slotTime = passStartTime + (slot.index - this.playStartSlot) * this.secondsPerSlot;
+    passSlots.forEach((slot) => {
+      const slotTime = passStartTime + (slot.index - passStartSlot) * this.secondsPerSlot;
       if (slot.hits.length > 0) {
         this.timers.push(
           window.setTimeout(() => {
@@ -77,7 +99,16 @@ export class DrumPlayer {
           }, Math.max(0, (slotTime - backend.currentTime) * 1000))
         );
       }
-      backend.scheduleHits(slot.hits, slotTime, this.secondsPerSlot, getSlotVisualDurationSeconds(this.block, slot));
+      backend.scheduleHits(
+        filterMutedHits(slot.hits, this.options.mutedInstrumentIds),
+        slotTime,
+        this.secondsPerSlot,
+        getSlotVisualDurationSeconds(
+          this.block,
+          slot,
+          normalizePlaybackSpeedPercent(this.options.speedPercent ?? 100)
+        )
+      );
     });
 
     this.timers.push(
@@ -92,7 +123,43 @@ export class DrumPlayer {
           this.stop();
           this.onEnded();
         }
-      }, Math.max(0, (passStartTime + this.passDurationSeconds - backend.currentTime) * 1000))
+      }, Math.max(0, (passStartTime + passDurationSeconds - backend.currentTime) * 1000))
+    );
+  }
+
+  getCurrentSlotIndex(): number {
+    if (this.rangeEndSlot <= this.rangeStartSlot) {
+      return this.rangeStartSlot;
+    }
+
+    if (!this.backend || this.backend.currentTime <= this.playbackStartTime || this.secondsPerSlot <= 0) {
+      return this.initialSlot;
+    }
+
+    const elapsed = this.backend.currentTime - this.playbackStartTime;
+
+    if (elapsed < this.firstPassDurationSeconds) {
+      return Math.min(
+        this.rangeEndSlot - 1,
+        this.initialSlot + Math.floor(elapsed / this.secondsPerSlot)
+      );
+    }
+
+    const repeatCount = this.options.loop
+      ? Number.POSITIVE_INFINITY
+      : this.options.repeatCount ?? DEFAULT_REPEAT_COUNT;
+    const elapsedAfterFirstPass = elapsed - this.firstPassDurationSeconds;
+    const completedFullPasses = Math.floor(elapsedAfterFirstPass / this.fullPassDurationSeconds);
+
+    if (!this.options.loop && completedFullPasses >= repeatCount - 1) {
+      return this.rangeEndSlot - 1;
+    }
+
+    const elapsedInPass = elapsedAfterFirstPass % this.fullPassDurationSeconds;
+
+    return Math.min(
+      this.rangeEndSlot - 1,
+      this.rangeStartSlot + Math.floor(elapsedInPass / this.secondsPerSlot)
     );
   }
 
@@ -104,4 +171,16 @@ export class DrumPlayer {
     this.backend?.stop();
     this.backend = null;
   }
+}
+
+function clampSlotBoundary(slotIndex: number, slotCount: number): number {
+  return Math.min(slotCount, Math.max(0, Math.round(slotIndex)));
+}
+
+function clampInitialSlot(slotIndex: number, startSlot: number, endSlot: number): number {
+  if (endSlot <= startSlot) {
+    return startSlot;
+  }
+
+  return Math.min(endSlot - 1, Math.max(startSlot, Math.round(slotIndex)));
 }

@@ -1,7 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { getSecondsPerSlot } from "../src/music";
+import { getSecondsPerSlot, getSlotVisualDurationSeconds } from "../src/music";
 import { parseDrumBlock } from "../src/parser";
-import { DrumPlaybackBackend, DrumPlaybackBackendFactory } from "../src/playback";
+import {
+  DrumPlaybackBackend,
+  DrumPlaybackBackendFactory,
+  filterMutedHits,
+  getEffectivePlaybackTempo,
+  normalizePlaybackSpeedPercent
+} from "../src/playback";
 import { DrumPlayer } from "../src/player";
 import { DrumHit } from "../src/types";
 
@@ -79,5 +85,136 @@ BD | o---`);
 
     expect(backend.stopped).toBe(true);
     expect(clearTimeoutMock).toHaveBeenCalledTimes(scheduledTimers.length);
+  });
+
+  it("normalizes speed and schedules scaled slot and note durations", async () => {
+    const block = parseDrumBlock(`Tempo: 100
+SD | z---`);
+    const backend = new FakePlaybackBackend();
+    const player = new DrumPlayer(
+      {} as AudioContext,
+      block,
+      vi.fn(),
+      vi.fn(),
+      { speedPercent: 62 },
+      (() => backend) as DrumPlaybackBackendFactory
+    );
+
+    await player.play();
+
+    expect(normalizePlaybackSpeedPercent(24)).toBe(25);
+    expect(normalizePlaybackSpeedPercent(37)).toBe(25);
+    expect(normalizePlaybackSpeedPercent(62)).toBe(50);
+    expect(normalizePlaybackSpeedPercent(88)).toBe(100);
+    expect(normalizePlaybackSpeedPercent(100)).toBe(100);
+    expect(normalizePlaybackSpeedPercent(151)).toBe(100);
+    expect(getEffectivePlaybackTempo(100, 50)).toBe(50);
+    expect(backend.scheduled[0].slotDuration).toBeCloseTo(getSecondsPerSlot(block, 50));
+    expect(backend.scheduled[0].noteDuration).toBeCloseTo(
+      getSlotVisualDurationSeconds(block, block.slots[0], 50)
+    );
+  });
+
+  it("filters muted instruments by canonical instrument id", async () => {
+    const block = parseDrumBlock(`HH | x---
+SD | o---
+BD | o---
+BD2 | o---`);
+    const backend = new FakePlaybackBackend();
+    const player = new DrumPlayer(
+      {} as AudioContext,
+      block,
+      vi.fn(),
+      vi.fn(),
+      { mutedInstrumentIds: new Set(["kick", "closed-hat"]) },
+      (() => backend) as DrumPlaybackBackendFactory
+    );
+
+    await player.play();
+
+    expect(backend.scheduled[0].hits.map((hit) => hit.instrument.id)).toEqual(["snare", "second-kick"]);
+  });
+
+  it("keeps hat and tom voices independently mutable", () => {
+    const block = parseDrumBlock(`HH | x
+OH | x
+HT | o
+FT | o`);
+    const filtered = filterMutedHits(block.slots[0].hits, new Set(["open-hat", "floor-tom"]));
+
+    expect(filtered.map((hit) => hit.instrument.id)).toEqual(["closed-hat", "high-tom"]);
+  });
+
+  it("keeps written-slot timing when every instrument is muted", async () => {
+    const block = parseDrumBlock(`HH | x---
+BD | o---`);
+    const backend = new FakePlaybackBackend();
+    const onSlotChange = vi.fn();
+    const player = new DrumPlayer(
+      {} as AudioContext,
+      block,
+      vi.fn(),
+      onSlotChange,
+      { mutedInstrumentIds: new Set(["closed-hat", "kick"]) },
+      (() => backend) as DrumPlaybackBackendFactory
+    );
+
+    await player.play();
+
+    expect(backend.scheduled[0].hits).toEqual([]);
+    scheduledTimers[1]();
+    expect(onSlotChange).toHaveBeenCalledWith(0);
+  });
+
+  it("reports the current slot and resumes later loop passes from the range start", async () => {
+    const block = parseDrumBlock(`Tempo: 100
+HH | xxxx`);
+    const backend = new FakePlaybackBackend();
+    const player = new DrumPlayer(
+      {} as AudioContext,
+      block,
+      vi.fn(),
+      vi.fn(),
+      { startSlot: 0, endSlot: 4, initialSlot: 2, loop: true },
+      (() => backend) as DrumPlaybackBackendFactory
+    );
+
+    await player.play();
+
+    expect(player.getCurrentSlotIndex()).toBe(2);
+
+    backend.currentTime = 10.24;
+    expect(player.getCurrentSlotIndex()).toBe(3);
+
+    backend.currentTime = 10.39;
+    expect(player.getCurrentSlotIndex()).toBe(0);
+
+    const firstPassEndTimer = scheduledTimers[scheduledTimers.length - 1];
+    firstPassEndTimer();
+    expect(backend.scheduled.slice(2).map((entry) => entry.hits[0]?.instrument.id ?? null)).toEqual([
+      "closed-hat",
+      "closed-hat",
+      "closed-hat",
+      "closed-hat"
+    ]);
+  });
+
+  it("clamps non-loop current-slot reporting at the playback end", async () => {
+    const block = parseDrumBlock(`Tempo: 100
+HH | xxxx`);
+    const backend = new FakePlaybackBackend();
+    const player = new DrumPlayer(
+      {} as AudioContext,
+      block,
+      vi.fn(),
+      vi.fn(),
+      { startSlot: 0, endSlot: 4, initialSlot: 1 },
+      (() => backend) as DrumPlaybackBackendFactory
+    );
+
+    await player.play();
+    backend.currentTime = 20;
+
+    expect(player.getCurrentSlotIndex()).toBe(3);
   });
 });

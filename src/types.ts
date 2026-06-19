@@ -52,8 +52,11 @@ export interface DrumBar {
 export interface PlaybackOptions {
   startSlot?: number;
   endSlot?: number;
+  initialSlot?: number;
   loop?: boolean;
   repeatCount?: number;
+  speedPercent?: number;
+  mutedInstrumentIds?: ReadonlySet<string>;
 }
 
 export interface DrumRow {

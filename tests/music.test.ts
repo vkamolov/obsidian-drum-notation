@@ -54,6 +54,15 @@ describe("getSecondsPerSlot", () => {
     const fast = { tempo: 120, gridResolution: 32 } as DrumBlock;
     expect(getSecondsPerSlot(fast)).toBeCloseTo(0.0625, 10);
   });
+
+  it("applies playback speed without changing the block tempo", () => {
+    const block = { tempo: 100, gridResolution: 16 } as DrumBlock;
+
+    expect(getSecondsPerSlot(block, 25)).toBeCloseTo(0.6, 10);
+    expect(getSecondsPerSlot(block, 50)).toBeCloseTo(0.3, 10);
+    expect(getSecondsPerSlot(block, 100)).toBeCloseTo(0.15, 10);
+    expect(block.tempo).toBe(100);
+  });
 });
 
 describe("duration helpers", () => {

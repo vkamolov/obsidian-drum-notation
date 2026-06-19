@@ -1,4 +1,5 @@
 import { DEFAULT_GRID_RESOLUTION, DrumBlock, DrumSlot, GridResolution } from "./types";
+import { getEffectivePlaybackTempo } from "./playback";
 
 export function getBarRange(block: DrumBlock, slotIndex: number): { startSlot: number; endSlot: number } {
   const declaredBar = block.bars.find((bar) => slotIndex >= bar.startSlot && slotIndex < bar.startSlot + bar.slots.length);
@@ -49,15 +50,15 @@ export function getBeatValue(timeSignature: string): number {
   return Math.max(1, Number.parseInt(match[1], 10));
 }
 
-export function getSecondsPerSlot(block: DrumBlock): number {
-  return 60 / block.tempo / (block.gridResolution / 4);
+export function getSecondsPerSlot(block: DrumBlock, speedPercent = 100): number {
+  return 60 / getEffectivePlaybackTempo(block.tempo, speedPercent) / (block.gridResolution / 4);
 }
 
-export function getSlotVisualDurationSeconds(block: DrumBlock, targetSlot: DrumSlot): number {
+export function getSlotVisualDurationSeconds(block: DrumBlock, targetSlot: DrumSlot, speedPercent = 100): number {
   const bar = block.bars.find((candidate) => candidate.slots.some((slot) => slot.index === targetSlot.index));
 
   if (!bar) {
-    return getSecondsPerSlot(block);
+    return getSecondsPerSlot(block, speedPercent);
   }
 
   const slotsPerBeat = getSlotsPerBeat(block.timeSignature, block.gridResolution);
@@ -67,7 +68,7 @@ export function getSlotVisualDurationSeconds(block: DrumBlock, targetSlot: DrumS
   const indexInBeat = beatSlots.findIndex((slot) => slot.index === targetSlot.index);
 
   if (indexInBeat < 0 || targetSlot.hits.length === 0) {
-    return getSecondsPerSlot(block);
+    return getSecondsPerSlot(block, speedPercent);
   }
 
   if (block.gridResolution === 32) {
@@ -79,16 +80,22 @@ export function getSlotVisualDurationSeconds(block: DrumBlock, targetSlot: DrumS
     const span = nextHitIndex - indexInBeat;
     const supportedSpan = isPowerOfTwo(span) ? span : 1;
 
-    return Math.max(getSecondsPerSlot(block), supportedSpan * getSecondsPerSlot(block));
+    return Math.max(
+      getSecondsPerSlot(block, speedPercent),
+      supportedSpan * getSecondsPerSlot(block, speedPercent)
+    );
   }
 
   const hitCount = beatSlots.filter((slot) => slot.hits.length > 0).length;
 
   if (hitCount <= 0) {
-    return getSecondsPerSlot(block);
+    return getSecondsPerSlot(block, speedPercent);
   }
 
-  return Math.max(getSecondsPerSlot(block), (slotsPerBeat / hitCount) * getSecondsPerSlot(block));
+  return Math.max(
+    getSecondsPerSlot(block, speedPercent),
+    (slotsPerBeat / hitCount) * getSecondsPerSlot(block, speedPercent)
+  );
 }
 
 export function durationForGridSpan(gridResolution: GridResolution, span: number): string {
