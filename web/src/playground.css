@@ -251,6 +251,12 @@ body {
   border-color: var(--pg-accent);
 }
 
+.pg-btn.is-active {
+  border-color: var(--pg-accent);
+  color: var(--pg-accent);
+  background: color-mix(in srgb, var(--pg-accent) 8%, transparent);
+}
+
 .pg-btn--icon {
   width: 2.2rem;
   padding: 0;
@@ -279,11 +285,13 @@ body {
   opacity: 0.45;
 }
 
-.pg-mute-control {
+.pg-mute-control,
+.pg-metronome-control {
   position: relative;
 }
 
-.pg-mute-menu {
+.pg-mute-menu,
+.pg-metronome-menu {
   position: absolute;
   z-index: 20;
   top: calc(100% + 0.35rem);
@@ -297,11 +305,13 @@ body {
   box-shadow: 0 8px 24px rgb(0 0 0 / 16%);
 }
 
-.pg-mute-menu[hidden] {
+.pg-mute-menu[hidden],
+.pg-metronome-menu[hidden] {
   display: none;
 }
 
-.pg-mute-menu__item {
+.pg-mute-menu__item,
+.pg-metronome-menu__item {
   display: grid;
   grid-template-columns: 1.2rem minmax(0, 1fr);
   align-items: center;
@@ -318,16 +328,19 @@ body {
   cursor: pointer;
 }
 
-.pg-mute-menu__item:hover {
+.pg-mute-menu__item:hover,
+.pg-metronome-menu__item:hover {
   background: color-mix(in srgb, var(--pg-accent) 10%, transparent);
 }
 
-.pg-mute-menu__item:disabled {
+.pg-mute-menu__item:disabled,
+.pg-metronome-menu__item:disabled {
   opacity: 0.45;
   cursor: default;
 }
 
-.pg-mute-menu__check {
+.pg-mute-menu__check,
+.pg-metronome-menu__check {
   color: var(--pg-accent);
   font-weight: 700;
   text-align: center;
@@ -643,6 +656,7 @@ body {
   }
 
   .pg-playback-speed,
+  .pg-metronome-control > .pg-btn,
   .pg-mute-control > .pg-btn {
     width: 100%;
   }

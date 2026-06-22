@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { getSecondsPerSlot, getSlotVisualDurationSeconds } from "../src/music";
+import { getSecondsPerSlot, getSlotVisualDurationSeconds, getSlotsPerBar } from "../src/music";
 import { parseDrumBlock } from "../src/parser";
 import {
   DrumPlaybackBackend,
   DrumPlaybackBackendFactory,
   filterMutedHits,
   getEffectivePlaybackTempo,
+  getMetronomePulses,
   normalizePlaybackSpeedPercent
 } from "../src/playback";
 import { DrumPlayer } from "../src/player";
@@ -38,15 +39,18 @@ class FakePlaybackBackend implements DrumPlaybackBackend {
 describe("DrumPlayer", () => {
   let clearTimeoutMock: ReturnType<typeof vi.fn>;
   let scheduledTimers: Array<() => void>;
+  let scheduledTimerDelays: number[];
 
   beforeEach(() => {
     scheduledTimers = [];
+    scheduledTimerDelays = [];
     clearTimeoutMock = vi.fn();
 
     vi.stubGlobal("window", {
-      setTimeout: vi.fn((callback: TimerHandler) => {
+      setTimeout: vi.fn((callback: TimerHandler, delay?: number) => {
         if (typeof callback === "function") {
           scheduledTimers.push(callback);
+          scheduledTimerDelays.push(delay ?? 0);
         }
 
         return scheduledTimers.length;
@@ -115,6 +119,126 @@ SD | z---`);
     );
   });
 
+  it.each([
+    ["4/4", 16, [0, 4, 8, 12]],
+    ["4/4", 32, [0, 8, 16, 24]],
+    ["3/4", 16, [0, 4, 8]],
+    ["3/4", 32, [0, 8, 16]],
+    ["7/8", 16, [0, 2, 4, 6, 8, 10, 12]],
+    ["7/8", 32, [0, 4, 8, 12, 16, 20, 24]],
+    ["6/8", 16, [0, 6]],
+    ["6/8", 32, [0, 12]],
+    ["9/8", 16, [0, 6, 12]],
+    ["9/8", 32, [0, 12, 24]],
+    ["12/8", 16, [0, 6, 12, 18]],
+    ["12/8", 32, [0, 12, 24, 36]]
+  ] as const)("places metronome pulses for %s at grid %i", (timeSignature, grid, expected) => {
+    const slotsPerBar = getSlotsPerBar(timeSignature, grid);
+    const block = parseDrumBlock(`Time: ${timeSignature}
+Grid: ${grid}
+HH | ${"-".repeat(slotsPerBar)}`);
+
+    expect(getMetronomePulses(block).map((pulse) => pulse.slotIndex)).toEqual(expected);
+  });
+
+  it("plays metronome pulses with drums and accents each bar downbeat", async () => {
+    const block = parseDrumBlock(`HH | x---------------
+BD | o---------------`);
+    const backend = new FakePlaybackBackend();
+    const player = new DrumPlayer(
+      {} as AudioContext,
+      block,
+      vi.fn(),
+      vi.fn(),
+      { metronomeMode: "with-drums" },
+      (() => backend) as DrumPlaybackBackendFactory
+    );
+
+    await player.play();
+
+    expect(backend.scheduled[0].hits.map((hit) => hit.instrument.id)).toEqual([
+      "closed-hat",
+      "kick",
+      "metronome"
+    ]);
+    expect(backend.scheduled[4].hits.map((hit) => hit.instrument.id)).toEqual(["metronome"]);
+    expect(backend.scheduled[8].hits.map((hit) => hit.instrument.id)).toEqual(["metronome"]);
+    expect(backend.scheduled[12].hits.map((hit) => hit.instrument.id)).toEqual(["metronome"]);
+    expect(
+      backend.scheduled[0].hits[backend.scheduled[0].hits.length - 1].velocity
+    ).toBeGreaterThan(
+      backend.scheduled[4].hits[0].velocity
+    );
+  });
+
+  it("plays only the metronome without letting instrument mutes suppress it", async () => {
+    const block = parseDrumBlock("HH | xxxxxxxxxxxxxxxx");
+    const backend = new FakePlaybackBackend();
+    const onSlotChange = vi.fn();
+    const player = new DrumPlayer(
+      {} as AudioContext,
+      block,
+      vi.fn(),
+      onSlotChange,
+      {
+        metronomeMode: "metronome-only",
+        mutedInstrumentIds: new Set(["closed-hat", "metronome"])
+      },
+      (() => backend) as DrumPlaybackBackendFactory
+    );
+
+    await player.play();
+
+    expect(backend.scheduled[0].hits.map((hit) => hit.instrument.id)).toEqual(["metronome"]);
+    expect(backend.scheduled[1].hits).toEqual([]);
+    [...scheduledTimers].forEach((timer) => timer());
+    expect(onSlotChange).toHaveBeenCalledWith(1);
+  });
+
+  it("keeps the metronome audible through all-rest bars", async () => {
+    const block = parseDrumBlock("HH | ----------------");
+    const backend = new FakePlaybackBackend();
+    const player = new DrumPlayer(
+      {} as AudioContext,
+      block,
+      vi.fn(),
+      vi.fn(),
+      { metronomeMode: "with-drums" },
+      (() => backend) as DrumPlaybackBackendFactory
+    );
+
+    await player.play();
+
+    expect(
+      backend.scheduled
+        .map((entry, slotIndex) =>
+          entry.hits.some((hit) => hit.instrument.id === "metronome") ? slotIndex : -1
+        )
+        .filter((slotIndex) => slotIndex >= 0)
+    ).toEqual([0, 4, 8, 12]);
+  });
+
+  it("waits for the next aligned metronome pulse after a mid-beat resume", async () => {
+    const block = parseDrumBlock("HH | xxxxxxxxxxxxxxxx");
+    const backend = new FakePlaybackBackend();
+    const player = new DrumPlayer(
+      {} as AudioContext,
+      block,
+      vi.fn(),
+      vi.fn(),
+      { initialSlot: 2, metronomeMode: "with-drums", speedPercent: 50 },
+      (() => backend) as DrumPlaybackBackendFactory
+    );
+
+    await player.play();
+
+    expect(backend.scheduled[0].hits.some((hit) => hit.instrument.id === "metronome")).toBe(false);
+    expect(backend.scheduled[2].hits.some((hit) => hit.instrument.id === "metronome")).toBe(true);
+    expect(backend.scheduled[2].time).toBeCloseTo(
+      10.08 + 2 * getSecondsPerSlot(block, 50)
+    );
+  });
+
   it("filters muted instruments by canonical instrument id", async () => {
     const block = parseDrumBlock(`HH | x---
 SD | o---
@@ -166,6 +290,137 @@ BD | o---`);
     expect(onSlotChange).toHaveBeenCalledWith(0);
   });
 
+  it("reports bar changes at playback start and silent bar boundaries", async () => {
+    const block = parseDrumBlock(`Tempo: 100
+HH | ---- | ---- | ----`);
+    const backend = new FakePlaybackBackend();
+    const onBarChange = vi.fn();
+    const player = new DrumPlayer(
+      {} as AudioContext,
+      block,
+      vi.fn(),
+      vi.fn(),
+      { onBarChange },
+      (() => backend) as DrumPlaybackBackendFactory
+    );
+
+    await player.play();
+
+    scheduledTimers.forEach((timer) => timer());
+
+    expect(onBarChange.mock.calls.map(([barIndex]) => barIndex)).toEqual([0, 1, 2]);
+    expect(scheduledTimerDelays.some((delay) => Math.abs(delay - 80) < 0.01)).toBe(true);
+    expect(scheduledTimerDelays.some((delay) => Math.abs(delay - 680) < 0.01)).toBe(true);
+    expect(scheduledTimerDelays.some((delay) => Math.abs(delay - 1280) < 0.01)).toBe(true);
+  });
+
+  it("reports the active bar for a mid-bar resume", async () => {
+    const block = parseDrumBlock(`Tempo: 100
+HH | xxxx | xxxx | xxxx`);
+    const backend = new FakePlaybackBackend();
+    const onBarChange = vi.fn();
+    const player = new DrumPlayer(
+      {} as AudioContext,
+      block,
+      vi.fn(),
+      vi.fn(),
+      { initialSlot: 6, onBarChange },
+      (() => backend) as DrumPlaybackBackendFactory
+    );
+
+    await player.play();
+
+    scheduledTimers.forEach((timer) => timer());
+
+    expect(onBarChange.mock.calls.map(([barIndex]) => barIndex)).toEqual([1, 2]);
+  });
+
+  it("restarts bar progress from the range start on later loop passes", async () => {
+    const block = parseDrumBlock(`Tempo: 100
+HH | xxxx | xxxx`);
+    const backend = new FakePlaybackBackend();
+    const onBarChange = vi.fn();
+    const player = new DrumPlayer(
+      {} as AudioContext,
+      block,
+      vi.fn(),
+      vi.fn(),
+      { initialSlot: 5, loop: true, onBarChange },
+      (() => backend) as DrumPlaybackBackendFactory
+    );
+
+    await player.play();
+
+    const firstPassTimers = [...scheduledTimers];
+    const firstPassEndTimer = firstPassTimers[firstPassTimers.length - 1];
+    firstPassTimers.slice(0, -1).forEach((timer) => timer());
+    firstPassEndTimer();
+    const secondPassTimers = scheduledTimers.slice(firstPassTimers.length);
+    secondPassTimers.slice(0, -1).forEach((timer) => timer());
+
+    expect(onBarChange.mock.calls.map(([barIndex]) => barIndex)).toEqual([1, 0, 1]);
+  });
+
+  it("restarts bar progress for each finite block repeat", async () => {
+    const block = parseDrumBlock(`Tempo: 100
+HH | xxxx | xxxx`);
+    const backend = new FakePlaybackBackend();
+    const onBarChange = vi.fn();
+    const player = new DrumPlayer(
+      {} as AudioContext,
+      block,
+      vi.fn(),
+      vi.fn(),
+      {
+        initialSlot: 5,
+        repeatCount: 2,
+        metronomeMode: "metronome-only",
+        onBarChange
+      },
+      (() => backend) as DrumPlaybackBackendFactory
+    );
+
+    await player.play();
+
+    const firstPassTimers = [...scheduledTimers];
+    const firstPassEndTimer = firstPassTimers[firstPassTimers.length - 1];
+    firstPassTimers.slice(0, -1).forEach((timer) => timer());
+    firstPassEndTimer();
+    const secondPassTimers = scheduledTimers.slice(firstPassTimers.length);
+    secondPassTimers.slice(0, -1).forEach((timer) => timer());
+
+    expect(onBarChange.mock.calls.map(([barIndex]) => barIndex)).toEqual([1, 0, 1]);
+    expect(backend.scheduled[3].hits.map((hit) => hit.instrument.id)).toEqual(["metronome"]);
+  });
+
+  it("starts a looped bar on its aligned downbeat after a mid-bar resume", async () => {
+    const block = parseDrumBlock("HH | ---- | ----");
+    const backend = new FakePlaybackBackend();
+    const player = new DrumPlayer(
+      {} as AudioContext,
+      block,
+      vi.fn(),
+      vi.fn(),
+      {
+        startSlot: 4,
+        endSlot: 8,
+        initialSlot: 5,
+        loop: true,
+        metronomeMode: "metronome-only"
+      },
+      (() => backend) as DrumPlaybackBackendFactory
+    );
+
+    await player.play();
+
+    expect(backend.scheduled.every((entry) => entry.hits.length === 0)).toBe(true);
+    const firstPassEndTimer = scheduledTimers[scheduledTimers.length - 1];
+    firstPassEndTimer();
+
+    expect(backend.scheduled[3].hits.map((hit) => hit.instrument.id)).toEqual(["metronome"]);
+    expect(backend.scheduled[3].hits[0].velocity).toBe(1);
+  });
+
   it("reports the current slot and resumes later loop passes from the range start", async () => {
     const block = parseDrumBlock(`Tempo: 100
 HH | xxxx`);
@@ -175,7 +430,13 @@ HH | xxxx`);
       block,
       vi.fn(),
       vi.fn(),
-      { startSlot: 0, endSlot: 4, initialSlot: 2, loop: true },
+      {
+        startSlot: 0,
+        endSlot: 4,
+        initialSlot: 2,
+        loop: true,
+        metronomeMode: "with-drums"
+      },
       (() => backend) as DrumPlaybackBackendFactory
     );
 
@@ -191,6 +452,10 @@ HH | xxxx`);
 
     const firstPassEndTimer = scheduledTimers[scheduledTimers.length - 1];
     firstPassEndTimer();
+    expect(backend.scheduled[2].hits.map((hit) => hit.instrument.id)).toEqual([
+      "closed-hat",
+      "metronome"
+    ]);
     expect(backend.scheduled.slice(2).map((entry) => entry.hits[0]?.instrument.id ?? null)).toEqual([
       "closed-hat",
       "closed-hat",

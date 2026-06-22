@@ -38,9 +38,9 @@ BD | o-------o-o-----
 ```
 ````
 
-In reading view, the plugin renders the block as page-width percussion staff notation and adds **Play**, **Stop**, **Loop Bar**, **Loop All**, playback-speed, instrument-mute, and **Edit** controls. For training, playback speed offers 25%, 50%, 75%, and 100% of the written tempo. The mute menu lists only instruments used in the current notation and mutes each canonical voice independently.
+In reading view, the plugin renders the block as page-width percussion staff notation and adds **Play**, **Stop**, **Loop Bar**, **Loop All**, playback-speed, metronome, instrument-mute, and **Edit** controls. For training, playback speed offers 25%, 50%, 75%, and 100% of the written tempo. The metronome menu offers **Off**, **With drums**, and **Metronome only**; the first pulse of each bar is accented. Compound meters use grouped pulses, such as two clicks per bar in 6/8 and four in 12/8. The mute menu lists only instruments used in the current notation and mutes each canonical voice independently.
 
-Speed and mute choices are playback-only: they do not change the fenced notation text and reset when the rendered block is recreated. Changing either control during playback restarts from the current slot while preserving the active Play/Loop mode. Muting affects transport playback only, so clicking a rendered note or previewing an editor cell remains audible.
+Speed, metronome, and mute choices are playback-only: they do not change the fenced notation text. Obsidian resets them when the rendered block is recreated; the playground keeps them for the current page session. Changing any of these controls during playback restarts from the current slot while preserving the active Play/Loop mode. Instrument mutes do not silence the metronome. Muting affects transport playback only, so clicking a rendered note or previewing an editor cell remains audible.
 
 Add `Cursor: on` if you want a blinking cursor to follow playback. Click a rendered note to preview that hit or stacked chord.
 
@@ -414,6 +414,10 @@ BD | o-------o-o-----
 %x3
 ```
 ````
+
+During **Play** and **Loop All**, the compact `x3` marker shows repeat progress
+as `1/3`, `2/3`, and `3/3`, then returns to `x3` outside playback. **Loop Bar**
+keeps the static count because it loops only one expanded bar.
 
 Use **Loop Bar** in the rendered view to loop the bar containing the current cursor position. Click a note in another bar first, then press **Loop Bar** to loop that bar.
 

@@ -154,6 +154,11 @@
   box-shadow: inset 0 0 0 1px var(--interactive-accent) !important;
 }
 
+.drum-notation__button.is-active {
+  color: var(--interactive-accent) !important;
+  background: var(--background-modifier-hover) !important;
+}
+
 .drum-notation__button:disabled {
   opacity: 0.55;
 }
@@ -366,6 +371,15 @@
 .drum-notation__cursor.is-active {
   opacity: 1;
   animation: drum-notation-cursor-blink 0.7s steps(2, start) infinite;
+}
+
+.drum-notation__measure-repeat-count {
+  font-variant-numeric: tabular-nums;
+  transition: fill 120ms ease;
+}
+
+.drum-notation__measure-repeat-count.is-active {
+  fill: var(--drum-accent) !important;
 }
 
 .drum-notation__hit-target {

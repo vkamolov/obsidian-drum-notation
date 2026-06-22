@@ -2,7 +2,9 @@ import { getSecondsPerSlot, getSlotVisualDurationSeconds } from "./music";
 import {
   DrumPlaybackBackend,
   DrumPlaybackBackendFactory,
+  createMetronomeHit,
   filterMutedHits,
+  getMetronomePulses,
   normalizePlaybackSpeedPercent
 } from "./playback";
 import { createSynthPlaybackBackend } from "./synth";
@@ -79,6 +81,13 @@ export class DrumPlayer {
         ? this.playbackStartTime
         : this.playbackStartTime + this.firstPassDurationSeconds + (passIndex - 1) * this.fullPassDurationSeconds;
     const backend = this.backend;
+    const metronomeMode = this.options.metronomeMode ?? "off";
+    const metronomePulses = new Map(
+      getMetronomePulses(this.block, passStartSlot, this.rangeEndSlot).map((pulse) => [
+        pulse.slotIndex,
+        pulse
+      ])
+    );
 
     this.timers.push(
       window.setTimeout(() => {
@@ -87,9 +96,20 @@ export class DrumPlayer {
         }
       }, Math.max(0, (passStartTime - backend.currentTime) * 1000))
     );
+    this.scheduleBarChanges(passStartSlot, passStartTime, backend);
 
     passSlots.forEach((slot) => {
       const slotTime = passStartTime + (slot.index - passStartSlot) * this.secondsPerSlot;
+      const writtenHits =
+        metronomeMode === "metronome-only"
+          ? []
+          : filterMutedHits(slot.hits, this.options.mutedInstrumentIds);
+      const metronomePulse = metronomePulses.get(slot.index);
+      const playbackHits =
+        metronomeMode !== "off" && metronomePulse
+          ? [...writtenHits, createMetronomeHit(metronomePulse.isDownbeat)]
+          : writtenHits;
+
       if (slot.hits.length > 0) {
         this.timers.push(
           window.setTimeout(() => {
@@ -100,7 +120,7 @@ export class DrumPlayer {
         );
       }
       backend.scheduleHits(
-        filterMutedHits(slot.hits, this.options.mutedInstrumentIds),
+        playbackHits,
         slotTime,
         this.secondsPerSlot,
         getSlotVisualDurationSeconds(
@@ -125,6 +145,55 @@ export class DrumPlayer {
         }
       }, Math.max(0, (passStartTime + passDurationSeconds - backend.currentTime) * 1000))
     );
+  }
+
+  private scheduleBarChanges(
+    passStartSlot: number,
+    passStartTime: number,
+    backend: DrumPlaybackBackend
+  ): void {
+    const onBarChange = this.options.onBarChange;
+
+    if (!onBarChange) {
+      return;
+    }
+
+    const activeBarIndex = barIndexForSlot(this.block, passStartSlot);
+    const activeBar = this.block.bars[activeBarIndex];
+
+    if (!activeBar) {
+      return;
+    }
+
+    this.timers.push(
+      window.setTimeout(() => {
+        if (!this.stopped) {
+          onBarChange(activeBarIndex);
+        }
+      }, Math.max(0, (passStartTime - backend.currentTime) * 1000))
+    );
+
+    for (let barIndex = activeBarIndex + 1; barIndex < this.block.bars.length; barIndex++) {
+      const barStartSlot = this.block.bars[barIndex].startSlot;
+
+      if (barStartSlot >= this.rangeEndSlot) {
+        break;
+      }
+
+      if (barStartSlot <= passStartSlot || barStartSlot < this.rangeStartSlot) {
+        continue;
+      }
+
+      const barStartTime = passStartTime + (barStartSlot - passStartSlot) * this.secondsPerSlot;
+
+      this.timers.push(
+        window.setTimeout(() => {
+          if (!this.stopped) {
+            onBarChange(barIndex);
+          }
+        }, Math.max(0, (barStartTime - backend.currentTime) * 1000))
+      );
+    }
   }
 
   getCurrentSlotIndex(): number {
@@ -183,4 +252,12 @@ function clampInitialSlot(slotIndex: number, startSlot: number, endSlot: number)
   }
 
   return Math.min(endSlot - 1, Math.max(startSlot, Math.round(slotIndex)));
+}
+
+function barIndexForSlot(block: DrumBlock, slotIndex: number): number {
+  const index = block.bars.findIndex(
+    (bar) => slotIndex >= bar.startSlot && slotIndex < bar.startSlot + bar.slots.length
+  );
+
+  return index >= 0 ? index : 0;
 }

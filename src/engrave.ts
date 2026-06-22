@@ -11,6 +11,7 @@ import {
   largestPowerOfTwoAtMost,
   shouldBeamSubdivision
 } from "./music";
+import { MeasureRepeatProgress } from "./repeat-progress";
 import { CursorPosition, DrumBar, DrumBlock, DrumHit, DrumInstrument, DrumSlot, GridResolution, MeasureRepeat, ScoreRenderResult, StickingHand } from "./types";
 
 interface NotationLayout {
@@ -219,7 +220,14 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
       voice.draw(context, stave);
       markDragGraceBeams(system);
       if (bar.measureRepeat && entry.repeatCount > 1) {
-        drawMeasureRepeatCount(system, stave, visualBar.notes[0], entry.repeatCount, layout);
+        drawMeasureRepeatCount(
+          system,
+          stave,
+          visualBar.notes[0],
+          entry.repeatCount,
+          barIndexes,
+          layout
+        );
       }
       visualBar.beams.forEach((beam) => {
         beam.renderOptions.beamWidth = layout.beamWidth;
@@ -365,6 +373,35 @@ export function renderInstrumentLegend(block: DrumBlock, root: HTMLElement): voi
     });
     code.setAttr("aria-label", `Notation row label ${code.textContent ?? ""}`);
   });
+}
+
+export function updateMeasureRepeatProgress(
+  container: HTMLElement,
+  progress: MeasureRepeatProgress | null
+): void {
+  container
+    .querySelectorAll<SVGTextElement>(".drum-notation__measure-repeat-count")
+    .forEach((label) => {
+      const groupStartBarIndex = Number.parseInt(label.dataset.repeatStartBarIndex ?? "", 10);
+      const totalRepeats = Number.parseInt(label.dataset.repeatTotal ?? "", 10);
+
+      if (!Number.isFinite(groupStartBarIndex) || !Number.isFinite(totalRepeats)) {
+        return;
+      }
+
+      const isActive = progress?.groupStartBarIndex === groupStartBarIndex;
+
+      label.textContent = isActive
+        ? `${progress.currentRepeat}/${progress.totalRepeats}`
+        : `x${totalRepeats}`;
+      label.classList.toggle("is-active", isActive);
+      label.setAttribute(
+        "aria-label",
+        isActive
+          ? `Repeat ${progress.currentRepeat} of ${progress.totalRepeats}`
+          : `Repeat previous bar ${totalRepeats} times`
+      );
+    });
 }
 
 function getLegendInstruments(block: DrumBlock): DrumInstrument[] {
@@ -1148,6 +1185,7 @@ function drawMeasureRepeatCount(
   stave: Stave,
   note: Tickable | undefined,
   count: number,
+  barIndexes: number[],
   layout: NotationLayout
 ): void {
   const svg = system.querySelector<SVGSVGElement>("svg");
@@ -1167,6 +1205,10 @@ function drawMeasureRepeatCount(
   label.setAttribute("text-anchor", "middle");
   label.setAttribute("font-size", String(layout.measureRepeatCountFontSize));
   label.setAttribute("font-weight", layout.measureRepeatCountFontWeight);
+  label.dataset.repeatStartBarIndex = String(barIndexes[0]);
+  label.dataset.repeatBarIndexes = barIndexes.join(" ");
+  label.dataset.repeatTotal = String(count);
+  label.setAttribute("aria-label", `Repeat previous bar ${count} times`);
   svg.appendChild(label);
 }
 

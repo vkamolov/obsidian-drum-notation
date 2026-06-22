@@ -14,7 +14,13 @@ import {
   Setting,
   TFile
 } from "obsidian";
-import { colorRenderedNoteheads, makeRenderedNotesInteractive, renderInstrumentLegend, renderVexflowScore } from "./src/engrave";
+import {
+  colorRenderedNoteheads,
+  makeRenderedNotesInteractive,
+  renderInstrumentLegend,
+  renderVexflowScore,
+  updateMeasureRepeatProgress
+} from "./src/engrave";
 import { GridEditorHandle, GridEditorSessionState, mountGridEditor } from "./src/editor-grid";
 import {
   getRenderedDrumsBlockEditStatus,
@@ -24,15 +30,19 @@ import {
 import { getBarRange, getSecondsPerSlot, getSlotVisualDurationSeconds } from "./src/music";
 import { getTitle, parseDrumBlock } from "./src/parser";
 import {
+  DEFAULT_METRONOME_MODE,
   DEFAULT_PLAYBACK_SPEED_PERCENT,
   DrumPlaybackBackend,
   getEffectivePlaybackTempo,
+  getMetronomeModeLabel,
   getPlaybackInstruments,
   MAX_PLAYBACK_SPEED_PERCENT,
+  METRONOME_MODE_OPTIONS,
   MIN_PLAYBACK_SPEED_PERCENT,
   PLAYBACK_SPEED_STEP_PERCENT
 } from "./src/playback";
 import { DrumPlayer } from "./src/player";
+import { getMeasureRepeatProgress } from "./src/repeat-progress";
 import { serializeDrumBlock } from "./src/serializer";
 import {
   DEFAULT_DRUM_SETUP_VALUES,
@@ -45,7 +55,13 @@ import {
   serializeInitialDrumBlock
 } from "./src/setup";
 import { createSynthPlaybackBackend } from "./src/synth";
-import { CursorPosition, DrumBlock, DrumSlot, ScoreBarRegion } from "./src/types";
+import {
+  CursorPosition,
+  DrumBlock,
+  DrumSlot,
+  MetronomeMode,
+  ScoreBarRegion
+} from "./src/types";
 
 const WRITEBACK_DEBOUNCE_MS = 450;
 const PLAYBACK_RESTART_DEBOUNCE_MS = 220;
@@ -188,6 +204,8 @@ export default class DrumNotationPlugin extends Plugin {
     ) {
       speedSelect.createEl("option", { text: `${speed}%`, value: String(speed) });
     }
+    const metronomeButton = makeIconButton("timer", "Metronome: Off");
+    metronomeButton.setAttribute("aria-haspopup", "menu");
     const muteButton = makeIconButton("volume-2", "Mute instruments");
     controls.createEl("span", { cls: "drum-notation__control-divider" });
     const editButton = makeIconButton("pencil", "Edit notation");
@@ -213,6 +231,7 @@ export default class DrumNotationPlugin extends Plugin {
     let isLoopingBar = false;
     let isLoopingAll = false;
     let playbackSpeedPercent = DEFAULT_PLAYBACK_SPEED_PERCENT;
+    let metronomeMode: MetronomeMode = DEFAULT_METRONOME_MODE;
     const mutedInstrumentIds = new Set<string>();
     let resizeTimer: number | null = null;
     let writebackTimer: number | null = null;
@@ -261,6 +280,11 @@ export default class DrumNotationPlugin extends Plugin {
       const speedDescription = `Playback speed ${playbackSpeedPercent}% · ${formatTempo(effectiveTempo)} BPM`;
       speedSelect.title = speedDescription;
       speedSelect.setAttribute("aria-label", speedDescription);
+      metronomeButton.disabled = block.slots.length === 0;
+      metronomeButton.classList.toggle("is-active", metronomeMode !== "off");
+      const metronomeDescription = `Metronome: ${getMetronomeModeLabel(metronomeMode)}`;
+      metronomeButton.title = metronomeDescription;
+      metronomeButton.setAttribute("aria-label", metronomeDescription);
       muteButton.disabled = !hasRows;
       setIcon(muteButton, mutedInstrumentIds.size > 0 ? "volume-x" : "volume-2");
       const muteDescription =
@@ -513,6 +537,14 @@ export default class DrumNotationPlugin extends Plugin {
       visuals.moveCursor(slotIndex);
     };
 
+    const clearRepeatProgress = () => {
+      updateMeasureRepeatProgress(notation, null);
+    };
+
+    const handleBarChange = (barIndex: number) => {
+      updateMeasureRepeatProgress(notation, getMeasureRepeatProgress(block, barIndex));
+    };
+
     const clearTransportHighlights = () => {
       playButton.removeClass("is-playing");
       loopButton.removeClass("is-playing");
@@ -524,6 +556,7 @@ export default class DrumNotationPlugin extends Plugin {
       clearTransportHighlights();
       isLoopingBar = false;
       isLoopingAll = false;
+      clearRepeatProgress();
     };
 
     const startPlayback = (initialSlot = 0) => {
@@ -543,6 +576,7 @@ export default class DrumNotationPlugin extends Plugin {
 
           clearTransportHighlights();
           visuals.clearCursor();
+          clearRepeatProgress();
           this.activePlayer = null;
           this.activePlaybackReset = null;
           this.activePlaybackOwner = null;
@@ -554,7 +588,9 @@ export default class DrumNotationPlugin extends Plugin {
           initialSlot: currentSlotIndex,
           repeatCount: block.repeatCount,
           speedPercent: playbackSpeedPercent,
-          mutedInstrumentIds
+          mutedInstrumentIds,
+          metronomeMode,
+          onBarChange: handleBarChange
         },
         playbackBackendFactory
       );
@@ -563,9 +599,11 @@ export default class DrumNotationPlugin extends Plugin {
         isLoopingBar = false;
         isLoopingAll = false;
         visuals.clearCursor();
+        clearRepeatProgress();
       };
       clearTransportHighlights();
       playButton.addClass("is-playing");
+      handleBarChange(barIndexForSlot(block, currentSlotIndex));
       void this.activePlayer.play();
     };
 
@@ -579,6 +617,7 @@ export default class DrumNotationPlugin extends Plugin {
 
       isLoopingBar = true;
       isLoopingAll = false;
+      clearRepeatProgress();
       clearTransportHighlights();
       loopButton.addClass("is-playing");
       this.activePlaybackOwner = renderOwner;
@@ -592,6 +631,7 @@ export default class DrumNotationPlugin extends Plugin {
 
           clearTransportHighlights();
           visuals.clearCursor();
+          clearRepeatProgress();
           isLoopingBar = false;
           isLoopingAll = false;
           this.activePlayer = null;
@@ -605,13 +645,15 @@ export default class DrumNotationPlugin extends Plugin {
           initialSlot: currentSlotIndex,
           loop: true,
           speedPercent: playbackSpeedPercent,
-          mutedInstrumentIds
+          mutedInstrumentIds,
+          metronomeMode
         },
         playbackBackendFactory
       );
       this.activePlaybackReset = () => {
         clearTransportHighlights();
         visuals.clearCursor();
+        clearRepeatProgress();
         isLoopingBar = false;
         isLoopingAll = false;
       };
@@ -637,6 +679,7 @@ export default class DrumNotationPlugin extends Plugin {
 
           clearTransportHighlights();
           visuals.clearCursor();
+          clearRepeatProgress();
           isLoopingBar = false;
           isLoopingAll = false;
           this.activePlayer = null;
@@ -650,16 +693,20 @@ export default class DrumNotationPlugin extends Plugin {
           initialSlot: currentSlotIndex,
           loop: true,
           speedPercent: playbackSpeedPercent,
-          mutedInstrumentIds
+          mutedInstrumentIds,
+          metronomeMode,
+          onBarChange: handleBarChange
         },
         playbackBackendFactory
       );
       this.activePlaybackReset = () => {
         clearTransportHighlights();
         visuals.clearCursor();
+        clearRepeatProgress();
         isLoopingBar = false;
         isLoopingAll = false;
       };
+      handleBarChange(barIndexForSlot(block, currentSlotIndex));
       void this.activePlayer.play();
     };
 
@@ -716,6 +763,25 @@ export default class DrumNotationPlugin extends Plugin {
             restartActivePlaybackForControls();
           });
       });
+      menu.showAtMouseEvent(event);
+    };
+
+    const openMetronomeMenu = (event: MouseEvent) => {
+      const menu = new Menu();
+
+      METRONOME_MODE_OPTIONS.forEach((option) => {
+        menu.addItem((item) => {
+          item
+            .setTitle(option.label)
+            .setChecked(metronomeMode === option.value)
+            .onClick(() => {
+              metronomeMode = option.value;
+              updateHeader();
+              restartActivePlaybackForControls();
+            });
+        });
+      });
+
       menu.showAtMouseEvent(event);
     };
 
@@ -1013,6 +1079,7 @@ export default class DrumNotationPlugin extends Plugin {
       restartActivePlaybackForControls();
     });
 
+    metronomeButton.addEventListener("click", openMetronomeMenu);
     muteButton.addEventListener("click", openMuteMenu);
 
     editButton.addEventListener("click", () => {

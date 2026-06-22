@@ -57,6 +57,8 @@ export interface PlaybackOptions {
   repeatCount?: number;
   speedPercent?: number;
   mutedInstrumentIds?: ReadonlySet<string>;
+  metronomeMode?: MetronomeMode;
+  onBarChange?: (barIndex: number) => void;
 }
 
 export interface DrumRow {
@@ -132,6 +134,7 @@ export type DrumArticulation = "normal" | "accent" | "ghost" | "flam" | "drag" |
 export type StickingHand = "right" | "left" | "both";
 export type GridResolution = 16 | 32;
 export type LegendMode = "off" | "used" | "all";
+export type MetronomeMode = "off" | "with-drums" | "metronome-only";
 export type MeasureRepeat = 1;
 
 export const DEFAULT_TEMPO = 100;

@@ -8,25 +8,38 @@ import {
   colorRenderedNoteheads,
   makeRenderedNotesInteractive,
   renderInstrumentLegend,
-  renderVexflowScore
+  renderVexflowScore,
+  updateMeasureRepeatProgress
 } from "../../src/engrave";
 import { INSTRUMENTS_BY_ALIAS } from "../../src/kit";
 import { getBarRange, getSecondsPerSlot, getSlotVisualDurationSeconds } from "../../src/music";
 import { getTitle, parseDrumBlock } from "../../src/parser";
 import {
+  DEFAULT_METRONOME_MODE,
   DEFAULT_PLAYBACK_SPEED_PERCENT,
   DrumPlaybackBackend,
   getEffectivePlaybackTempo,
+  getMetronomeModeLabel,
   getPlaybackInstruments,
   MAX_PLAYBACK_SPEED_PERCENT,
+  METRONOME_MODE_OPTIONS,
   MIN_PLAYBACK_SPEED_PERCENT,
   PLAYBACK_SPEED_STEP_PERCENT
 } from "../../src/playback";
 import { DrumPlayer } from "../../src/player";
+import { getMeasureRepeatProgress } from "../../src/repeat-progress";
 import { serializeDrumBlock } from "../../src/serializer";
 import { setGrid, setRepeatCount, setTempo, setTimeSignature } from "../../src/edit";
 import { createSynthPlaybackBackend } from "../../src/synth";
-import { CursorPosition, DrumBlock, DrumSlot, GridResolution, LegendMode, ScoreBarRegion } from "../../src/types";
+import {
+  CursorPosition,
+  DrumBlock,
+  DrumSlot,
+  GridResolution,
+  LegendMode,
+  MetronomeMode,
+  ScoreBarRegion
+} from "../../src/types";
 import { normalizeLabel } from "../../src/util";
 import { EXAMPLES } from "./examples";
 import { GridEditorHandle, mountGridEditor } from "../../src/editor-grid";
@@ -59,6 +72,8 @@ const stopBtn = $<HTMLButtonElement>("pg-stop");
 const loopBtn = $<HTMLButtonElement>("pg-loop");
 const loopAllBtn = $<HTMLButtonElement>("pg-loop-all");
 const speedSelect = $<HTMLSelectElement>("pg-speed");
+const metronomeBtn = $<HTMLButtonElement>("pg-metronome");
+const metronomeMenu = $<HTMLDivElement>("pg-metronome-menu");
 const muteBtn = $<HTMLButtonElement>("pg-mute");
 const muteMenu = $<HTMLDivElement>("pg-mute-menu");
 const editBtn = $<HTMLButtonElement>("pg-edit");
@@ -87,6 +102,7 @@ let lastRenderError: string | null = null;
 let isLooping = false;
 let isLoopingAll = false;
 let playbackSpeedPercent = DEFAULT_PLAYBACK_SPEED_PERCENT;
+let metronomeMode: MetronomeMode = DEFAULT_METRONOME_MODE;
 const mutedInstrumentIds = new Set<string>();
 let gridEditor: GridEditorHandle | null = null;
 let isApplyingGridEdit = false;
@@ -136,6 +152,7 @@ function renderPreview(): void {
   loopBtn.disabled = !hasRows;
   loopAllBtn.disabled = !hasRows;
   speedSelect.disabled = !hasRows;
+  metronomeBtn.disabled = block.slots.length === 0;
   muteBtn.disabled = !hasRows;
   editBtn.disabled = !hasRows;
   syncPlaybackControls(block);
@@ -199,6 +216,18 @@ function clearVisuals(): void {
   cursorEl?.removeAttribute("style");
   highlightedNote?.classList.remove("is-playing");
   highlightedNote = null;
+}
+
+function clearRepeatProgress(): void {
+  if (scoreEl) {
+    updateMeasureRepeatProgress(scoreEl, null);
+  }
+}
+
+function showRepeatProgressForBar(block: DrumBlock, barIndex: number): void {
+  if (scoreEl) {
+    updateMeasureRepeatProgress(scoreEl, getMeasureRepeatProgress(block, barIndex));
+  }
 }
 
 function clearEditHighlight(): void {
@@ -335,6 +364,7 @@ function stopPlayback(): void {
   setPlaying(loopBtn, false);
   setPlaying(loopAllBtn, false);
   clearVisuals();
+  clearRepeatProgress();
 }
 
 function play(initialSlot = 0): void {
@@ -352,6 +382,7 @@ function play(initialSlot = 0): void {
     () => {
       setPlaying(playBtn, false);
       clearVisuals();
+      clearRepeatProgress();
       player = null;
     },
     (slotIndex) => {
@@ -364,10 +395,13 @@ function play(initialSlot = 0): void {
       initialSlot: currentSlotIndex,
       repeatCount: block.repeatCount,
       speedPercent: playbackSpeedPercent,
-      mutedInstrumentIds
+      mutedInstrumentIds,
+      metronomeMode,
+      onBarChange: (barIndex) => showRepeatProgressForBar(block, barIndex)
     },
     createPlaybackBackend
   );
+  showRepeatProgressForBar(block, barIndexForSlot(block, currentSlotIndex));
   void player.play();
 }
 
@@ -402,6 +436,7 @@ function startLoopBar(barIndex = selectedBarIndex, initialSlot?: number): void {
     () => {
       setPlaying(loopBtn, false);
       clearVisuals();
+      clearRepeatProgress();
       isLooping = false;
       player = null;
     },
@@ -415,7 +450,8 @@ function startLoopBar(barIndex = selectedBarIndex, initialSlot?: number): void {
       initialSlot: currentSlotIndex,
       loop: true,
       speedPercent: playbackSpeedPercent,
-      mutedInstrumentIds
+      mutedInstrumentIds,
+      metronomeMode
     },
     createPlaybackBackend
   );
@@ -450,6 +486,7 @@ function startLoopAll(initialSlot = 0): void {
     () => {
       setPlaying(loopAllBtn, false);
       clearVisuals();
+      clearRepeatProgress();
       isLoopingAll = false;
       player = null;
     },
@@ -463,10 +500,13 @@ function startLoopAll(initialSlot = 0): void {
       initialSlot: currentSlotIndex,
       loop: true,
       speedPercent: playbackSpeedPercent,
-      mutedInstrumentIds
+      mutedInstrumentIds,
+      metronomeMode,
+      onBarChange: (barIndex) => showRepeatProgressForBar(block, barIndex)
     },
     createPlaybackBackend
   );
+  showRepeatProgressForBar(block, barIndexForSlot(block, currentSlotIndex));
   void player.play();
 }
 
@@ -553,10 +593,61 @@ function syncPlaybackControls(block: DrumBlock): void {
 
   speedSelect.title = speedDescription;
   speedSelect.setAttribute("aria-label", speedDescription);
+  syncMetronomeButton();
   syncMuteButton();
+
+  if (!metronomeMenu.hidden) {
+    renderMetronomeMenu();
+  }
 
   if (!muteMenu.hidden) {
     renderMuteMenu();
+  }
+}
+
+function syncMetronomeButton(): void {
+  const description = `Metronome: ${getMetronomeModeLabel(metronomeMode)}`;
+
+  metronomeBtn.innerHTML = iconSvg("timer");
+  metronomeBtn.classList.toggle("is-active", metronomeMode !== "off");
+  metronomeBtn.title = description;
+  metronomeBtn.setAttribute("aria-label", description);
+}
+
+function renderMetronomeMenu(): void {
+  metronomeMenu.empty();
+
+  METRONOME_MODE_OPTIONS.forEach((option) => {
+    const item = metronomeMenu.createEl("button", {
+      cls: "pg-metronome-menu__item",
+      attr: {
+        type: "button",
+        role: "menuitemradio",
+        "aria-label": option.label,
+        "aria-checked": metronomeMode === option.value ? "true" : "false"
+      }
+    }) as HTMLButtonElement;
+
+    item.createEl("span", {
+      cls: "pg-metronome-menu__check",
+      text: metronomeMode === option.value ? "✓" : ""
+    });
+    item.createEl("span", { text: option.label });
+    item.addEventListener("click", () => {
+      metronomeMode = option.value;
+      syncPlaybackControls(currentBlock!);
+      setMetronomeMenuOpen(false);
+      restartPlaybackForControlChange();
+    });
+  });
+}
+
+function setMetronomeMenuOpen(open: boolean): void {
+  metronomeMenu.hidden = !open;
+  metronomeBtn.setAttribute("aria-expanded", open ? "true" : "false");
+  if (open) {
+    setMuteMenuOpen(false);
+    renderMetronomeMenu();
   }
 }
 
@@ -626,6 +717,7 @@ function setMuteMenuOpen(open: boolean): void {
   muteMenu.hidden = !open;
   muteBtn.setAttribute("aria-expanded", open ? "true" : "false");
   if (open) {
+    setMetronomeMenuOpen(false);
     renderMuteMenu();
   }
 }
@@ -1086,6 +1178,7 @@ function init(): void {
   decorateButton(loopBtn, "repeat-1");
   decorateButton(loopAllBtn, "repeat");
   decorateButton(editBtn, "pencil");
+  syncMetronomeButton();
   syncMuteButton();
 
   playBtn.addEventListener("click", () => play());
@@ -1099,14 +1192,23 @@ function init(): void {
     }
     restartPlaybackForControlChange();
   });
+  metronomeBtn.addEventListener("click", (event) => {
+    event.stopPropagation();
+    setMetronomeMenuOpen(metronomeMenu.hidden);
+  });
+  metronomeMenu.addEventListener("click", (event) => event.stopPropagation());
   muteBtn.addEventListener("click", (event) => {
     event.stopPropagation();
     setMuteMenuOpen(muteMenu.hidden);
   });
   muteMenu.addEventListener("click", (event) => event.stopPropagation());
-  document.addEventListener("click", () => setMuteMenuOpen(false));
+  document.addEventListener("click", () => {
+    setMetronomeMenuOpen(false);
+    setMuteMenuOpen(false);
+  });
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
+      setMetronomeMenuOpen(false);
       setMuteMenuOpen(false);
     }
   });

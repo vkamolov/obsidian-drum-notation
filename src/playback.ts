@@ -1,9 +1,37 @@
-import { DrumBlock, DrumHit, DrumInstrument } from "./types";
+import { DrumBlock, DrumHit, DrumInstrument, MetronomeMode } from "./types";
 
 export const MIN_PLAYBACK_SPEED_PERCENT = 25;
 export const MAX_PLAYBACK_SPEED_PERCENT = 100;
 export const PLAYBACK_SPEED_STEP_PERCENT = 25;
 export const DEFAULT_PLAYBACK_SPEED_PERCENT = 100;
+export const DEFAULT_METRONOME_MODE: MetronomeMode = "off";
+
+export const METRONOME_MODE_OPTIONS: ReadonlyArray<{
+  value: MetronomeMode;
+  label: string;
+}> = [
+  { value: "off", label: "Off" },
+  { value: "with-drums", label: "With drums" },
+  { value: "metronome-only", label: "Metronome only" }
+];
+
+export interface MetronomePulse {
+  slotIndex: number;
+  isDownbeat: boolean;
+}
+
+const METRONOME_INSTRUMENT: DrumInstrument = {
+  id: "metronome",
+  label: "Metronome",
+  aliases: [],
+  vexKey: "c/5",
+  midi: 37,
+  color: "#64748b",
+  playback: "click"
+};
+
+const METRONOME_DOWNBEAT_VELOCITY = 1;
+const METRONOME_BEAT_VELOCITY = 0.65;
 
 export function normalizePlaybackSpeedPercent(value: number): number {
   if (!Number.isFinite(value)) {
@@ -17,6 +45,50 @@ export function normalizePlaybackSpeedPercent(value: number): number {
 
 export function getEffectivePlaybackTempo(tempo: number, speedPercent: number): number {
   return tempo * (normalizePlaybackSpeedPercent(speedPercent) / 100);
+}
+
+export function getMetronomeModeLabel(mode: MetronomeMode): string {
+  return METRONOME_MODE_OPTIONS.find((option) => option.value === mode)?.label ?? "Off";
+}
+
+export function getMetronomePulses(
+  block: DrumBlock,
+  startSlot = 0,
+  endSlot = block.slots.length
+): MetronomePulse[] {
+  const rangeStart = Math.max(0, Math.round(startSlot));
+  const rangeEnd = Math.min(block.slots.length, Math.max(rangeStart, Math.round(endSlot)));
+  const pulseIntervalSlots = getMetronomePulseIntervalSlots(
+    block.timeSignature,
+    block.gridResolution
+  );
+  const pulses: MetronomePulse[] = [];
+
+  block.bars.forEach((bar) => {
+    const barEndSlot = bar.startSlot + bar.slots.length;
+
+    if (barEndSlot <= rangeStart || bar.startSlot >= rangeEnd) {
+      return;
+    }
+
+    for (let localSlot = 0; localSlot < bar.slots.length; localSlot += pulseIntervalSlots) {
+      const slotIndex = bar.startSlot + localSlot;
+
+      if (slotIndex >= rangeStart && slotIndex < rangeEnd) {
+        pulses.push({ slotIndex, isDownbeat: localSlot === 0 });
+      }
+    }
+  });
+
+  return pulses;
+}
+
+export function createMetronomeHit(isDownbeat: boolean): DrumHit {
+  return {
+    instrument: METRONOME_INSTRUMENT,
+    articulation: "normal",
+    velocity: isDownbeat ? METRONOME_DOWNBEAT_VELOCITY : METRONOME_BEAT_VELOCITY
+  };
 }
 
 export function getPlaybackInstruments(block: DrumBlock): DrumInstrument[] {
@@ -39,6 +111,19 @@ export function filterMutedHits(hits: DrumHit[], mutedInstrumentIds?: ReadonlySe
   }
 
   return hits.filter((hit) => !mutedInstrumentIds.has(hit.instrument.id));
+}
+
+function getMetronomePulseIntervalSlots(
+  timeSignature: string,
+  gridResolution: DrumBlock["gridResolution"]
+): number {
+  const match = /^(\d+)\/(\d+)$/.exec(timeSignature);
+  const numerator = Number.parseInt(match?.[1] ?? "4", 10);
+  const beatValue = Math.max(1, Number.parseInt(match?.[2] ?? "4", 10));
+  const writtenBeatSlots = Math.max(1, Math.round(gridResolution / beatValue));
+  const compoundMultiplier = numerator >= 6 && numerator % 3 === 0 ? 3 : 1;
+
+  return Math.max(1, writtenBeatSlots * compoundMultiplier);
 }
 
 export interface DrumPlaybackBackend {
