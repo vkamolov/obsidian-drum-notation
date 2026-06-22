@@ -162,6 +162,7 @@ interface BarView {
 interface SystemView {
   bars: BarView[];
   rows: RowView[];
+  subtitle?: string;
 }
 
 export type BarPlacement = "same-system" | "new-system";
@@ -412,7 +413,11 @@ function toSystemView(system: DrumSystem): SystemView {
     }
   }
 
-  return { bars, rows: order.map((id) => byId.get(id)!) };
+  return {
+    bars,
+    rows: order.map((id) => byId.get(id)!),
+    ...(system.subtitle ? { subtitle: system.subtitle } : {})
+  };
 }
 
 function toRowSection(view: SystemView): DrumRowInput[] {
@@ -449,7 +454,13 @@ function rebuildBlock(block: DrumBlock, views: SystemView[]): DrumBlock {
   syncMeasureRepeatCopies(views);
   views.forEach(compactStickingPatterns);
 
-  return finalizeDrumBlock(headerOf(block), views.map(toRowSection), views.map(toRepeatSection), views.map(toStickingSection));
+  return finalizeDrumBlock(
+    headerOf(block),
+    views.map(toRowSection),
+    views.map(toRepeatSection),
+    views.map(toStickingSection),
+    views.map((view) => view.subtitle)
+  );
 }
 
 function syncMeasureRepeatCopies(views: SystemView[]): void {

@@ -131,6 +131,38 @@ HH | -x-x`);
   });
 });
 
+describe("parseDrumBlock - system subtitles", () => {
+  it("assigns one trimmed subtitle to each rendered system", () => {
+    const block = parseDrumBlock(`Title: Sticking lane
+Subtitle:   First line
+HH | x--- | --x-
+SD | --o- | ----
+Bar
+sUbTiTlE: Second line
+HH | x---
+SD | --o-`);
+
+    expect(block.systems).toHaveLength(2);
+    expect(block.systems[0]).toMatchObject({ subtitle: "First line" });
+    expect(block.systems[0].bars).toHaveLength(2);
+    expect(block.systems[1]).toMatchObject({ subtitle: "Second line" });
+    expect(block.metadata).not.toContain("Subtitle: First line");
+  });
+
+  it("uses the last non-empty subtitle and omits empty subtitles", () => {
+    const block = parseDrumBlock(`Subtitle: First
+HH | x---
+Subtitle:
+Subtitle: Final
+Bar
+Subtitle:
+SD | --o-`);
+
+    expect(block.systems[0].subtitle).toBe("Final");
+    expect(block.systems[1].subtitle).toBeUndefined();
+  });
+});
+
 describe("parseDrumBlock - sticking rows", () => {
   it("recognizes sticking row aliases before instrument rows", () => {
     ["ST", "Stick", "Sticking", "Hands"].forEach((label) => {

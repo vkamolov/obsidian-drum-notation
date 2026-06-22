@@ -42,9 +42,11 @@ export function parseDrumBlock(source: string): DrumBlock {
   const rowSections: DrumRowInput[][] = [];
   const stickingSections: Array<DrumStickingInput | undefined> = [];
   const repeatSections: Array<Array<MeasureRepeatInput | undefined>> = [];
+  const subtitleSections: Array<string | undefined> = [];
   let currentRows: DrumRowInput[] = [];
   let currentSticking: DrumStickingInput | undefined;
   let currentRepeats: Array<MeasureRepeatInput | undefined> = [];
+  let currentSubtitle: string | undefined;
   const barHistory: BarSnapshot[] = [];
   let tempo = DEFAULT_TEMPO;
   let timeSignature = DEFAULT_TIME_SIGNATURE;
@@ -56,6 +58,8 @@ export function parseDrumBlock(source: string): DrumBlock {
 
   const pushCurrentBar = () => {
     if (currentRows.length === 0 && !currentSticking) {
+      currentSubtitle = undefined;
+      currentRepeats = [];
       return;
     }
 
@@ -63,10 +67,12 @@ export function parseDrumBlock(source: string): DrumBlock {
     rowSections.push(currentRows);
     stickingSections.push(currentSticking);
     repeatSections.push(currentRepeats);
+    subtitleSections.push(currentSubtitle);
     barHistory.push(...snapshotBars(currentRows, currentSticking));
     currentRows = [];
     currentSticking = undefined;
     currentRepeats = [];
+    currentSubtitle = undefined;
   };
 
   source
@@ -76,6 +82,16 @@ export function parseDrumBlock(source: string): DrumBlock {
     .forEach((line) => {
       if (isBarSeparator(line)) {
         pushCurrentBar();
+        return;
+      }
+
+      const subtitle = parseSubtitleLine(line);
+
+      if (subtitle !== null) {
+        if (subtitle.length > 0) {
+          currentSubtitle = subtitle;
+        }
+
         return;
       }
 
@@ -139,7 +155,8 @@ export function parseDrumBlock(source: string): DrumBlock {
     { tempo, timeSignature, repeatCount, showCursor, showHighlight, legendMode, gridResolution, metadata },
     rowSections,
     repeatSections,
-    stickingSections
+    stickingSections,
+    subtitleSections
   );
 }
 
@@ -151,9 +168,10 @@ export function finalizeDrumBlock(
   header: DrumBlockHeader,
   rowSections: DrumRowInput[][],
   repeatSections: Array<Array<MeasureRepeatInput | undefined>> = [],
-  stickingSections: Array<DrumStickingInput | undefined> = []
+  stickingSections: Array<DrumStickingInput | undefined> = [],
+  subtitleSections: Array<string | undefined> = []
 ): DrumBlock {
-  const systems = buildSystems(rowSections, repeatSections, stickingSections);
+  const systems = buildSystems(rowSections, repeatSections, stickingSections, subtitleSections);
   const bars = systems.flatMap((system) => system.bars);
   const rows = bars.flatMap((bar) => bar.rows);
 
@@ -168,6 +186,12 @@ export function finalizeDrumBlock(
 
 function isBarSeparator(line: string): boolean {
   return /^(new\s+)?(bar|measure)\b(\s+\d+)?\s*:?.*$/i.test(line);
+}
+
+function parseSubtitleLine(line: string): string | null {
+  const match = /^subtitle\s*:\s*(.*)$/i.exec(line);
+
+  return match ? match[1].trim() : null;
 }
 
 function parseMeasureRepeatLine(line: string): MeasureRepeatInput | null {
@@ -257,7 +281,8 @@ function parseStickingRowInput(line: string): DrumStickingInput | null {
 function buildSystems(
   rowSections: DrumRowInput[][],
   repeatSections: Array<Array<MeasureRepeatInput | undefined>>,
-  stickingSections: Array<DrumStickingInput | undefined>
+  stickingSections: Array<DrumStickingInput | undefined>,
+  subtitleSections: Array<string | undefined>
 ): DrumSystem[] {
   let startSlot = 0;
 
@@ -282,7 +307,12 @@ function buildSystems(
       return bar;
     });
 
-    return { bars };
+    const subtitle = subtitleSections[systemIndex]?.trim();
+
+    return {
+      bars,
+      ...(subtitle ? { subtitle } : {})
+    };
   });
 }
 

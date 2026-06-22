@@ -38,6 +38,7 @@ export interface MeasureRepeatInput {
 
 export interface DrumSystem {
   bars: DrumBar[];
+  subtitle?: string;
 }
 
 export interface DrumBar {

@@ -65,6 +65,7 @@ Author: Your name
 Comment: Practice slowly, then loop it.
 Tempo: 120
 Time: 7/8
+Subtitle: Verse
 Repeat: 4
 Cursor: on
 Highlight: on
@@ -77,6 +78,7 @@ Supported settings:
 | Setting | Example | Notes |
 | --- | --- | --- |
 | `Title:` | `Title: Linear fill` | Shown above the rendered score. |
+| `Subtitle:` | `Subtitle: Verse` | Labels the current rendered staff line and all inline bars on it. |
 | `Tempo:` or `BPM:` | `Tempo: 96` | Playback tempo, clamped between 30 and 260 BPM. |
 | `Time:`, `Meter:`, or `Time Signature:` | `Time: 6/8` | Drawn on the staff. |
 | `Repeat:` or `Repeats:` | `Repeat: 4` | Plays the whole block this many times when pressing **Play**. |
@@ -87,6 +89,10 @@ Supported settings:
 | `Author:` | `Author: Test Author` | Stored as metadata. |
 | `Comment:` | `Comment: Test Comment` | Stored as metadata. |
 | `Count:` | `Count: 1 e & a 2 e & a` | Useful source-code guide while editing. |
+
+`Title:` names the complete notation block. `Subtitle:` is optional and belongs
+to one rendered staff line. Put another `Subtitle:` after a `Bar` separator to
+label the next line. Long subtitles wrap above the staff on narrow screens.
 
 ## Instrument Rows
 
@@ -198,12 +204,13 @@ Title: Groove then fill
 Tempo: 104
 Time: 4/4
 
-Bar:
+Subtitle: Main groove
 HH | x-x-x-x-x-x-x-x-
 SD | ----o-------o---
 BD | o-------o-o-----
 
 Bar:
+Subtitle: Fill
 RD | x-x-x-x---------
 HT | --------o-o-----
 MT | ------------o-o-
@@ -212,7 +219,11 @@ BD | o---o---o---o---
 ```
 ````
 
-`Bar:`, `Bar 2:`, `Measure:`, and `New Bar:` all work as separators. Normal **Play** runs through all bars in order. **Loop Bar** loops the declared bar containing the current cursor or last clicked note.
+`Bar:`, `Bar 2:`, `Measure:`, and `New Bar:` all work as separators. A
+`Subtitle:` before or among a system's rows labels that complete rendered line,
+including multiple inline bars. Normal **Play** runs through all bars in order.
+**Loop Bar** loops the declared bar containing the current cursor or last
+clicked note.
 
 ## Subdivisions And Beams
 

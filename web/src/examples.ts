@@ -28,6 +28,24 @@ HH | x-x-x-x-x-x-x-x-
 SD | ----o-------o---
 BD | o-------o-------`,
 
+  "System subtitles": `Title: System subtitles
+Tempo: 100
+Time: 4/4
+Grid: 16
+Subtitle: Main groove
+ST | L-R-L-R-L-R-L-R- | R-L-B-L-R-L-B-L-
+HH | x-x-x-x-x-x-x-x- | x-x-x-x-x-x-x-x-
+SD | ----o-------o--- | ----o-------o---
+BD | o-------o------- | o-------o-------
+Bar
+Subtitle: Descending tom fill from the high tom to the floor tom, finishing on the snare
+ST | RLRLRLRLRLRLRLRL
+HT | oooo------------
+MT | ----oooo--------
+FT | --------oooo----
+SD | ------------oooo
+BD | o-------o-------`,
+
   "One-bar repeat (%)": `Title: One-bar repeat
 Tempo: 100
 HH | x-x-x-x-x-x-x-x-

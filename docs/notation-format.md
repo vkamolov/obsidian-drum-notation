@@ -20,6 +20,7 @@ A block is a sequence of lines. Each non-empty line is one of:
 |------------------|------------------------------------------------------------|--------|
 | **Setting**      | `Key: value` where `Key` is a known setting                | Sets a header field |
 | **Metadata**     | `Key: value` with an unknown key, or any other free line   | Preserved verbatim (e.g. `Title`, `Count`, comments) |
+| **System subtitle** | `Subtitle: text`                                        | Labels the current rendered system |
 | **Bar separator**| A line matching `[new] bar|measure [N][:...]`               | Starts a new system (line of music) |
 | **Measure repeat**| `%` or `Repeat bar`                                       | Repeats the previous bar |
 | **Sticking row** | `ST \| R-LB...`                                            | Slot-aligned right/left/both-hands annotation |
@@ -61,6 +62,28 @@ false: `off`, `false`, `no`, `n`, `0`, `hide`, `hidden`.
 `on`/`true`/`yes`/`current`/`present`; `all` (full kit) also accepts
 `full`/`kit`/`complete`/`supported`/`everything`; `off` also accepts
 `none`/`hide`/`no`.
+
+### System subtitles
+
+`Subtitle:` is case-insensitive and labels one rendered system rather than the
+whole block. It may appear anywhere among that system's lines; serialization
+moves it before the sticking and instrument rows.
+
+```drums
+Title: Practice structure
+Subtitle: Verse
+HH | x-x-x-x-x-x-x-x- | x-x-x-x-x-x-x-x-
+SD | ----o-------o--- | ----o-------o---
+
+Bar
+Subtitle: Fill
+SD | o-o-oo-oo-o-oo-o
+```
+
+The subtitle applies to every inline bar on its system. Surrounding whitespace
+is trimmed, empty subtitles are omitted, and the last non-empty `Subtitle:` in
+one system wins. Long subtitles wrap above the staff. `Title:` still names the
+complete notation block.
 
 ### Metadata-only keys
 
@@ -187,15 +210,19 @@ Two independent groupings exist:
    line. `Bar`, `Measure`, `Bar 2:`, `New bar` all work:
 
    ```drums
+   Subtitle: Groove
    HH | x-x-x-x-x-x-x-x-
    SD | ----o-------o---
    Bar
+   Subtitle: Fill
    HH | x-x-x-x-x-x-x-x-
    SD | o---o---o---o---
    ```
 
 Bar/measure numbering and trailing text on the separator line are not modeled;
-the serializer normalizes the separator to a bare `Bar`.
+the serializer normalizes the separator to a bare `Bar`. System subtitles are
+modeled and serialize as `Subtitle: text` immediately after the preceding
+`Bar`, or before the first system's rows.
 
 ### One-bar measure repeats
 
@@ -429,6 +456,7 @@ To stay deterministic and diff-friendly, serialization **normalizes**:
 - Settings left at their default are **omitted** (they re-parse to the default).
 - Unknown/metadata lines are preserved verbatim and in order.
 - Bar separators normalize to `Bar`; row patterns are joined with ` | `.
+- System subtitles normalize to `Subtitle: text` before each system's rows.
 - One-bar measure repeats normalize to `%` and are not expanded back into row
   text.
 - Sticking annotations serialize as a canonical `ST` row and remain display-only.

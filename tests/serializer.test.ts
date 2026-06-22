@@ -110,6 +110,20 @@ HH | -x-x`);
     expect(out.split("\n")).toContain("Bar");
   });
 
+  it("round-trips system subtitles and places them before system rows", () => {
+    const out = roundTrips(`HH | x--- | --x-
+Subtitle: First line
+Bar
+SD | --o-
+SUBTITLE: Second line`);
+
+    expect(out).toBe(`Subtitle: First line
+HH | x--- | --x-
+Bar
+Subtitle: Second line
+SD | --o-`);
+  });
+
   it("round-trips one-bar repeat symbols without expanding them", () => {
     const out = roundTrips(`HH | x-x-
 SD | --o-
@@ -195,6 +209,29 @@ Grid: 16
 Count: 1 e & a 2 e & a 3 e & a 4 e & a
 HH | x-x-
 SD | --o-`);
+  });
+
+  it("preserves system subtitles in authoring mode", () => {
+    const out = serializeDrumBlock(
+      parseDrumBlock(`Title: Practice
+Tempo: 90
+Subtitle: Verse
+HH | x---
+Bar
+Subtitle: Fill
+SD | oooo`),
+      { mode: "authoring" }
+    );
+
+    expect(out).toBe(`Title: Practice
+Tempo: 90
+Time: 4/4
+Grid: 16
+Subtitle: Verse
+HH | x---
+Bar
+Subtitle: Fill
+SD | oooo`);
   });
 
   it("keeps non-default authoring settings visible once", () => {

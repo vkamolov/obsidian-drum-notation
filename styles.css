@@ -308,6 +308,23 @@
 }
 
 .drum-notation__system {
+  position: relative;
+  width: 100%;
+}
+
+.drum-notation__system-subtitle {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 0.4rem 1rem 0;
+  color: var(--text-muted, var(--drum-ink-symbol));
+  font-size: 0.82rem;
+  font-weight: 500;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.drum-notation__system-score {
+  position: relative;
   width: 100%;
 }
 

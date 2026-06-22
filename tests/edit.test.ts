@@ -249,6 +249,63 @@ HH | x--- | --------------------------------`);
     expect(serializeDrumBlock(parseDrumBlock(text))).toBe(text);
   });
 
+  it("preserves subtitles through same-system edits and leaves new systems untitled", () => {
+    const block = parseDrumBlock(`Subtitle: Groove
+ST | R---
+HH | x---
+Bar
+Subtitle: Fill
+SD | oooo`);
+    const withHitEdit = setHit(block, 2, HH);
+    const sameSystemCopy = duplicateBar(withHitEdit, 0);
+    const withNewSystem = insertBarAfter(sameSystemCopy, 1, "new-system");
+
+    expect(withNewSystem.systems.map((system) => system.subtitle)).toEqual([
+      "Groove",
+      undefined,
+      "Fill"
+    ]);
+    expect(serializeDrumBlock(withNewSystem)).toContain(`Subtitle: Groove
+ST | R--- | R---
+HH | x-x- | x-x-
+Bar
+HH | ----------------
+Bar
+Subtitle: Fill
+SD | oooo`);
+  });
+
+  it("preserves subtitles through sticking, articulation, and repeat edits", () => {
+    const block = parseDrumBlock(`Subtitle: Practice
+ST | R--- | ----
+HH | x--- | ----
+SD | --o- | ----`);
+    const withSticking = setSticking(block, 1, "left");
+    const withAccent = applyArticulation(withSticking, 0, HH, "accent");
+    const withRepeat = setBarRepeat(withAccent, 1);
+
+    expect(withRepeat.systems[0].subtitle).toBe("Practice");
+    expect(serializeDrumBlock(withRepeat)).toBe(`Subtitle: Practice
+ST | RL--
+HH | X---
+SD | --o-
+%`);
+  });
+
+  it("removes a subtitle when its final system bar is deleted", () => {
+    const block = parseDrumBlock(`Subtitle: Intro
+HH | x---
+Bar
+Subtitle: Fill
+SD | oooo`);
+    const edited = deleteBar(block, 0);
+
+    expect(edited.systems).toHaveLength(1);
+    expect(edited.systems[0].subtitle).toBe("Fill");
+    expect(serializeDrumBlock(edited)).toBe(`Subtitle: Fill
+SD | oooo`);
+  });
+
   it("setBarRepeat marks a bar as a one-bar repeat of the previous bar", () => {
     const block = parseDrumBlock("HH | x--- | ----\nSD | ---- | --o-");
     const edited = setBarRepeat(block, 1);

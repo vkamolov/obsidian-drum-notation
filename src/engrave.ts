@@ -12,6 +12,7 @@ import {
   shouldBeamSubdivision
 } from "./music";
 import { MeasureRepeatProgress } from "./repeat-progress";
+import { allocateBarWidths } from "./spacing";
 import { CursorPosition, DrumBar, DrumBlock, DrumHit, DrumInstrument, DrumSlot, GridResolution, MeasureRepeat, ScoreRenderResult, StickingHand } from "./types";
 
 interface NotationLayout {
@@ -114,9 +115,19 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
 
   block.systems.forEach((scoreSystem, systemIndex) => {
     const system = container.createEl("div", { cls: "drum-notation__system" });
-    system.style.height = `${height}px`;
 
-    const renderer = new Renderer(system, Renderer.Backends.SVG);
+    if (scoreSystem.subtitle) {
+      system.createEl("div", {
+        cls: "drum-notation__system-subtitle",
+        text: scoreSystem.subtitle,
+        attr: { "aria-label": `Notation section: ${scoreSystem.subtitle}` }
+      });
+    }
+
+    const scoreSurface = system.createEl("div", { cls: "drum-notation__system-score" });
+    scoreSurface.style.height = `${height}px`;
+
+    const renderer = new Renderer(scoreSurface, Renderer.Backends.SVG);
 
     renderer.resize(cssWidth, height);
 
@@ -128,11 +139,17 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
     context.setLineWidth(layout.strokeWidth);
 
     const visualBars = getVisualBarEntries(scoreSystem.bars);
-    const systemSlots = visualBars.flatMap((entry) => entry.bar.slots);
-    const totalSlots = Math.max(1, systemSlots.length);
     const staveX = layout.staveX;
     const staveWidth = width - layout.staveX - layout.staveRightPadding;
-    const systemTop = systemIndex * height;
+    const headerProbe = createScoreStave(0, staveWidth, true, block, systemIndex, layout);
+    const firstBarHeaderWidth = headerProbe.getModifierXShift();
+    const barWidths = allocateBarWidths(
+      visualBars.map((entry) => entry.bar.slots.length),
+      staveWidth,
+      firstBarHeaderWidth,
+      layout.barMinWidth
+    );
+    const systemTop = system.offsetTop + scoreSurface.offsetTop;
 
     let currentX = staveX;
     const pendingHitTargets: PendingHitTarget[] = [];
@@ -140,31 +157,8 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
     visualBars.forEach((entry, barIndex) => {
       const bar = entry.bar;
       const isFirstBarInSystem = barIndex === 0;
-      const isLastBarInSystem = barIndex === visualBars.length - 1;
-      const rawBarWidth = (bar.slots.length / totalSlots) * staveWidth;
-      const barWidth = isLastBarInSystem ? staveX + staveWidth - currentX : Math.max(layout.barMinWidth, rawBarWidth);
-      const stave = new Stave(currentX, layout.staveY, barWidth, {
-        leftBar: isFirstBarInSystem,
-        rightBar: true,
-        ...(layout.staveLineSpacing !== undefined ? { spacingBetweenLinesPx: layout.staveLineSpacing } : {}),
-        ...(layout.verticalBarWidth !== undefined ? { verticalBarWidth: layout.verticalBarWidth } : {})
-      });
-      stave.setStyle({ fillStyle: "currentColor", strokeStyle: "currentColor", lineWidth: layout.strokeWidth });
-      stave.setDefaultLedgerLineStyle({ fillStyle: "currentColor", strokeStyle: "currentColor", lineWidth: layout.ledgerLineWidth });
-
-      if (isFirstBarInSystem) {
-        stave.addClef("percussion", "small");
-
-        if (systemIndex === 0) {
-          const timeSignature = new TimeSignature(block.timeSignature, 6);
-
-          if (layout.signatureFontSize !== undefined) {
-            slimTimeSignature(timeSignature, block.timeSignature, layout.signatureFontSize);
-          }
-
-          stave.addModifier(timeSignature);
-        }
-      }
+      const barWidth = barWidths[barIndex] ?? 0;
+      const stave = createScoreStave(currentX, barWidth, isFirstBarInSystem, block, systemIndex, layout);
 
       stave.setContext(context).draw();
       stave.setNoteStartX(stave.getNoteStartX() + layout.noteStartPadding);
@@ -213,7 +207,8 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
       }).setStrict(false);
 
       voice.addTickables(notes);
-      const availableFormatWidth = Math.max(24, barWidth - stave.getModifierXShift() - layout.formatPadding - layout.noteStartPadding - layout.noteEndPadding);
+      const barHeaderWidth = isFirstBarInSystem ? firstBarHeaderWidth : 0;
+      const availableFormatWidth = Math.max(24, barWidth - barHeaderWidth - layout.formatPadding - layout.noteStartPadding - layout.noteEndPadding);
       const slotScaledFormatWidth = Math.max(24, bar.slots.length * layout.maxSlotFormatWidth);
       const formatWidth = Math.min(availableFormatWidth, slotScaledFormatWidth);
       new Formatter().joinVoices([voice]).format([voice], formatWidth);
@@ -305,6 +300,42 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
   });
 
   return { cursorPositions, barRegions };
+}
+
+function createScoreStave(
+  x: number,
+  width: number,
+  includeSystemHeader: boolean,
+  block: DrumBlock,
+  systemIndex: number,
+  layout: NotationLayout
+): Stave {
+  const stave = new Stave(x, layout.staveY, width, {
+    leftBar: includeSystemHeader,
+    rightBar: true,
+    ...(layout.staveLineSpacing !== undefined ? { spacingBetweenLinesPx: layout.staveLineSpacing } : {}),
+    ...(layout.verticalBarWidth !== undefined ? { verticalBarWidth: layout.verticalBarWidth } : {})
+  });
+  stave.setStyle({ fillStyle: "currentColor", strokeStyle: "currentColor", lineWidth: layout.strokeWidth });
+  stave.setDefaultLedgerLineStyle({ fillStyle: "currentColor", strokeStyle: "currentColor", lineWidth: layout.ledgerLineWidth });
+
+  if (!includeSystemHeader) {
+    return stave;
+  }
+
+  stave.addClef("percussion", "small");
+
+  if (systemIndex === 0) {
+    const timeSignature = new TimeSignature(block.timeSignature, 6);
+
+    if (layout.signatureFontSize !== undefined) {
+      slimTimeSignature(timeSignature, block.timeSignature, layout.signatureFontSize);
+    }
+
+    stave.addModifier(timeSignature);
+  }
+
+  return stave;
 }
 
 function getVisualBarEntries(bars: DrumBar[]): VisualBarEntry[] {

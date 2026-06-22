@@ -42,6 +42,10 @@ function serializeMinimalBlock(block: DrumBlock): string {
       lines.push("Bar");
     }
 
+    if (system.subtitle) {
+      lines.push(`Subtitle: ${system.subtitle}`);
+    }
+
     lines.push(...serializeSystem(system));
   });
 
