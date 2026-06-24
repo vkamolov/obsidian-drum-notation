@@ -65,6 +65,8 @@ import {
 
 const WRITEBACK_DEBOUNCE_MS = 450;
 const PLAYBACK_RESTART_DEBOUNCE_MS = 220;
+const EDIT_RESTORE_RETRY_MS = 50;
+const EDIT_RESTORE_MAX_ATTEMPTS = 12;
 
 interface DrumNotationSettings {
   enableVisualEditMode: boolean;
@@ -235,8 +237,11 @@ export default class DrumNotationPlugin extends Plugin {
     const mutedInstrumentIds = new Set<string>();
     let resizeTimer: number | null = null;
     let writebackTimer: number | null = null;
+    let hasPendingWriteback = false;
     let playbackRestartTimer: number | null = null;
     let modeRefreshFrame: number | null = null;
+    let modeRefreshTimer: number | null = null;
+    let editRestoreTimer: number | null = null;
     const child = new MarkdownRenderChild(el);
     const renderOwner = Symbol("drum-notation-render");
     const playbackBackendFactory = (audioContext: AudioContext) => this.createPlaybackBackend(audioContext);
@@ -410,6 +415,32 @@ export default class DrumNotationPlugin extends Plugin {
       notation.querySelector(".pg-bar-selectors")?.remove();
     };
 
+    const createBufferedScoreTarget = (): HTMLElement => {
+      const target = notationViewport.createEl("div", { cls: "drum-notation__score" });
+
+      target.addClass("drum-notation__score-buffer");
+      target.style.position = "absolute";
+      target.style.visibility = "hidden";
+      target.style.pointerEvents = "none";
+      target.style.left = `${notation.offsetLeft}px`;
+      target.style.top = `${notation.offsetTop}px`;
+      target.style.width = `${notation.clientWidth || notationViewport.clientWidth}px`;
+      target.style.minHeight = notation.style.minHeight;
+
+      return target;
+    };
+
+    const commitBufferedScoreTarget = (target: HTMLElement) => {
+      if (target === notation) {
+        return;
+      }
+
+      notation.style.width = target.style.width;
+      notation.style.minHeight = target.style.minHeight;
+      notation.replaceChildren(...Array.from(target.childNodes));
+      target.remove();
+    };
+
     const updateBarSelectorState = () => {
       selectedBarIndex = clampBarIndex(block, selectedBarIndex);
       notation.querySelectorAll<HTMLButtonElement>(".pg-bar-selector").forEach((button) => {
@@ -498,8 +529,14 @@ export default class DrumNotationPlugin extends Plugin {
         return;
       }
 
+      let target: HTMLElement | null = null;
+
       try {
-        const result = renderVexflowScore(block, notation);
+        target = notation.hasChildNodes() ? createBufferedScoreTarget() : notation;
+        const result = renderVexflowScore(block, target);
+
+        commitBufferedScoreTarget(target);
+        target = null;
         state.cursorPositions = result.cursorPositions;
         state.barRegions = result.barRegions;
         if (block.legendMode !== "off") {
@@ -520,6 +557,10 @@ export default class DrumNotationPlugin extends Plugin {
         renderBarSelectors();
         applyEditHighlight();
       } catch (error) {
+        if (target && target !== notation) {
+          target.remove();
+        }
+
         notation.empty();
         notation.createEl("pre", {
           cls: "drum-notation__error",
@@ -812,9 +853,20 @@ export default class DrumNotationPlugin extends Plugin {
       }, PLAYBACK_RESTART_DEBOUNCE_MS);
     };
 
-    const persistEditedBlock = async () => {
-      const editAvailability = getCurrentEditAvailability();
-      if (!editAvailability.ok) {
+    const persistEditedBlock = async (
+      options: { requireEditAvailability?: boolean; rememberRestoreSession?: boolean } = {}
+    ) => {
+      const requireEditAvailability = options.requireEditAvailability ?? true;
+      const rememberRestoreSession = options.rememberRestoreSession ?? true;
+
+      if (requireEditAvailability) {
+        const editAvailability = getCurrentEditAvailability();
+        if (!editAvailability.ok) {
+          return;
+        }
+      }
+
+      if (!hasPendingWriteback && serializeDrumBlock(block, { mode: "authoring" }) === sourceBody) {
         return;
       }
 
@@ -828,6 +880,7 @@ export default class DrumNotationPlugin extends Plugin {
 
       const nextBody = serializeDrumBlock(block, { mode: "authoring" });
       if (nextBody === sourceBody) {
+        hasPendingWriteback = false;
         return;
       }
 
@@ -845,7 +898,7 @@ export default class DrumNotationPlugin extends Plugin {
           }
 
           wrote = true;
-          const session = gridEditor?.getSessionState();
+          const session = rememberRestoreSession ? gridEditor?.getSessionState() : null;
           if (session) {
             this.editRestoreSessions.set(sessionKey, {
               body: nextBody,
@@ -871,20 +924,41 @@ export default class DrumNotationPlugin extends Plugin {
 
       if (wrote) {
         sourceBody = nextBody;
+        hasPendingWriteback = false;
       } else if (failure) {
         new Notice(formatWritebackFailure(failure));
       }
     };
 
     const scheduleWriteback = () => {
+      hasPendingWriteback = true;
+
       if (writebackTimer !== null) {
         window.clearTimeout(writebackTimer);
+        writebackTimer = null;
+      }
+
+      if (gridEditor) {
+        return;
       }
 
       writebackTimer = window.setTimeout(() => {
         writebackTimer = null;
         void persistEditedBlock();
       }, WRITEBACK_DEBOUNCE_MS);
+    };
+
+    const flushPendingWriteback = (options: { requireEditAvailability?: boolean; rememberRestoreSession?: boolean } = {}) => {
+      if (writebackTimer !== null) {
+        window.clearTimeout(writebackTimer);
+        writebackTimer = null;
+      }
+
+      if (!hasPendingWriteback) {
+        return;
+      }
+
+      void persistEditedBlock(options);
     };
 
     const applyGridEditedBlock = (next: DrumBlock, changedSlotIndex?: number, nextSelectedBarIndex?: number) => {
@@ -923,13 +997,16 @@ export default class DrumNotationPlugin extends Plugin {
       }
     };
 
-    const enterEditMode = (session?: GridEditorSessionState) => {
+    const enterEditMode = (
+      session?: GridEditorSessionState,
+      options: { showUnavailableNotice?: boolean } = {}
+    ): boolean => {
       const editAvailability = getCurrentEditAvailability();
       if (gridEditor || !editAvailability.ok || block.slots.length === 0) {
-        if (!editAvailability.ok) {
+        if (!editAvailability.ok && options.showUnavailableNotice !== false) {
           new Notice(editAvailability.reason);
         }
-        return;
+        return false;
       }
 
       stopLocalPlayback();
@@ -959,9 +1036,10 @@ export default class DrumNotationPlugin extends Plugin {
 
       renderBarSelectors();
       applyEditHighlight();
+      return true;
     };
 
-    const exitEditMode = () => {
+    const exitEditMode = (options: { clearRestoreSession?: boolean } = {}) => {
       gridEditor?.destroy();
       gridEditor = null;
       selectEditSlot(null);
@@ -969,6 +1047,15 @@ export default class DrumNotationPlugin extends Plugin {
       root.removeClass("is-editing");
       editButton.removeClass("is-playing");
       editRoot.hidden = true;
+      flushPendingWriteback({
+        requireEditAvailability: false,
+        rememberRestoreSession: false
+      });
+      updateHeader();
+
+      if (options.clearRestoreSession === false) {
+        return;
+      }
 
       const section = ctx.getSectionInfo(el);
       if (section) {
@@ -976,18 +1063,27 @@ export default class DrumNotationPlugin extends Plugin {
       }
     };
 
-    const refreshModeAvailability = () => {
+    const refreshModeAvailability = (): boolean => {
       const editAvailability = getCurrentEditAvailability();
 
       if (gridEditor && !editAvailability.ok) {
-        exitEditMode();
+        exitEditMode({ clearRestoreSession: false });
       }
 
       updateHeader();
+      return editAvailability.ok;
     };
 
-    const queueModeAvailabilityRefresh = () => {
-      refreshModeAvailability();
+    const clearModeRefreshTimer = () => {
+      if (modeRefreshTimer !== null) {
+        window.clearTimeout(modeRefreshTimer);
+        modeRefreshTimer = null;
+      }
+    };
+
+    const queueModeAvailabilityRefresh = (attempt = 0) => {
+      clearModeRefreshTimer();
+      updateHeader();
 
       if (modeRefreshFrame !== null) {
         window.cancelAnimationFrame(modeRefreshFrame);
@@ -995,14 +1091,52 @@ export default class DrumNotationPlugin extends Plugin {
 
       modeRefreshFrame = window.requestAnimationFrame(() => {
         modeRefreshFrame = null;
-        refreshModeAvailability();
+        const isAvailable = refreshModeAvailability();
+
+        if (isAvailable || attempt >= EDIT_RESTORE_MAX_ATTEMPTS) {
+          return;
+        }
+
+        clearModeRefreshTimer();
+        modeRefreshTimer = window.setTimeout(() => {
+          modeRefreshTimer = null;
+          queueModeAvailabilityRefresh(attempt + 1);
+        }, EDIT_RESTORE_RETRY_MS);
       });
+    };
+
+    const clearEditRestoreTimer = () => {
+      if (editRestoreTimer !== null) {
+        window.clearTimeout(editRestoreTimer);
+        editRestoreTimer = null;
+      }
+    };
+
+    const restoreEditModeWhenAvailable = (session: GridEditorSessionState, attempt = 0) => {
+      clearEditRestoreTimer();
+
+      if (gridEditor) {
+        return;
+      }
+
+      const restoredEditMode = enterEditMode(session, { showUnavailableNotice: false });
+      updateHeader();
+
+      if (restoredEditMode || attempt >= EDIT_RESTORE_MAX_ATTEMPTS) {
+        return;
+      }
+
+      editRestoreTimer = window.setTimeout(() => {
+        editRestoreTimer = null;
+        restoreEditModeWhenAvailable(session, attempt + 1);
+      }, EDIT_RESTORE_RETRY_MS);
     };
 
     updateHeader();
     renderScore();
-    child.registerEvent(this.app.workspace.on("layout-change", queueModeAvailabilityRefresh));
-    child.registerEvent(this.app.workspace.on("active-leaf-change", queueModeAvailabilityRefresh));
+    queueModeAvailabilityRefresh();
+    child.registerEvent(this.app.workspace.on("layout-change", () => queueModeAvailabilityRefresh()));
+    child.registerEvent(this.app.workspace.on("active-leaf-change", () => queueModeAvailabilityRefresh()));
 
     let lastWidth = Math.round(notationViewport.clientWidth);
     const observer = new ResizeObserver((entries) => {
@@ -1031,11 +1165,10 @@ export default class DrumNotationPlugin extends Plugin {
         window.clearTimeout(resizeTimer);
         resizeTimer = null;
       }
-      if (writebackTimer !== null) {
-        window.clearTimeout(writebackTimer);
-        writebackTimer = null;
-        void persistEditedBlock();
-      }
+      flushPendingWriteback({
+        requireEditAvailability: false,
+        rememberRestoreSession: false
+      });
       if (playbackRestartTimer !== null) {
         window.clearTimeout(playbackRestartTimer);
         playbackRestartTimer = null;
@@ -1044,6 +1177,8 @@ export default class DrumNotationPlugin extends Plugin {
         window.cancelAnimationFrame(modeRefreshFrame);
         modeRefreshFrame = null;
       }
+      clearModeRefreshTimer();
+      clearEditRestoreTimer();
       gridEditor?.destroy();
       this.stopActivePlayer(renderOwner);
       this.stopActivePreview(renderOwner);
@@ -1093,9 +1228,9 @@ export default class DrumNotationPlugin extends Plugin {
     createButton.addEventListener("click", openCreateFirstBarModal);
 
     if (shouldRestoreEdit && restored) {
-      enterEditMode(restored.session);
       selectedBarIndex = clampBarIndex(block, restored.selectedBarIndex);
       selectEditSlot(restored.selectedSlotIndex);
+      restoreEditModeWhenAvailable(restored.session);
       if (restored.playback.wasPlaying) {
         window.setTimeout(() => {
           schedulePlaybackRestart(
@@ -1166,21 +1301,25 @@ export default class DrumNotationPlugin extends Plugin {
   }
 
   private isReadingViewRender(el: HTMLElement): boolean {
-    if (el.closest(".markdown-source-view")) {
-      return false;
-    }
-
-    if (el.closest(".markdown-preview-view, .markdown-reading-view")) {
-      return true;
-    }
-
     const containingLeaf = this.app.workspace.getLeavesOfType("markdown").find((leaf) => {
       const view = leaf.view;
 
       return view instanceof MarkdownView && view.containerEl.contains(el);
     });
 
-    return containingLeaf?.view instanceof MarkdownView && containingLeaf.view.getMode() === "preview";
+    if (containingLeaf?.view instanceof MarkdownView) {
+      return containingLeaf.view.getMode() === "preview";
+    }
+
+    if (el.closest(".markdown-preview-view, .markdown-reading-view")) {
+      return true;
+    }
+
+    if (el.closest(".markdown-source-view")) {
+      return false;
+    }
+
+    return false;
   }
 
   private getSourceFile(path: string): TFile | null {
