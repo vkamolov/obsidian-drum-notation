@@ -66,7 +66,7 @@ import {
 const WRITEBACK_DEBOUNCE_MS = 450;
 const PLAYBACK_RESTART_DEBOUNCE_MS = 220;
 const EDIT_RESTORE_RETRY_MS = 50;
-const EDIT_RESTORE_MAX_ATTEMPTS = 12;
+const EDIT_RESTORE_MAX_ATTEMPTS = 40;
 
 interface DrumNotationSettings {
   enableVisualEditMode: boolean;
@@ -1137,6 +1137,20 @@ export default class DrumNotationPlugin extends Plugin {
     queueModeAvailabilityRefresh();
     child.registerEvent(this.app.workspace.on("layout-change", () => queueModeAvailabilityRefresh()));
     child.registerEvent(this.app.workspace.on("active-leaf-change", () => queueModeAvailabilityRefresh()));
+    child.registerDomEvent(window, "scroll", () => queueModeAvailabilityRefresh(), {
+      capture: true,
+      passive: true
+    });
+
+    const visibilityObserver =
+      "IntersectionObserver" in window
+        ? new IntersectionObserver((entries) => {
+            if (entries.some((entry) => entry.isIntersecting)) {
+              queueModeAvailabilityRefresh();
+            }
+          })
+        : null;
+    visibilityObserver?.observe(root);
 
     let lastWidth = Math.round(notationViewport.clientWidth);
     const observer = new ResizeObserver((entries) => {
@@ -1160,6 +1174,7 @@ export default class DrumNotationPlugin extends Plugin {
     observer.observe(notationViewport);
 
     child.register(() => {
+      visibilityObserver?.disconnect();
       observer.disconnect();
       if (resizeTimer !== null) {
         window.clearTimeout(resizeTimer);
@@ -1280,7 +1295,7 @@ export default class DrumNotationPlugin extends Plugin {
     ctx: MarkdownPostProcessorContext,
     section: ReturnType<MarkdownPostProcessorContext["getSectionInfo"]>
   ): EditAvailability {
-    if (!this.isReadingViewRender(el)) {
+    if (!this.isReadingViewRender(el, ctx.sourcePath)) {
       return { ok: false, reason: "This action is available in Reading view only." };
     }
 
@@ -1300,7 +1315,7 @@ export default class DrumNotationPlugin extends Plugin {
     return { ok: true };
   }
 
-  private isReadingViewRender(el: HTMLElement): boolean {
+  private isReadingViewRender(el: HTMLElement, sourcePath: string): boolean {
     const containingLeaf = this.app.workspace.getLeavesOfType("markdown").find((leaf) => {
       const view = leaf.view;
 
@@ -1311,15 +1326,19 @@ export default class DrumNotationPlugin extends Plugin {
       return containingLeaf.view.getMode() === "preview";
     }
 
-    if (el.closest(".markdown-preview-view, .markdown-reading-view")) {
-      return true;
-    }
-
     if (el.closest(".markdown-source-view")) {
       return false;
     }
 
-    return false;
+    if (el.closest(".markdown-preview-view, .markdown-reading-view")) {
+      return true;
+    }
+
+    return this.app.workspace.getLeavesOfType("markdown").some((leaf) => {
+      const view = leaf.view;
+
+      return view instanceof MarkdownView && view.file?.path === sourcePath && view.getMode() === "preview";
+    });
   }
 
   private getSourceFile(path: string): TFile | null {
