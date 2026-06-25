@@ -846,6 +846,13 @@ function focusEditor(root: HTMLElement): void {
 interface EditorScrollSnapshot {
   gridScrollLeft: number;
   gridScrollTop: number;
+  ancestors: AncestorScrollSnapshot[];
+}
+
+interface AncestorScrollSnapshot {
+  element: HTMLElement;
+  scrollLeft: number;
+  scrollTop: number;
 }
 
 function captureEditorScroll(container: HTMLElement): EditorScrollSnapshot | null {
@@ -856,6 +863,7 @@ function captureEditorScroll(container: HTMLElement): EditorScrollSnapshot | nul
   }
 
   return {
+    ancestors: captureScrollableAncestors(container),
     gridScrollLeft: grid.scrollLeft,
     gridScrollTop: grid.scrollTop
   };
@@ -874,6 +882,29 @@ function restoreEditorScroll(container: HTMLElement, snapshot: EditorScrollSnaps
 
   grid.scrollLeft = snapshot.gridScrollLeft;
   grid.scrollTop = snapshot.gridScrollTop;
+  snapshot.ancestors.forEach(({ element, scrollLeft, scrollTop }) => {
+    element.scrollLeft = scrollLeft;
+    element.scrollTop = scrollTop;
+  });
+}
+
+function captureScrollableAncestors(container: HTMLElement): AncestorScrollSnapshot[] {
+  const ancestors: AncestorScrollSnapshot[] = [];
+  let element = container.parentElement;
+
+  while (element && element !== document.body) {
+    if (element.scrollHeight > element.clientHeight || element.scrollWidth > element.clientWidth) {
+      ancestors.push({
+        element,
+        scrollLeft: element.scrollLeft,
+        scrollTop: element.scrollTop
+      });
+    }
+
+    element = element.parentElement;
+  }
+
+  return ancestors;
 }
 
 function normalizeSelectedCell(cell: SelectedCell | ({ slotIndex: number; instrumentId: string } & Partial<InstrumentSelectedCell>) | null | undefined): SelectedCell | null {

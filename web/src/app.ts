@@ -127,6 +127,7 @@ function createPlaybackBackend(audioContext: AudioContext): DrumPlaybackBackend 
 
 /* ---------- rendering ---------- */
 function renderPreview(): void {
+  const scrollSnapshot = capturePreviewScroll();
   const block = parseDrumBlock(editor.value);
   currentBlock = block;
   lastRenderError = null;
@@ -176,6 +177,7 @@ function renderPreview(): void {
     gridEditor.syncBlock(block, selectedBarIndex);
   }
   applyEditHighlight();
+  restorePreviewScroll(scrollSnapshot);
 }
 
 function drawScore(block: DrumBlock, score: HTMLElement): void {
@@ -208,6 +210,39 @@ function drawScore(block: DrumBlock, score: HTMLElement): void {
     score.empty();
     score.createEl("pre", { cls: "drum-notation__error", text: lastRenderError });
   }
+}
+
+interface PreviewScrollSnapshot {
+  element: HTMLElement;
+  scrollLeft: number;
+  scrollTop: number;
+}
+
+function capturePreviewScroll(): PreviewScrollSnapshot | null {
+  const element = preview.parentElement;
+
+  if (!element) {
+    return null;
+  }
+
+  return {
+    element,
+    scrollLeft: element.scrollLeft,
+    scrollTop: element.scrollTop
+  };
+}
+
+function restorePreviewScroll(snapshot: PreviewScrollSnapshot | null): void {
+  if (!snapshot) {
+    return;
+  }
+
+  snapshot.element.scrollLeft = snapshot.scrollLeft;
+  snapshot.element.scrollTop = snapshot.scrollTop;
+  window.requestAnimationFrame(() => {
+    snapshot.element.scrollLeft = snapshot.scrollLeft;
+    snapshot.element.scrollTop = snapshot.scrollTop;
+  });
 }
 
 /* ---------- playback visuals ---------- */
