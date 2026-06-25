@@ -385,6 +385,8 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
   options.container.addEventListener("keydown", onKeyDown);
 
   const render = (restoreFocus = false) => {
+    const scrollSnapshot = captureEditorScroll(options.container);
+
     options.container.empty();
     const root = options.container.createEl("div", { cls: "pg-grid-editor" });
     root.tabIndex = -1;
@@ -422,6 +424,10 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     renderGrid(root);
     if (restoreFocus) {
       focusEditor(root);
+    }
+    restoreEditorScroll(options.container, scrollSnapshot);
+    if (restoreFocus && scrollSnapshot && typeof window !== "undefined") {
+      window.requestAnimationFrame(() => restoreEditorScroll(options.container, scrollSnapshot));
     }
   };
 
@@ -824,6 +830,39 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
 function focusEditor(root: HTMLElement): void {
   const selected = root.querySelector<HTMLElement>(".pg-grid__cell.is-selected");
   (selected ?? root).focus({ preventScroll: true });
+}
+
+interface EditorScrollSnapshot {
+  gridScrollLeft: number;
+  gridScrollTop: number;
+}
+
+function captureEditorScroll(container: HTMLElement): EditorScrollSnapshot | null {
+  const grid = container.querySelector<HTMLElement>(".pg-grid");
+
+  if (!grid) {
+    return null;
+  }
+
+  return {
+    gridScrollLeft: grid.scrollLeft,
+    gridScrollTop: grid.scrollTop
+  };
+}
+
+function restoreEditorScroll(container: HTMLElement, snapshot: EditorScrollSnapshot | null): void {
+  if (!snapshot) {
+    return;
+  }
+
+  const grid = container.querySelector<HTMLElement>(".pg-grid");
+
+  if (!grid) {
+    return;
+  }
+
+  grid.scrollLeft = snapshot.gridScrollLeft;
+  grid.scrollTop = snapshot.gridScrollTop;
 }
 
 function normalizeSelectedCell(cell: SelectedCell | ({ slotIndex: number; instrumentId: string } & Partial<InstrumentSelectedCell>) | null | undefined): SelectedCell | null {
