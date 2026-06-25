@@ -510,6 +510,7 @@ body.is-mobile .drum-notation__speed {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+  container-type: inline-size;
   min-width: 0;
   max-width: 100%;
   overflow-x: hidden;
@@ -840,6 +841,10 @@ body.is-mobile .drum-notation__speed {
 }
 
 .pg-grid-editor .pg-grid-editor__bar-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
   min-height: 1.8rem;
   padding: 0 0.55rem;
   font: inherit;
@@ -851,13 +856,64 @@ body.is-mobile .drum-notation__speed {
   cursor: pointer;
 }
 
+.pg-grid-editor__bar-action-icon {
+  display: block;
+  flex: 0 0 auto;
+  width: 1rem;
+  height: 1rem;
+}
+
+.pg-grid-editor__bar-action-label {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
 .pg-grid-editor__bar-action:hover,
 .pg-grid-editor__bar-action:focus-visible {
   border-color: var(--pg-accent);
 }
 
 .pg-grid-editor__bar-action--delete {
-  color: #dc2626;
+  color: var(--pg-text);
+  background: var(--pg-editor-control-bg);
+  border-color: var(--pg-border);
+}
+
+.pg-grid-editor__bar-action-separator {
+  flex: 0 0 2px;
+  align-self: stretch;
+  width: 2px;
+  min-height: 1.45rem;
+  margin: 0.2rem 0.25rem;
+  border-radius: 999px;
+  background: var(--pg-tool-separator);
+  pointer-events: none;
+}
+
+.pg-grid-editor__bar-action--delete:hover,
+.pg-grid-editor__bar-action--delete:focus-visible {
+  color: var(--pg-danger);
+  background: color-mix(in srgb, var(--pg-danger) 16%, var(--pg-editor-control-bg));
+  border-color: var(--pg-danger);
+}
+
+@container (max-width: 34rem) {
+  .pg-grid-editor__bar-actions {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .pg-grid-editor .pg-grid-editor__bar-action {
+    flex: 0 0 auto;
+    width: 2.05rem;
+    min-height: 2rem;
+    padding: 0;
+  }
+
+  .pg-grid-editor__bar-action-label {
+    display: none;
+  }
 }
 
 .pg-grid-editor__repeat-note {
@@ -1110,5 +1166,22 @@ body.is-mobile .drum-notation__speed {
   .drum-notation__empty {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .pg-grid-editor__bar-actions {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .pg-grid-editor .pg-grid-editor__bar-action {
+    flex: 0 0 auto;
+    width: 2.05rem;
+    min-height: 2rem;
+    padding: 0;
+  }
+
+  .pg-grid-editor__bar-action-label {
+    display: none;
   }
 }

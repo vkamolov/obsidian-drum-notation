@@ -9,6 +9,7 @@ import {
   clearBarRepeat,
   deleteBar,
   duplicateBar,
+  duplicateBarToNextSystem,
   findHit,
   findSticking,
   hitKey,
@@ -211,6 +212,60 @@ HH | x--- | --------------------------------`);
 
     expect(edited.systems).toHaveLength(2);
     expect(serializeDrumBlock(edited)).toBe("HH | x--- | --x-\nSD | ---- | --o-\nBar\nHH | --x-\nSD | --o-");
+  });
+
+  it("duplicateBarToNextSystem creates an untitled next system when none exists", () => {
+    const block = parseDrumBlock("HH | x--- | --x-\nSD | ---- | --o-");
+    const edited = duplicateBarToNextSystem(block, 1);
+
+    expect(edited.systems).toHaveLength(2);
+    expect(edited.systems[1].subtitle).toBeUndefined();
+    expect(serializeDrumBlock(edited)).toBe("HH | x--- | --x-\nSD | ---- | --o-\nBar\nHH | --x-\nSD | --o-");
+  });
+
+  it("duplicateBarToNextSystem appends to the existing next system and preserves its subtitle", () => {
+    const block = parseDrumBlock(`Subtitle: Groove
+HH | x--- | --x-
+SD | ---- | --o-
+Bar
+Subtitle: Fill
+BD | o---`);
+    const edited = duplicateBarToNextSystem(block, 1);
+
+    expect(edited.systems).toHaveLength(2);
+    expect(edited.systems[1].subtitle).toBe("Fill");
+    expect(serializeDrumBlock(edited)).toBe(`Subtitle: Groove
+HH | x--- | --x-
+SD | ---- | --o-
+Bar
+Subtitle: Fill
+BD | o---
+HH | ---- | --x-
+SD | ---- | --o-`);
+  });
+
+  it("duplicateBarToNextSystem preserves copied sticking and articulations", () => {
+    const block = parseDrumBlock(`ST | R--- | --L-
+HH | X--- | --x-
+SD | ---- | --o-
+Bar
+BD | o---`);
+    const edited = duplicateBarToNextSystem(block, 0);
+    const copiedStart = edited.bars[3].startSlot;
+
+    expect(findSticking(edited, copiedStart)).toBe("right");
+    expect(findHit(edited, copiedStart, HH.id)?.articulation).toBe("accent");
+    expect(serializeDrumBlock(parseDrumBlock(serializeDrumBlock(edited)))).toBe(serializeDrumBlock(edited));
+  });
+
+  it("duplicateBarToNextSystem copies a repeat bar as a normal editable bar", () => {
+    const block = parseDrumBlock("HH | x---\n%x3");
+    const edited = duplicateBarToNextSystem(block, 1);
+
+    expect(edited.systems).toHaveLength(2);
+    expect(edited.systems[1].bars[0].measureRepeat).toBeUndefined();
+    expect(findHit(edited, edited.systems[1].bars[0].startSlot, HH.id)).toBeTruthy();
+    expect(serializeDrumBlock(parseDrumBlock(serializeDrumBlock(edited)))).toBe(serializeDrumBlock(edited));
   });
 
   it("deleteBar removes a bar and drops empty systems", () => {

@@ -305,6 +305,39 @@ export function duplicateBar(block: DrumBlock, barIndex: number, placement: BarP
   return rebuildBlock(block, views);
 }
 
+export function duplicateBarToNextSystem(block: DrumBlock, barIndex: number): DrumBlock {
+  const views = block.systems.map(toSystemView);
+  const location = locateBar(views, barIndex);
+
+  if (!location) {
+    return block;
+  }
+
+  const sourceView = views[location.system];
+  const sourceBar = sourceView.bars[location.bar];
+  const snapshot = snapshotBar(sourceView, location.bar);
+  const normalCopy = {
+    ...emptyBarLike(sourceBar),
+    ...(snapshot.stickingPattern !== undefined ? { stickingPattern: snapshot.stickingPattern } : {})
+  };
+  const nextView = views[location.system + 1];
+
+  if (nextView) {
+    appendSnapshotAsBar(nextView, normalCopy, snapshot);
+  } else {
+    views.splice(location.system + 1, 0, {
+      bars: [normalCopy],
+      rows: snapshot.rows.map((row) => ({
+        instrument: row.instrument,
+        label: row.label,
+        patterns: [row.pattern]
+      }))
+    });
+  }
+
+  return rebuildBlock(block, views);
+}
+
 export function deleteBar(block: DrumBlock, barIndex: number): DrumBlock {
   const views = block.systems.map(toSystemView);
   const location = locateBar(views, barIndex);
@@ -575,6 +608,34 @@ function insertPatternsIntoSystem(
       row.patterns.splice(insertIndex, 0, "-".repeat(bar.width));
     }
   });
+}
+
+function appendSnapshotAsBar(view: SystemView, bar: BarView, snapshot: BarSnapshot): void {
+  const insertIndex = view.bars.length;
+
+  view.bars.push(bar);
+  snapshot.rows.forEach((snapshotRow) => {
+    let row = view.rows.find((candidate) => candidate.instrument.id === snapshotRow.instrument.id);
+
+    if (!row) {
+      row = {
+        instrument: snapshotRow.instrument,
+        label: snapshotRow.label,
+        patterns: []
+      };
+      view.rows.push(row);
+    }
+
+    while (row.patterns.length < insertIndex) {
+      row.patterns.push("-".repeat(view.bars[row.patterns.length].width));
+    }
+
+    row.patterns[insertIndex] = snapshotRow.pattern;
+  });
+
+  if (snapshot.stickingPattern !== undefined) {
+    view.bars[insertIndex].stickingPattern = snapshot.stickingPattern;
+  }
 }
 
 function systemHasSticking(view: SystemView): boolean {

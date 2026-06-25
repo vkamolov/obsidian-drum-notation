@@ -14,6 +14,7 @@ import {
   clearSticking,
   deleteBar,
   duplicateBar,
+  duplicateBarToNextSystem,
   findHit,
   findSticking,
   insertBarAfter,
@@ -74,6 +75,8 @@ const ARTICULATION_LABELS: Record<DrumArticulation, string> = {
 };
 
 const SVG_NS = "http://www.w3.org/2000/svg";
+
+type BarActionIcon = "add" | "copy" | "copy-next" | "new-line" | "repeat" | "unrepeat" | "delete";
 
 export type SelectedCell = InstrumentSelectedCell | StickingSelectedCell;
 
@@ -270,6 +273,10 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     applyChange(duplicateBar(working, selectedBarIndex), undefined, selectedBarIndex + 1);
   };
 
+  const duplicateSelectedBarToNextSystem = () => {
+    applyChange(duplicateBarToNextSystem(working, selectedBarIndex), undefined, barIndexForNextSystemCopy());
+  };
+
   const addBarOnNewSystem = () => {
     applyChange(insertBarAfter(working, selectedBarIndex, "new-system"), undefined, barIndexAfterSelectedSystem());
   };
@@ -321,6 +328,24 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
 
       if (selectedBarIndex >= current && selectedBarIndex < next) {
         return next;
+      }
+
+      current = next;
+    }
+
+    return selectedBarIndex + 1;
+  };
+
+  const barIndexForNextSystemCopy = (): number => {
+    let current = 0;
+
+    for (let systemIndex = 0; systemIndex < working.systems.length; systemIndex++) {
+      const system = working.systems[systemIndex];
+      const next = current + system.bars.length;
+
+      if (selectedBarIndex >= current && selectedBarIndex < next) {
+        const nextSystem = working.systems[systemIndex + 1];
+        return nextSystem ? next + nextSystem.bars.length : next;
       }
 
       current = next;
@@ -486,55 +511,31 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     }
 
     const actions = root.createEl("div", { cls: "pg-grid-editor__bar-actions" });
-    const addButton = actions.createEl("button", {
-      cls: "pg-grid-editor__bar-action",
-      text: "Add"
-    }) as HTMLButtonElement;
-    addButton.type = "button";
-    addButton.title = "Add bar after";
-    addButton.setAttr("aria-label", "Add bar after");
-    addButton.addEventListener("click", addBarAfterSelection);
+    createBarAction(actions, "Add", "add", "Add bar after", addBarAfterSelection);
+    createBarAction(actions, "Copy", "copy", "Duplicate bar", duplicateSelectedBar);
+    createBarAction(actions, "Copy ↓", "copy-next", "Copy bar to next line", duplicateSelectedBarToNextSystem);
+    createBarAction(actions, "New line", "new-line", "Add bar on new line", addBarOnNewSystem);
 
-    const duplicateButton = actions.createEl("button", {
-      cls: "pg-grid-editor__bar-action",
-      text: "Copy"
-    }) as HTMLButtonElement;
-    duplicateButton.type = "button";
-    duplicateButton.title = "Duplicate bar";
-    duplicateButton.setAttr("aria-label", "Duplicate bar");
-    duplicateButton.addEventListener("click", duplicateSelectedBar);
-
-    const newLineButton = actions.createEl("button", {
-      cls: "pg-grid-editor__bar-action",
-      text: "New line"
-    }) as HTMLButtonElement;
-    newLineButton.type = "button";
-    newLineButton.title = "Add bar on new line";
-    newLineButton.setAttr("aria-label", "Add bar on new line");
-    newLineButton.addEventListener("click", addBarOnNewSystem);
-
-    const repeatButton = actions.createEl("button", {
-      cls: "pg-grid-editor__bar-action",
-      text: selectedBar()?.measureRepeat ? "Unrepeat" : "Repeat"
-    }) as HTMLButtonElement;
-    repeatButton.type = "button";
+    const isRepeat = !!selectedBar()?.measureRepeat;
+    const repeatButton = createBarAction(
+      actions,
+      isRepeat ? "Unrepeat" : "Repeat",
+      isRepeat ? "unrepeat" : "repeat",
+      isRepeat ? "Make repeat bar editable" : "Repeat previous bar",
+      () => {
+        void toggleSelectedBarRepeat();
+      }
+    );
     repeatButton.disabled = selectedBarIndex === 0 && !selectedBar()?.measureRepeat;
-    repeatButton.title = selectedBar()?.measureRepeat ? "Make repeat bar editable" : "Repeat previous bar";
-    repeatButton.setAttr("aria-label", selectedBar()?.measureRepeat ? "Make repeat bar editable" : "Repeat previous bar");
-    repeatButton.addEventListener("click", () => {
-      void toggleSelectedBarRepeat();
+
+    actions.createEl("span", {
+      cls: "pg-grid-editor__bar-action-separator",
+      attr: { "aria-hidden": "true" }
     });
 
-    const deleteButton = actions.createEl("button", {
-      cls: "pg-grid-editor__bar-action pg-grid-editor__bar-action--delete",
-      text: "Delete"
-    }) as HTMLButtonElement;
-    deleteButton.type = "button";
-    deleteButton.title = "Delete bar";
-    deleteButton.setAttr("aria-label", "Delete bar");
-    deleteButton.addEventListener("click", () => {
+    createBarAction(actions, "Delete", "delete", "Delete bar", () => {
       void deleteSelectedBar();
-    });
+    }, "pg-grid-editor__bar-action--delete");
   };
 
   const renderSelectedCellTools = (root: HTMLElement) => {
@@ -1092,6 +1093,88 @@ function createArticulationIcon(articulation: DrumArticulation): SVGSVGElement {
     case "normal":
     default:
       appendNotehead(svg, 18, 18, 8.5, 5.3);
+      break;
+  }
+
+  return svg;
+}
+
+function createBarAction(
+  parent: HTMLElement,
+  label: string,
+  icon: BarActionIcon,
+  title: string,
+  onClick: () => void,
+  extraClass = ""
+): HTMLButtonElement {
+  const button = parent.createEl("button", {
+    cls: `pg-grid-editor__bar-action ${extraClass}`.trim()
+  }) as HTMLButtonElement;
+
+  button.type = "button";
+  button.title = title;
+  button.setAttr("aria-label", title);
+  button.appendChild(createBarActionIcon(icon));
+  button.createEl("span", { cls: "pg-grid-editor__bar-action-label", text: label });
+  button.addEventListener("click", onClick);
+
+  return button;
+}
+
+function createBarActionIcon(icon: BarActionIcon): SVGSVGElement {
+  const svg = createSvg("svg", {
+    class: "pg-grid-editor__bar-action-icon",
+    viewBox: "0 0 24 24",
+    "aria-hidden": "true",
+    focusable: "false"
+  });
+  const lineAttrs = {
+    fill: "none",
+    stroke: "currentColor",
+    "stroke-width": "2",
+    "stroke-linecap": "round",
+    "stroke-linejoin": "round"
+  };
+
+  switch (icon) {
+    case "add":
+      appendSvg(svg, "path", { d: "M12 5 V19 M5 12 H19", ...lineAttrs });
+      break;
+    case "copy":
+      appendSvg(svg, "rect", { x: "8", y: "8", width: "10", height: "10", rx: "1.5", ...lineAttrs });
+      appendSvg(svg, "path", { d: "M6 15 H5 C4.4 15 4 14.6 4 14 V5 C4 4.4 4.4 4 5 4 H14 C14.6 4 15 4.4 15 5 V6", ...lineAttrs });
+      break;
+    case "copy-next":
+      appendSvg(svg, "rect", { x: "5", y: "4", width: "9", height: "9", rx: "1.5", ...lineAttrs });
+      appendSvg(svg, "path", { d: "M10 13 H15 C15.6 13 16 13.4 16 14 V19", ...lineAttrs });
+      appendSvg(svg, "path", { d: "M12.5 16.5 L16 20 L19.5 16.5", ...lineAttrs });
+      break;
+    case "new-line":
+      appendSvg(svg, "path", { d: "M5 6 H19 M5 11 H13 M13 11 V19", ...lineAttrs });
+      appendSvg(svg, "path", { d: "M9.5 15.5 L13 19 L16.5 15.5", ...lineAttrs });
+      break;
+    case "repeat":
+      appendSvg(svg, "path", { d: "M17 2 L21 6 L17 10", ...lineAttrs });
+      appendSvg(svg, "path", { d: "M3 11 V9 C3 7.3 4.3 6 6 6 H21", ...lineAttrs });
+      appendSvg(svg, "path", { d: "M7 22 L3 18 L7 14", ...lineAttrs });
+      appendSvg(svg, "path", { d: "M21 13 V15 C21 16.7 19.7 18 18 18 H3", ...lineAttrs });
+      break;
+    case "unrepeat":
+      appendSvg(svg, "path", { d: "M17 2 L21 6 L17 10", ...lineAttrs });
+      appendSvg(svg, "path", { d: "M3 11 V9 C3 7.3 4.3 6 6 6 H21", ...lineAttrs });
+      appendSvg(svg, "path", { d: "M7 22 L3 18 L7 14", ...lineAttrs });
+      appendSvg(svg, "path", { d: "M21 13 V15 C21 16.7 19.7 18 18 18 H3", ...lineAttrs });
+      appendSvg(svg, "path", {
+        d: "M9.5 9.5 L14.5 14.5 M14.5 9.5 L9.5 14.5",
+        ...lineAttrs,
+        "stroke-width": "2.2"
+      });
+      break;
+    case "delete":
+      appendSvg(svg, "path", { d: "M5 7 H19", ...lineAttrs });
+      appendSvg(svg, "path", { d: "M9 7 V5 C9 4.4 9.4 4 10 4 H14 C14.6 4 15 4.4 15 5 V7", ...lineAttrs });
+      appendSvg(svg, "path", { d: "M17 7 L16.3 19 C16.2 19.6 15.7 20 15.1 20 H8.9 C8.3 20 7.8 19.6 7.7 19 L7 7", ...lineAttrs });
+      appendSvg(svg, "path", { d: "M10 11 V16 M14 11 V16", ...lineAttrs });
       break;
   }
 
