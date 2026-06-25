@@ -68,15 +68,17 @@
 .drum-notation__toolbar {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: 0.75rem;
 }
 
 .drum-notation__title {
   display: flex;
+  flex: 1 1 16rem;
   flex-direction: column;
   gap: 0.15rem;
-  min-width: 0;
+  min-width: min(100%, 14rem);
   color: var(--drum-text);
   font-weight: 560;
 }
@@ -1066,6 +1068,18 @@
   .drum-notation__toolbar {
     align-items: flex-start;
     flex-direction: column;
+    justify-content: flex-start;
+  }
+
+  .drum-notation__title {
+    flex: 0 1 auto;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .drum-notation__controls {
+    width: 100%;
+    justify-content: flex-start;
   }
 
   .drum-notation__empty {
