@@ -776,6 +776,7 @@ function syncControls(block: DrumBlock): void {
 // rewrite the editor in authoring form. The core serializer still owns the
 // deterministic normalized form used in diagnostics.
 function applyEditedBlock(next: DrumBlock): void {
+  dismissManualCopyText();
   editor.value = serializeDrumBlock(next, { mode: "authoring" });
   persist();
   renderPreview();
@@ -783,6 +784,7 @@ function applyEditedBlock(next: DrumBlock): void {
 
 function applyGridEditedBlock(next: DrumBlock, changedSlotIndex?: number, nextSelectedBarIndex?: number): void {
   const restartPlayback = capturePlaybackRestart();
+  dismissManualCopyText();
 
   if (nextSelectedBarIndex !== undefined) {
     selectedBarIndex = clampBarIndex(next, nextSelectedBarIndex);
@@ -974,6 +976,10 @@ function toAuthoringText(raw: string): string {
   return serializeDrumBlock(parseDrumBlock(raw), { mode: "authoring" });
 }
 
+function dismissManualCopyText(): void {
+  document.querySelector(".pg-copy-fallback")?.remove();
+}
+
 async function copyText(button: HTMLButtonElement, text: string): Promise<void> {
   const original = button.textContent ?? "";
   try {
@@ -1039,7 +1045,7 @@ function copyWithClipboardEvent(text: string): boolean {
 }
 
 function showManualCopyText(text: string): void {
-  document.querySelector(".pg-copy-fallback")?.remove();
+  dismissManualCopyText();
 
   const panel = document.body.createEl("div", {
     cls: "pg-copy-fallback",
@@ -1112,7 +1118,10 @@ function init(): void {
     renderPreview();
     restartPlayback();
   }, 250);
-  editor.addEventListener("input", onEdit);
+  editor.addEventListener("input", () => {
+    dismissManualCopyText();
+    onEdit();
+  });
 
   exampleSelect.addEventListener("change", () => {
     if (!exampleSelect.value) {
@@ -1123,6 +1132,7 @@ function init(): void {
     if (text === undefined) {
       return;
     }
+    dismissManualCopyText();
     editor.value = toAuthoringText(text);
     persist();
     renderPreview();

@@ -46,7 +46,7 @@ Add `Cursor: on` if you want a blinking cursor to follow playback. Click a rende
 
 ## Visual Edit Mode
 
-Visual edit mode is opt-in because it writes changes back to your notes. Enable **Drum Notation → Enable visual edit mode** in the plugin settings first. Then, in Obsidian reading view, press **Edit** to open a selected-bar grid below the rendered score. Click or tap a rendered bar to choose which bar the grid edits. Empty cells add a normal hit; filled cells select the hit and show the articulation tool strip. Edits apply immediately to the rendered notation and are saved back into the fenced `drums` block after a short debounce.
+Visual edit mode is opt-in because it writes changes back to your notes. Enable **Drum Notation → Enable visual edit mode** in the plugin settings first. Then, in Obsidian reading view, press **Edit** to open a selected-bar grid below the rendered score. Click or tap a rendered bar to choose which bar the grid edits. Empty cells add a normal hit; filled cells select the hit and show the articulation tool strip. Edits apply immediately to the rendered notation and are saved back into the fenced `drums` block when you close visual edit mode or when Obsidian unloads the rendered block.
 
 Visual edit mode is intentionally limited in v1:
 
@@ -459,3 +459,35 @@ To test in Obsidian, copy or symlink this folder into:
 ```
 
 Then enable **Drum Notation** in Obsidian's community plugins settings.
+
+## Installation And Beta Testing
+
+After Community directory approval, install **Drum Notation** from Obsidian's
+Community plugins browser.
+
+Before approval, beta testers can install GitHub releases with
+[BRAT](https://github.com/TfTHacker/obsidian42-brat), or install manually:
+
+1. Download `main.js`, `manifest.json`, and `styles.css` from a release.
+2. Create this folder in your vault:
+   ```text
+   <vault>/.obsidian/plugins/drum-notation
+   ```
+3. Copy those three files into that folder.
+4. Reload Obsidian and enable **Drum Notation**.
+
+## Privacy
+
+The Obsidian plugin makes no network requests and includes no telemetry. Notes,
+settings, and generated notation stay in your vault.
+
+The web playground runs entirely in the browser. It uses `localStorage` to keep
+the current playground notation and light/dark preference for the current
+browser profile. It does not send notation to a server.
+
+## License And Third-Party Notices
+
+Drum Notation is released under the MIT License. Production builds include
+[VexFlow](https://www.vexflow.com/) 5.0.0 for music engraving, also under the
+MIT License. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for the full
+VexFlow notice.

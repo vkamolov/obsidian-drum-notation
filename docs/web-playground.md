@@ -137,7 +137,7 @@ the **first** import in `app.ts`. `engrave.ts` itself was **not** changed.
 
 ```bash
 npm ci
-npm test            # expect: 95 passed
+npm test            # expect: 161 passed
 npm run build       # plugin build: tsc + esbuild, no errors; emits main.js
 npm run web:build   # vite build, no errors; emits web/dist/ (JS ~1.17MB — VexFlow; size warning is advisory only)
 npm run web:typecheck
@@ -192,6 +192,6 @@ Console should be free of errors/warnings.
 
 ## Explicitly NOT done
 
-- **GitHub Pages deploy** — deferred. The current plan blocks Pages on a private
-  repo (API returns `422`). No deploy workflow was added (it would fail on every
-  push). Revisit when the repo is made public.
+- **GitHub Pages deploy** — deferred until the repo is public and Pages is
+  enabled. A manual `workflow_dispatch` Pages workflow exists; keep it manual
+  until the first successful deployment is verified.

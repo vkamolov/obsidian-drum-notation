@@ -1773,7 +1773,6 @@ class DrumNotationSettingTab extends PluginSettingTab {
     const { containerEl } = this;
 
     containerEl.empty();
-    containerEl.createEl("h2", { text: "Drum Notation" });
 
     new Setting(containerEl)
       .setName("Enable visual edit mode")

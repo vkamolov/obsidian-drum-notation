@@ -1,7 +1,7 @@
 name: Release plugin
 
-# Cut a release by pushing a tag that equals the manifest version, e.g.:
-#   git tag 0.8.33 && git push origin 0.8.33
+# Cut a release by pushing an annotated tag that equals the manifest version, e.g.:
+#   git tag -a 0.9.0 -m "0.9.0" && git push origin 0.9.0
 # Obsidian requires the tag to match manifest.json "version" exactly (no leading "v").
 on:
   push:
@@ -10,16 +10,18 @@ on:
 
 permissions:
   contents: write
+  id-token: write
+  attestations: write
 
 jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
 
       - name: Install dependencies
@@ -29,22 +31,38 @@ jobs:
         run: |
           tag="${GITHUB_REF#refs/tags/}"
           manifest="$(node -p "require('./manifest.json').version")"
+          if ! printf '%s' "$tag" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "Tag $tag is not an exact semver tag like 1.0.0" >&2
+            exit 1
+          fi
           if [ "$tag" != "$manifest" ]; then
             echo "Tag $tag does not match manifest version $manifest" >&2
             exit 1
           fi
 
-      - name: Test and build
+      - name: Test, audit, and build
         run: |
           npm test
           npm run build
+          npm run web:build
+          npm run web:typecheck
+          npm audit --omit=dev
 
-      - name: Create GitHub release with plugin assets
+      - name: Generate artifact attestations
+        uses: actions/attest@v4
+        with:
+          subject-path: |
+            main.js
+            manifest.json
+            styles.css
+
+      - name: Create draft GitHub release with plugin assets
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           tag="${GITHUB_REF#refs/tags/}"
           gh release create "$tag" \
             --title "$tag" \
-            --notes "Release $tag" \
-            main.js manifest.json styles.css versions.json
+            --draft \
+            --generate-notes \
+            main.js manifest.json styles.css
