@@ -4,7 +4,9 @@ import { parseDrumBlock } from "../src/parser";
 import { serializeDrumBlock } from "../src/serializer";
 import {
   applyArticulation,
+  applyArticulationToInstrumentInBar,
   clearHit,
+  clearInstrumentInBar,
   clearSticking,
   clearBarRepeat,
   deleteBar,
@@ -96,6 +98,69 @@ describe("hit edits", () => {
 
     expect(findHit(accented, 3, SD.id)?.articulation).toBe("accent");
     expect(serializeDrumBlock(accented)).toBe("SD | ---O");
+  });
+
+  it("applyArticulationToInstrumentInBar changes every hit for one instrument in the selected bar", () => {
+    const block = parseDrumBlock("HH | x-x- | x-x-\nSD | ---- | --o-");
+    const accented = applyArticulationToInstrumentInBar(block, 1, HH, "accent");
+
+    expect(findHit(accented, 0, HH.id)?.articulation).toBe("normal");
+    expect(findHit(accented, 4, HH.id)?.articulation).toBe("accent");
+    expect(findHit(accented, 6, HH.id)?.articulation).toBe("accent");
+    expect(findHit(accented, 6, SD.id)?.articulation).toBe("normal");
+    expect(serializeDrumBlock(accented)).toBe("HH | x-x- | X-X-\nSD | ---- | --o-");
+  });
+
+  it("applyArticulationToInstrumentInBar is a no-op when the instrument has no hits in that bar", () => {
+    const block = parseDrumBlock("HH | ---- | x---\nSD | --o- | ----");
+
+    expect(applyArticulationToInstrumentInBar(block, 0, HH, "accent")).toBe(block);
+  });
+
+  it("clearInstrumentInBar removes one instrument's hits in only the selected bar", () => {
+    const block = parseDrumBlock("HH | x-x- | x-x-\nSD | ---- | --o-");
+    const cleared = clearInstrumentInBar(block, 1, HH);
+
+    expect(findHit(cleared, 0, HH.id)).toBeTruthy();
+    expect(findHit(cleared, 4, HH.id)).toBeUndefined();
+    expect(findHit(cleared, 6, HH.id)).toBeUndefined();
+    expect(findHit(cleared, 6, SD.id)).toBeTruthy();
+    expect(serializeDrumBlock(cleared)).toBe("HH | x-x-\nSD | ---- | --o-");
+  });
+
+  it("clearInstrumentInBar preserves hits in other systems", () => {
+    const block = parseDrumBlock("HH | x---\nBar\nHH | x---\nSD | --o-");
+    const cleared = clearInstrumentInBar(block, 1, HH);
+
+    expect(findHit(cleared, 0, HH.id)).toBeTruthy();
+    expect(findHit(cleared, 4, HH.id)).toBeUndefined();
+    expect(findHit(cleared, 6, SD.id)).toBeTruthy();
+    expect(serializeDrumBlock(cleared)).toBe("HH | x---\nBar\nSD | --o-");
+  });
+
+  it("clearInstrumentInBar removes a row when its last trailing hit is cleared", () => {
+    const block = parseDrumBlock("HH | x---\nSD | --o-");
+    const cleared = clearInstrumentInBar(block, 0, HH);
+
+    expect(cleared.rows.some((row) => row.instrument.id === HH.id)).toBe(false);
+    expect(serializeDrumBlock(cleared)).toBe("SD | --o-");
+  });
+
+  it("clearInstrumentInBar keeps all-rest prefixes when later bars still contain hits", () => {
+    const block = parseDrumBlock("HH | x--- | ---- | --x-\nSD | ---- | --o- | ----");
+    const cleared = clearInstrumentInBar(block, 0, HH);
+
+    expect(findHit(cleared, 0, HH.id)).toBeUndefined();
+    expect(findHit(cleared, 10, HH.id)).toBeTruthy();
+    expect(serializeDrumBlock(cleared)).toBe("HH | ---- | ---- | --x-\nSD | ---- | --o- | ----");
+  });
+
+  it("row-level hit edits remain serialize round-trip stable", () => {
+    const block = parseDrumBlock("Title: Row edit\nHH | x-x- | x-x-\nSD | ---- | --o-");
+    const edited = clearInstrumentInBar(applyArticulationToInstrumentInBar(block, 1, HH, "accent"), 1, SD);
+    const text = serializeDrumBlock(edited);
+
+    expect(serializeDrumBlock(parseDrumBlock(text))).toBe(text);
   });
 
   it("setInstrument moves a hit to another voice, keeping articulation", () => {

@@ -9,8 +9,10 @@
 
 import {
   applyArticulation,
+  applyArticulationToInstrumentInBar,
   clearBarRepeat,
   clearHit,
+  clearInstrumentInBar,
   clearSticking,
   deleteBar,
   duplicateBar,
@@ -78,12 +80,18 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 
 type BarActionIcon = "add" | "copy" | "copy-next" | "new-line" | "repeat" | "unrepeat" | "delete";
 
-export type SelectedCell = InstrumentSelectedCell | StickingSelectedCell;
+export type SelectedCell = InstrumentSelectedCell | InstrumentRowSelectedCell | StickingSelectedCell;
 
 export interface InstrumentSelectedCell {
   kind: "instrument";
   slotIndex: number;
   instrumentId: string;
+}
+
+export interface InstrumentRowSelectedCell {
+  kind: "instrument-row";
+  instrumentId: string;
+  barIndex: number;
 }
 
 export interface StickingSelectedCell {
@@ -195,20 +203,91 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
 
   const selectedBar = () => working.bars[selectedBarIndex];
 
+  const selectedSystem = () => {
+    let current = 0;
+
+    for (const system of working.systems) {
+      const next = current + system.bars.length;
+
+      if (selectedBarIndex >= current && selectedBarIndex < next) {
+        return system;
+      }
+
+      current = next;
+    }
+
+    return undefined;
+  };
+
   const cellBelongsToSelectedBar = (): boolean => {
     const bar = selectedBar();
 
-    return !!bar && !!selectedCell && selectedCell.slotIndex >= bar.startSlot && selectedCell.slotIndex < bar.startSlot + bar.slots.length;
+    if (!bar || !selectedCell) {
+      return false;
+    }
+
+    if (selectedCell.kind === "instrument-row") {
+      const selectedInstrumentId = selectedCell.instrumentId;
+      return (
+        selectedCell.barIndex === selectedBarIndex &&
+        !bar.measureRepeat &&
+        displayedInstruments().some((instrument) => instrument.id === selectedInstrumentId)
+      );
+    }
+
+    return selectedCell.slotIndex >= bar.startSlot && selectedCell.slotIndex < bar.startSlot + bar.slots.length;
   };
 
   const selectedInstrument = (): DrumInstrument | undefined => {
-    if (!selectedCell || selectedCell.kind !== "instrument") {
+    if (!selectedCell || selectedCell.kind === "sticking") {
       return undefined;
     }
 
     const instrumentId = selectedCell.instrumentId;
 
     return displayedInstruments().find((instrument) => instrument.id === instrumentId);
+  };
+
+  const hitsForInstrumentInSelectedBar = (instrument: DrumInstrument) => {
+    const bar = selectedBar();
+
+    if (!bar) {
+      return [];
+    }
+
+    return bar.slots.flatMap((slot) => {
+      const hit = findHit(working, slot.index, instrument.id);
+
+      return hit ? [{ hit, slotIndex: slot.index }] : [];
+    });
+  };
+
+  const isExtraOnlyInstrument = (instrumentId: string): boolean =>
+    extraInstruments.some((instrument) => instrument.id === instrumentId) &&
+    !instrumentsInSelectedSystem().some((instrument) => instrument.id === instrumentId);
+
+  const markExtraInstrumentModeled = (instrumentId: string): void => {
+    const index = extraInstruments.findIndex((instrument) => instrument.id === instrumentId);
+
+    if (index !== -1) {
+      extraInstruments.splice(index, 1);
+    }
+  };
+
+  const removeExtraInstrument = (instrumentId: string): boolean => {
+    if (!isExtraOnlyInstrument(instrumentId)) {
+      return false;
+    }
+
+    const index = extraInstruments.findIndex((instrument) => instrument.id === instrumentId);
+    if (index === -1) {
+      return false;
+    }
+
+    extraInstruments.splice(index, 1);
+    selectedCell = null;
+    render(true);
+    return true;
   };
 
   const applyArticulationToSelection = (articulation: DrumArticulation) => {
@@ -218,10 +297,31 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
       return;
     }
 
+    if (selectedCell.kind === "instrument-row") {
+      if (!cellBelongsToSelectedBar()) {
+        return;
+      }
+
+      const selectedHits = hitsForInstrumentInSelectedBar(instrument);
+      if (selectedHits.length === 0) {
+        return;
+      }
+
+      applyChange(
+        applyArticulationToInstrumentInBar(working, selectedBarIndex, instrument, articulation),
+        selectedHits[0].slotIndex
+      );
+      return;
+    }
+
     const existing = findHit(working, selectedCell.slotIndex, instrument.id);
     const next = existing
       ? applyArticulation(working, selectedCell.slotIndex, instrument, articulation)
       : setHit(working, selectedCell.slotIndex, instrument, articulation);
+
+    if (!existing) {
+      markExtraInstrumentModeled(instrument.id);
+    }
 
     applyChange(next, selectedCell.slotIndex);
   };
@@ -230,6 +330,21 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     const instrument = selectedInstrument();
 
     if (!selectedCell || !instrument) {
+      return;
+    }
+
+    if (selectedCell.kind === "instrument-row") {
+      if (!cellBelongsToSelectedBar()) {
+        return;
+      }
+
+      const selectedHits = hitsForInstrumentInSelectedBar(instrument);
+      if (selectedHits.length === 0) {
+        removeExtraInstrument(instrument.id);
+        return;
+      }
+
+      applyChange(clearInstrumentInBar(working, selectedBarIndex, instrument), selectedHits[0].slotIndex);
       return;
     }
 
@@ -558,29 +673,43 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
 
   const renderArticulationTools = (tools: HTMLElement): boolean => {
     const instrument = selectedInstrument();
-    const slotIndex = selectedCell?.slotIndex;
 
-    if (!instrument || slotIndex === undefined || !cellBelongsToSelectedBar()) {
+    if (!selectedCell || !instrument || !cellBelongsToSelectedBar()) {
       return false;
     }
 
-    const hit = findHit(working, slotIndex, instrument.id);
+    const isRowSelection = selectedCell.kind === "instrument-row";
+    const selectedHits = isRowSelection ? hitsForInstrumentInSelectedBar(instrument) : [];
+    const slotIndex = selectedCell.kind === "instrument" ? selectedCell.slotIndex : undefined;
+    const hit = slotIndex === undefined ? undefined : findHit(working, slotIndex, instrument.id);
+    const shortLabel = (instrument.aliases[0] ?? instrument.id).toUpperCase();
+    const sharedRowArticulation =
+      selectedHits.length > 0 && selectedHits.every((entry) => entry.hit.articulation === selectedHits[0].hit.articulation)
+        ? selectedHits[0].hit.articulation
+        : undefined;
+    const selectedHitCount = isRowSelection ? selectedHits.length : hit ? 1 : 0;
+    const deleteRemovesExtraRow = isRowSelection && selectedHitCount === 0 && isExtraOnlyInstrument(instrument.id);
     const label = tools.createEl("span", {
       cls: "pg-grid-editor__selection",
-      text: `${(instrument.aliases[0] ?? instrument.id).toUpperCase()} ${slotIndex + 1}`
+      text: isRowSelection
+        ? `${shortLabel} · ${selectedHitCount === 1 ? "1 note" : selectedHitCount === 0 ? "no notes" : `${selectedHitCount} notes`}`
+        : `${shortLabel} ${(slotIndex ?? 0) + 1}`
     });
 
     label.setAttr("aria-live", "polite");
 
     getAllowedArticulations(instrument).forEach((articulation) => {
       const button = tools.createEl("button", {
-        cls: `pg-grid-editor__tool ${hit?.articulation === articulation ? "is-active" : ""}`
+        cls: `pg-grid-editor__tool ${
+          (isRowSelection ? sharedRowArticulation : hit?.articulation) === articulation ? "is-active" : ""
+        }`
       }) as HTMLButtonElement;
 
       button.dataset.articulation = articulation;
       button.title = ARTICULATION_LABELS[articulation];
       button.setAttr("aria-label", ARTICULATION_LABELS[articulation]);
       button.appendChild(createArticulationIcon(articulation));
+      button.disabled = isRowSelection && selectedHitCount === 0;
       button.addEventListener("click", () => applyArticulationToSelection(articulation));
     });
 
@@ -593,16 +722,16 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
       cls: "pg-grid-editor__tool pg-grid-editor__tool--delete"
     }) as HTMLButtonElement;
 
-    deleteButton.title = "Delete note";
-    deleteButton.setAttr("aria-label", "Delete note");
+    deleteButton.title = isRowSelection ? `Clear ${shortLabel} in this bar` : "Delete note";
+    deleteButton.setAttr("aria-label", isRowSelection ? `Clear ${shortLabel} in this bar` : "Delete note");
     deleteButton.appendChild(createDeleteIcon());
-    deleteButton.disabled = !hit;
+    deleteButton.disabled = isRowSelection ? selectedHitCount === 0 && !deleteRemovesExtraRow : !hit;
     deleteButton.addEventListener("click", clearSelectionHit);
     return true;
   };
 
   const renderStickingTools = (tools: HTMLElement): boolean => {
-    const slotIndex = selectedCell?.slotIndex;
+    const slotIndex = selectedCell?.kind === "sticking" ? selectedCell.slotIndex : undefined;
 
     if (selectedCell?.kind !== "sticking" || slotIndex === undefined || !cellBelongsToSelectedBar()) {
       return false;
@@ -649,14 +778,29 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     return true;
   };
 
+  const instrumentsInSelectedSystem = (): DrumInstrument[] => {
+    const seen = new Set<string>();
+    const result: DrumInstrument[] = [];
+    const system = selectedSystem();
+
+    for (const bar of system?.bars ?? []) {
+      for (const row of bar.rows) {
+        if (!seen.has(row.instrument.id)) {
+          seen.add(row.instrument.id);
+          result.push(row.instrument);
+        }
+      }
+    }
+
+    return result;
+  };
+
   const displayedInstruments = (): DrumInstrument[] => {
     const seen = new Set<string>();
     const result: DrumInstrument[] = [];
-    for (const row of working.rows) {
-      if (!seen.has(row.instrument.id)) {
-        seen.add(row.instrument.id);
-        result.push(row.instrument);
-      }
+    for (const instrument of instrumentsInSelectedSystem()) {
+      seen.add(instrument.id);
+      result.push(instrument);
     }
     for (const instrument of extraInstruments) {
       if (!seen.has(instrument.id)) {
@@ -688,9 +832,23 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
 
     for (const instrument of displayedInstruments()) {
       const rowEl = grid.createEl("div", { cls: "pg-grid__row" });
-      rowEl.createEl("div", {
-        cls: "pg-grid__label",
-        text: (instrument.aliases[0] ?? instrument.id).toUpperCase()
+      const instrumentLabel = (instrument.aliases[0] ?? instrument.id).toUpperCase();
+      const isRowSelected =
+        selectedCell?.kind === "instrument-row" &&
+        selectedCell.instrumentId === instrument.id &&
+        selectedCell.barIndex === selectedBarIndex;
+      const rowLabel = rowEl.createEl("button", {
+        cls: `pg-grid__label pg-grid__label--button ${isRowSelected ? "is-selected" : ""}`,
+        text: instrumentLabel
+      }) as HTMLButtonElement;
+
+      rowLabel.type = "button";
+      rowLabel.title = `Select ${instrumentLabel} notes in bar ${selectedBarIndex + 1}`;
+      rowLabel.setAttr("aria-label", `Select ${instrumentLabel} notes in bar ${selectedBarIndex + 1}`);
+      rowLabel.setAttr("aria-pressed", isRowSelected ? "true" : "false");
+      rowLabel.addEventListener("click", () => {
+        selectedCell = { kind: "instrument-row", instrumentId: instrument.id, barIndex: selectedBarIndex };
+        render(true);
       });
 
       const cells = rowEl.createEl("div", { cls: "pg-grid__cells" });
@@ -699,8 +857,9 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
       for (const slot of bar.slots) {
         const hit = findHit(working, slot.index, instrument.id);
         const cell = cells.createEl("button", { cls: "pg-grid__cell" });
-        const isSelected =
+        const isSingleCellSelected =
           selectedCell?.kind === "instrument" && selectedCell.slotIndex === slot.index && selectedCell.instrumentId === instrument.id;
+        const isSelected = isSingleCellSelected || (isRowSelected && !!hit);
 
         addBoundaryClasses(cell, slot.index, slotsPerBeat, barStartSlots, localIndex);
 
@@ -723,6 +882,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
             return;
           }
 
+          markExtraInstrumentModeled(instrument.id);
           applyChange(setHit(working, slot.index, instrument), slot.index);
         });
 
@@ -839,7 +999,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
 }
 
 function focusEditor(root: HTMLElement): void {
-  const selected = root.querySelector<HTMLElement>(".pg-grid__cell.is-selected");
+  const selected = root.querySelector<HTMLElement>(".pg-grid__cell.is-selected, .pg-grid__label.is-selected");
   (selected ?? root).focus({ preventScroll: true });
 }
 
@@ -907,7 +1067,14 @@ function captureScrollableAncestors(container: HTMLElement): AncestorScrollSnaps
   return ancestors;
 }
 
-function normalizeSelectedCell(cell: SelectedCell | ({ slotIndex: number; instrumentId: string } & Partial<InstrumentSelectedCell>) | null | undefined): SelectedCell | null {
+function normalizeSelectedCell(
+  cell:
+    | SelectedCell
+    | ({ slotIndex: number; instrumentId: string } & Partial<InstrumentSelectedCell>)
+    | ({ barIndex: number; instrumentId: string } & Partial<InstrumentRowSelectedCell>)
+    | null
+    | undefined
+): SelectedCell | null {
   if (!cell) {
     return null;
   }
@@ -916,7 +1083,11 @@ function normalizeSelectedCell(cell: SelectedCell | ({ slotIndex: number; instru
     return { kind: "sticking", slotIndex: cell.slotIndex };
   }
 
-  if ("instrumentId" in cell && cell.instrumentId) {
+  if ("kind" in cell && cell.kind === "instrument-row" && "instrumentId" in cell && cell.instrumentId) {
+    return { kind: "instrument-row", barIndex: cell.barIndex, instrumentId: cell.instrumentId };
+  }
+
+  if ("instrumentId" in cell && cell.instrumentId && "slotIndex" in cell && typeof cell.slotIndex === "number") {
     return { kind: "instrument", slotIndex: cell.slotIndex, instrumentId: cell.instrumentId };
   }
 

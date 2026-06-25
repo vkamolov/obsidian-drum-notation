@@ -226,7 +226,7 @@ export default class DrumNotationPlugin extends Plugin {
     };
     let currentSlotIndex = clampSlotIndex(block, restored?.playback.slotIndex ?? 0);
     let selectedBarIndex = clampBarIndex(block, restored?.selectedBarIndex ?? barIndexForSlot(block, currentSlotIndex));
-    let editSelectedSlotIndex: number | null = restored?.selectedSlotIndex ?? restored?.session.selectedCell?.slotIndex ?? null;
+    let editSelectedSlotIndex: number | null = restored?.selectedSlotIndex ?? selectedSlotIndexFromSession(restored?.session) ?? null;
     let highlightedEditNote: SVGGElement | null = null;
     let gridEditor: GridEditorHandle | null = null;
     let visuals = makePlaybackVisuals(block, state);
@@ -1012,7 +1012,7 @@ export default class DrumNotationPlugin extends Plugin {
       stopLocalPlayback();
       this.stopActivePreview(renderOwner);
       selectedBarIndex = clampBarIndex(block, session?.selectedBarIndex ?? selectedBarIndex);
-      editSelectedSlotIndex = session?.selectedCell?.slotIndex ?? editSelectedSlotIndex;
+      editSelectedSlotIndex = selectedSlotIndexFromSession(session) ?? editSelectedSlotIndex;
       root.addClass("is-editing");
       editButton.addClass("is-playing");
       editRoot.hidden = false;
@@ -1737,6 +1737,16 @@ function confirmWithModal(app: App, message: string): Promise<boolean> {
   return new Promise((resolve) => {
     new DrumConfirmModal(app, message, resolve).open();
   });
+}
+
+function selectedSlotIndexFromSession(session: GridEditorSessionState | undefined): number | null {
+  const selectedCell = session?.selectedCell;
+
+  if (!selectedCell || selectedCell.kind === "instrument-row") {
+    return null;
+  }
+
+  return selectedCell.slotIndex;
 }
 
 class DrumConfirmModal extends Modal {

@@ -100,6 +100,65 @@ export function applyArticulation(
   return withHitChar(block, slotIndex, instrument, getHitChar(instrument, articulation));
 }
 
+export function applyArticulationToInstrumentInBar(
+  block: DrumBlock,
+  barIndex: number,
+  instrument: DrumInstrument,
+  articulation: DrumArticulation
+): DrumBlock {
+  const views = block.systems.map(toSystemView);
+  const location = locateBar(views, barIndex);
+
+  if (!location) {
+    return block;
+  }
+
+  const view = views[location.system];
+  const row = view.rows.find((candidate) => candidate.instrument.id === instrument.id);
+  const pattern = row?.patterns[location.bar];
+
+  if (!row || pattern === undefined || !patternHasHits(pattern)) {
+    return block;
+  }
+
+  const hitChar = getHitChar(instrument, articulation);
+  const nextPattern = replacePatternHits(pattern, hitChar);
+
+  if (nextPattern === pattern) {
+    return block;
+  }
+
+  row.patterns[location.bar] = nextPattern;
+
+  return rebuildBlock(block, views);
+}
+
+export function clearInstrumentInBar(block: DrumBlock, barIndex: number, instrument: DrumInstrument): DrumBlock {
+  const views = block.systems.map(toSystemView);
+  const location = locateBar(views, barIndex);
+
+  if (!location) {
+    return block;
+  }
+
+  const view = views[location.system];
+  const row = view.rows.find((candidate) => candidate.instrument.id === instrument.id);
+  const pattern = row?.patterns[location.bar];
+
+  if (!row || pattern === undefined || !patternHasHits(pattern)) {
+    return block;
+  }
+
+  row.patterns[location.bar] = "-".repeat(view.bars[location.bar].width);
+  trimEmptyInstrumentRowSegments(view, row);
+
+  if (row.patterns.length === 0) {
+    view.rows = view.rows.filter((candidate) => candidate !== row);
+  }
+
+  return rebuildBlock(block, views);
+}
+
 export function setInstrument(
   block: DrumBlock,
   slotIndex: number,
@@ -688,6 +747,22 @@ function setChar(pattern: string, index: number, char: string): string {
   chars[index] = char;
 
   return chars.join("");
+}
+
+function patternHasHits(pattern: string): boolean {
+  return Array.from(pattern).some((char) => char !== "-");
+}
+
+function replacePatternHits(pattern: string, hitChar: string): string {
+  return Array.from(pattern)
+    .map((char) => (char === "-" ? "-" : hitChar))
+    .join("");
+}
+
+function trimEmptyInstrumentRowSegments(view: SystemView, row: RowView): void {
+  while (row.patterns.length > 0 && !patternHasHits(row.patterns[row.patterns.length - 1])) {
+    row.patterns.pop();
+  }
 }
 
 // The first alias is the conventional short code (hh, sd, bd…); upper-casing it
