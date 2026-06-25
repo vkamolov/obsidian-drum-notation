@@ -538,24 +538,32 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
   };
 
   const renderSelectedCellTools = (root: HTMLElement) => {
-    if (selectedCell?.kind === "sticking") {
-      renderStickingTools(root);
+    const tools = root.createEl("div", { cls: "pg-grid-editor__tools" });
+    tools.setAttr("aria-live", "polite");
+
+    if (selectedCell?.kind === "sticking" && renderStickingTools(tools)) {
       return;
     }
 
-    renderArticulationTools(root);
+    if (selectedCell?.kind !== "sticking" && renderArticulationTools(tools)) {
+      return;
+    }
+
+    tools.createEl("span", {
+      cls: "pg-grid-editor__tools-placeholder",
+      text: "Select a note or sticking cell to edit"
+    });
   };
 
-  const renderArticulationTools = (root: HTMLElement) => {
+  const renderArticulationTools = (tools: HTMLElement): boolean => {
     const instrument = selectedInstrument();
     const slotIndex = selectedCell?.slotIndex;
 
     if (!instrument || slotIndex === undefined || !cellBelongsToSelectedBar()) {
-      return;
+      return false;
     }
 
     const hit = findHit(working, slotIndex, instrument.id);
-    const tools = root.createEl("div", { cls: "pg-grid-editor__tools" });
     const label = tools.createEl("span", {
       cls: "pg-grid-editor__selection",
       text: `${(instrument.aliases[0] ?? instrument.id).toUpperCase()} ${slotIndex + 1}`
@@ -589,17 +597,18 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     deleteButton.appendChild(createDeleteIcon());
     deleteButton.disabled = !hit;
     deleteButton.addEventListener("click", clearSelectionHit);
+    return true;
   };
 
-  const renderStickingTools = (root: HTMLElement) => {
+  const renderStickingTools = (tools: HTMLElement): boolean => {
     const slotIndex = selectedCell?.slotIndex;
 
     if (selectedCell?.kind !== "sticking" || slotIndex === undefined || !cellBelongsToSelectedBar()) {
-      return;
+      return false;
     }
 
     const sticking = findSticking(working, slotIndex);
-    const tools = root.createEl("div", { cls: "pg-grid-editor__tools pg-grid-editor__tools--sticking" });
+    tools.addClass("pg-grid-editor__tools--sticking");
     const label = tools.createEl("span", {
       cls: "pg-grid-editor__selection",
       text: `ST ${slotIndex + 1}`
@@ -636,6 +645,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     clearButton.appendChild(createDeleteIcon());
     clearButton.disabled = !sticking;
     clearButton.addEventListener("click", clearSelectionSticking);
+    return true;
   };
 
   const displayedInstruments = (): DrumInstrument[] => {

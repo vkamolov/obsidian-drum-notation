@@ -685,7 +685,10 @@ body.is-mobile .drum-notation__speed {
   display: flex;
   align-items: center;
   gap: 0.35rem;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  min-height: 3.25rem;
+  overflow-x: auto;
+  overflow-y: hidden;
   padding: 0.4rem;
   border: 1px solid var(--pg-border);
   border-radius: 6px;
@@ -693,14 +696,24 @@ body.is-mobile .drum-notation__speed {
 }
 
 .pg-grid-editor__selection {
+  flex: 0 0 auto;
   min-width: 3.6rem;
   font-family: var(--pg-mono);
   font-size: 0.75rem;
   color: var(--pg-muted);
+  white-space: nowrap;
+}
+
+.pg-grid-editor__tools-placeholder {
+  flex: 0 0 auto;
+  color: var(--pg-muted);
+  font-size: 0.82rem;
+  white-space: nowrap;
 }
 
 .pg-grid-editor__tool {
   display: inline-flex;
+  flex: 0 0 2.35rem;
   align-items: center;
   justify-content: center;
   width: 2.35rem;
@@ -752,6 +765,7 @@ body.is-mobile .drum-notation__speed {
 }
 
 .pg-grid-editor__tool-separator {
+  flex: 0 0 2px;
   align-self: stretch;
   width: 2px;
   min-height: 1.65rem;
