@@ -86,7 +86,35 @@ export class DrumSynth implements DrumPlaybackBackend {
       return;
     }
 
-    this.scheduleInstrument(hit.instrument.playback, time, hit.velocity);
+    this.scheduleInstrumentHit(hit, time);
+  }
+
+  private scheduleInstrumentHit(hit: DrumHit, time: number): void {
+    if (hit.articulation !== "accent") {
+      this.scheduleInstrument(hit.instrument.playback, time, hit.velocity);
+      return;
+    }
+
+    switch (hit.instrument.playback) {
+      case "hatClosed":
+        this.scheduleAccentedClosedHat(time, hit.velocity);
+        break;
+      case "hatHalfOpen":
+        this.scheduleAccentedHalfOpenHat(time, hit.velocity);
+        break;
+      case "hatOpen":
+        this.scheduleAccentedOpenHat(time, hit.velocity);
+        break;
+      case "hatFoot":
+        this.scheduleAccentedFootHat(time, hit.velocity);
+        break;
+      case "hatFootSplash":
+        this.scheduleAccentedFootSplash(time, hit.velocity);
+        break;
+      default:
+        this.scheduleInstrument(hit.instrument.playback, time, hit.velocity);
+        break;
+    }
   }
 
   private scheduleChokedInstrument(playback: DrumPlaybackKind, time: number, velocity: number): void {
@@ -179,6 +207,30 @@ export class DrumSynth implements DrumPlaybackBackend {
         this.scheduleClick(time, velocity);
         break;
     }
+  }
+
+  private scheduleAccentedClosedHat(time: number, velocity: number): void {
+    this.scheduleFilteredNoise(time, 0.06, "highpass", 7600, velocity * 0.72, 1.05);
+  }
+
+  private scheduleAccentedHalfOpenHat(time: number, velocity: number): void {
+    this.scheduleFilteredNoise(time, 0.18, "highpass", 7200, velocity * 0.62, 1.05);
+    this.scheduleClick(time, velocity * 0.18);
+  }
+
+  private scheduleAccentedOpenHat(time: number, velocity: number): void {
+    this.scheduleFilteredNoise(time, 0.3, "highpass", 6800, velocity * 0.62, 0.9);
+    this.scheduleClick(time, velocity * 0.1);
+  }
+
+  private scheduleAccentedFootHat(time: number, velocity: number): void {
+    this.scheduleNoise(time, 0.09, 5800, velocity * 0.46);
+    this.scheduleClick(time, velocity * 0.34);
+  }
+
+  private scheduleAccentedFootSplash(time: number, velocity: number): void {
+    this.scheduleFilteredNoise(time, 0.26, "highpass", 6200, velocity * 0.52, 0.85);
+    this.scheduleClick(time, velocity * 0.24);
   }
 
   private scheduleKick(time: number, velocity: number): void {
