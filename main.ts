@@ -468,6 +468,29 @@ export default class DrumNotationPlugin extends Plugin {
       updateBarSelectorState();
     };
 
+    const selectRenderedBarAtPoint = (event: MouseEvent) => {
+      if (event.defaultPrevented || state.barRegions.length === 0) {
+        return;
+      }
+
+      const rect = notation.getBoundingClientRect();
+      const x = event.clientX - rect.left + notation.scrollLeft;
+      const y = event.clientY - rect.top + notation.scrollTop;
+      const region = state.barRegions.find(
+        (candidate) =>
+          x >= candidate.x &&
+          x <= candidate.x + candidate.width &&
+          y >= candidate.y &&
+          y <= candidate.y + candidate.height
+      );
+
+      if (!region) {
+        return;
+      }
+
+      selectBar(region.barIndex, Boolean(gridEditor));
+    };
+
     const renderBarSelectors = () => {
       clearBarSelectors();
 
@@ -497,6 +520,8 @@ export default class DrumNotationPlugin extends Plugin {
 
       updateBarSelectorState();
     };
+
+    notation.addEventListener("click", selectRenderedBarAtPoint);
 
     const renderScore = () => {
       root.querySelector(".drum-notation__legend")?.remove();
@@ -547,9 +572,14 @@ export default class DrumNotationPlugin extends Plugin {
         }
         state.cursor = block.showCursor ? notation.createEl("div", { cls: "drum-notation__cursor" }) : null;
         state.noteElements = makeRenderedNotesInteractive(block, notation, (slot) => {
+          const slotBarIndex = barIndexForSlot(block, slot.index);
+
           currentSlotIndex = slot.index;
           if (gridEditor) {
-            selectBar(barIndexForSlot(block, slot.index), true);
+            selectBar(slotBarIndex, true);
+          } else {
+            selectedBarIndex = clampBarIndex(block, slotBarIndex);
+            updateBarSelectorState();
           }
           void this.previewSlot(block, slot, renderOwner);
         });
@@ -1246,7 +1276,7 @@ export default class DrumNotationPlugin extends Plugin {
         return;
       }
 
-      void startLoopBar(selectedBarIndex, undefined, true);
+      void startLoopBar(barIndexForSlot(block, currentSlotIndex), undefined, true);
     });
 
     loopAllButton.addEventListener("click", () => {

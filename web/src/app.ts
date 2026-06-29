@@ -182,6 +182,7 @@ function renderPreview(): void {
   const viewport = preview.createEl("div", { cls: "drum-notation__score-viewport" });
   const score = viewport.createEl("div", { cls: "drum-notation__score" });
   scoreEl = score;
+  score.addEventListener("click", selectRenderedBarAtPoint);
 
   const hasRows = block.rows.length > 0;
   const playbackInstrumentIds = new Set(getPlaybackInstruments(block).map((instrument) => instrument.id));
@@ -233,9 +234,14 @@ function drawScore(block: DrumBlock, score: HTMLElement): void {
     }
     cursorEl = block.showCursor ? score.createEl("div", { cls: "drum-notation__cursor" }) : null;
     noteElements = makeRenderedNotesInteractive(block, score, (slot) => {
+      const slotBarIndex = barIndexForSlot(block, slot.index);
+
       currentSlotIndex = slot.index;
       if (gridEditor) {
-        selectBar(barIndexForSlot(block, slot.index), true);
+        selectBar(slotBarIndex, true);
+      } else {
+        selectedBarIndex = clampBarIndex(block, slotBarIndex);
+        updateBarSelectorState(block);
       }
       void previewSlot(block, slot);
     });
@@ -393,6 +399,35 @@ function selectBar(barIndex: number, syncGrid: boolean): void {
   updateBarSelectorState(currentBlock);
 }
 
+function selectRenderedBarAtPoint(event: MouseEvent): void {
+  if (event.defaultPrevented || !currentBlock || barRegions.length === 0) {
+    return;
+  }
+
+  const score = event.currentTarget instanceof HTMLElement ? event.currentTarget : scoreEl;
+
+  if (!score) {
+    return;
+  }
+
+  const rect = score.getBoundingClientRect();
+  const x = event.clientX - rect.left + score.scrollLeft;
+  const y = event.clientY - rect.top + score.scrollTop;
+  const region = barRegions.find(
+    (candidate) =>
+      x >= candidate.x &&
+      x <= candidate.x + candidate.width &&
+      y >= candidate.y &&
+      y <= candidate.y + candidate.height
+  );
+
+  if (!region) {
+    return;
+  }
+
+  selectBar(region.barIndex, Boolean(gridEditor));
+}
+
 function barIndexForSlot(block: DrumBlock, slotIndex: number): number {
   const index = block.bars.findIndex((bar) => slotIndex >= bar.startSlot && slotIndex < bar.startSlot + bar.slots.length);
 
@@ -505,7 +540,7 @@ function loopBar(): void {
     return;
   }
 
-  void startLoopBar(selectedBarIndex, undefined, true);
+  void startLoopBar(barIndexForSlot(currentBlock, currentSlotIndex), undefined, true);
 }
 
 async function startLoopBar(barIndex = selectedBarIndex, initialSlot?: number, recoverBeforeStart = false): Promise<boolean> {
