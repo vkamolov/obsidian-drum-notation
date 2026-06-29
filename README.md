@@ -150,7 +150,7 @@ BD | o-------o-------
 
 ## Color Legend
 
-The legend is hidden by default. Add `Legend: on` to show a color key for only the instruments used in the block, or `Legend: all` to show every supported instrument. When the legend is visible, noteheads are colored to match the legend while staff lines, stems, beams, and notation marks keep the notation color scheme.
+The legend is hidden by default. Add `Legend: on` to show a color key for only the instruments used in the block, or `Legend: all` to show every supported instrument. When the legend is visible, noteheads are colored to match the legend while staff lines, stems, beams, and notation marks keep the notation color scheme. During playback and clicked-note previews, the active instrument symbols in the legend briefly pulse when note highlighting is enabled.
 
 ````
 ```drums

@@ -6,6 +6,7 @@ import {
   durationForGridSpan,
   durationForSubdivision,
   getBeatValue,
+  getSlotVisualDurationSeconds,
   getSlotsPerBeat,
   isPowerOfTwo,
   largestPowerOfTwoAtMost,
@@ -14,6 +15,11 @@ import {
 import { MeasureRepeatProgress } from "./repeat-progress";
 import { allocateBarWidths } from "./spacing";
 import { CursorPosition, DrumBar, DrumBlock, DrumHit, DrumInstrument, DrumSlot, GridResolution, MeasureRepeat, ScoreRenderResult, StickingHand } from "./types";
+
+export type LegendHighlightSource = "playback" | "preview";
+
+const LEGEND_HIGHLIGHT_MIN_MS = 90;
+const LEGEND_HIGHLIGHT_MAX_MS = 320;
 
 interface NotationLayout {
   systemHeight: number;
@@ -397,6 +403,7 @@ export function renderInstrumentLegend(block: DrumBlock, root: HTMLElement): voi
       text: getPreferredInstrumentCode(instrument)
     });
 
+    item.dataset.instrumentId = instrument.id;
     swatch.style.backgroundColor = instrument.color;
     item.createEl("span", {
       cls: "drum-notation__legend-label",
@@ -404,6 +411,42 @@ export function renderInstrumentLegend(block: DrumBlock, root: HTMLElement): voi
     });
     code.setAttr("aria-label", `Notation row label ${code.textContent ?? ""}`);
   });
+}
+
+export function setLegendInstrumentHighlight(
+  container: HTMLElement,
+  source: LegendHighlightSource,
+  instrumentIds: Iterable<string>
+): void {
+  const className = getLegendHighlightClass(source);
+  const activeIds = new Set(instrumentIds);
+
+  container
+    .querySelectorAll<HTMLElement>(".drum-notation__legend-item")
+    .forEach((item) => {
+      const instrumentId = item.dataset.instrumentId;
+      item.classList.toggle(className, Boolean(instrumentId && activeIds.has(instrumentId)));
+    });
+}
+
+export function clearLegendInstrumentHighlight(container: HTMLElement, source: LegendHighlightSource): void {
+  const className = getLegendHighlightClass(source);
+
+  container
+    .querySelectorAll<HTMLElement>(`.drum-notation__legend-item.${className}`)
+    .forEach((item) => item.classList.remove(className));
+}
+
+export function getLegendHighlightDurationMs(block: DrumBlock, slot: DrumSlot, speedPercent = 100): number {
+  const durationMs = getSlotVisualDurationSeconds(block, slot, speedPercent) * 1000;
+
+  return Math.round(
+    Math.min(LEGEND_HIGHLIGHT_MAX_MS, Math.max(LEGEND_HIGHLIGHT_MIN_MS, durationMs))
+  );
+}
+
+function getLegendHighlightClass(source: LegendHighlightSource): string {
+  return source === "playback" ? "is-playing" : "is-previewing";
 }
 
 export function updateMeasureRepeatProgress(

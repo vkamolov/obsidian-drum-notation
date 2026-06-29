@@ -367,6 +367,21 @@ body.is-mobile .drum-notation__speed {
   box-shadow: inset 0 0 0 1px color-mix(in srgb, white 28%, transparent);
 }
 
+.drum-notation__legend-item.is-playing .drum-notation__legend-swatch,
+.drum-notation__legend-item.is-previewing .drum-notation__legend-swatch {
+  border-color: color-mix(in srgb, var(--drum-accent) 72%, var(--background-primary));
+  box-shadow:
+    0 0 0 0.18rem color-mix(in srgb, var(--drum-accent) 18%, transparent),
+    0 0 0.55rem color-mix(in srgb, var(--drum-accent) 58%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, white 42%, transparent);
+  animation: drum-notation-legend-pulse 0.18s ease-out infinite alternate;
+}
+
+.drum-notation__legend-item.is-playing .drum-notation__legend-code,
+.drum-notation__legend-item.is-previewing .drum-notation__legend-code {
+  color: var(--drum-accent);
+}
+
 .drum-notation__legend-code {
   flex: 0 0 auto;
   min-width: 2.25rem;
@@ -383,6 +398,24 @@ body.is-mobile .drum-notation__speed {
   font-weight: 430;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+@keyframes drum-notation-legend-pulse {
+  from {
+    transform: scale(1);
+  }
+
+  to {
+    transform: scale(1.22);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .drum-notation__legend-item.is-playing .drum-notation__legend-swatch,
+  .drum-notation__legend-item.is-previewing .drum-notation__legend-swatch {
+    animation: none;
+    transform: scale(1.14);
+  }
 }
 
 .drum-notation__cursor {

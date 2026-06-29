@@ -5,10 +5,13 @@ import "../../styles.css";
 import "./playground.css";
 
 import {
+  clearLegendInstrumentHighlight,
   colorRenderedNoteheads,
+  getLegendHighlightDurationMs,
   makeRenderedNotesInteractive,
   renderInstrumentLegend,
   renderVexflowScore,
+  setLegendInstrumentHighlight,
   updateMeasureRepeatProgress
 } from "../../src/engrave";
 import { INSTRUMENTS_BY_ALIAS } from "../../src/kit";
@@ -116,6 +119,8 @@ let audioContext: AudioContext | null = null;
 let player: DrumPlayer | null = null;
 let previewSynth: DrumPlaybackBackend | null = null;
 let previewTimer: number | null = null;
+let legendPlaybackTimer: number | null = null;
+let legendPreviewTimer: number | null = null;
 
 function getAudioContext(): AudioContext {
   if (!audioContext || audioContext.state === "closed") {
@@ -299,6 +304,59 @@ function clearVisuals(): void {
   cursorEl?.removeAttribute("style");
   highlightedNote?.classList.remove("is-playing");
   highlightedNote = null;
+  clearPlaybackLegendHighlight();
+}
+
+function clearPlaybackLegendHighlight(): void {
+  if (legendPlaybackTimer !== null) {
+    window.clearTimeout(legendPlaybackTimer);
+    legendPlaybackTimer = null;
+  }
+  clearLegendInstrumentHighlight(preview, "playback");
+}
+
+function flashPlaybackLegendHighlight(block: DrumBlock, slot: DrumSlot | undefined): void {
+  clearPlaybackLegendHighlight();
+
+  if (!block.showHighlight || !slot || slot.hits.length === 0) {
+    return;
+  }
+
+  setLegendInstrumentHighlight(
+    preview,
+    "playback",
+    slot.hits.map((hit) => hit.instrument.id)
+  );
+  legendPlaybackTimer = window.setTimeout(
+    clearPlaybackLegendHighlight,
+    getLegendHighlightDurationMs(block, slot, playbackSpeedPercent)
+  );
+}
+
+function clearPreviewLegendHighlight(): void {
+  if (legendPreviewTimer !== null) {
+    window.clearTimeout(legendPreviewTimer);
+    legendPreviewTimer = null;
+  }
+  clearLegendInstrumentHighlight(preview, "preview");
+}
+
+function flashPreviewLegendHighlight(block: DrumBlock, slot: DrumSlot): void {
+  clearPreviewLegendHighlight();
+
+  if (!block.showHighlight || slot.hits.length === 0) {
+    return;
+  }
+
+  setLegendInstrumentHighlight(
+    preview,
+    "preview",
+    slot.hits.map((hit) => hit.instrument.id)
+  );
+  legendPreviewTimer = window.setTimeout(
+    clearPreviewLegendHighlight,
+    getLegendHighlightDurationMs(block, slot)
+  );
 }
 
 function clearRepeatProgress(): void {
@@ -447,6 +505,9 @@ function moveCursor(slotIndex: number): void {
     highlightedNote?.classList.remove("is-playing");
     highlightedNote = noteElements[slotIndex] ?? null;
     highlightedNote?.classList.add("is-playing");
+    flashPlaybackLegendHighlight(currentBlock, currentBlock.slots[slotIndex]);
+  } else {
+    clearPlaybackLegendHighlight();
   }
 
   const position = cursorPositions[slotIndex];
@@ -874,6 +935,8 @@ async function previewSlot(block: DrumBlock, slot: DrumSlot): Promise<void> {
     return;
   }
 
+  flashPreviewLegendHighlight(block, slot);
+
   synth.scheduleHits(
     slot.hits,
     synth.currentTime + 0.03,
@@ -890,6 +953,7 @@ function stopPreview(): void {
   }
   previewSynth?.stop();
   previewSynth = null;
+  clearPreviewLegendHighlight();
 }
 
 /* ---------- toolbar controls ---------- */

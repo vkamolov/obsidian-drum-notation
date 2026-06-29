@@ -61,7 +61,9 @@ false: `off`, `false`, `no`, `n`, `0`, `hide`, `hidden`.
 **Legend values** — `used` (instruments present in the block) also accepts
 `on`/`true`/`yes`/`current`/`present`; `all` (full kit) also accepts
 `full`/`kit`/`complete`/`supported`/`everything`; `off` also accepts
-`none`/`hide`/`no`.
+`none`/`hide`/`no`. When the legend is visible, active instrument symbols
+briefly highlight during playback and clicked-note previews if `Highlight` is
+enabled.
 
 ### System subtitles
 

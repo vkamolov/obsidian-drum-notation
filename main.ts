@@ -15,10 +15,13 @@ import {
   TFile
 } from "obsidian";
 import {
+  clearLegendInstrumentHighlight,
   colorRenderedNoteheads,
+  getLegendHighlightDurationMs,
   makeRenderedNotesInteractive,
   renderInstrumentLegend,
   renderVexflowScore,
+  setLegendInstrumentHighlight,
   updateMeasureRepeatProgress
 } from "./src/engrave";
 import { GridEditorHandle, GridEditorSessionState, mountGridEditor } from "./src/editor-grid";
@@ -117,6 +120,7 @@ export default class DrumNotationPlugin extends Plugin {
   private activePreview: DrumPlaybackBackend | null = null;
   private activePreviewTimer: number | null = null;
   private activePreviewOwner: symbol | null = null;
+  private activePreviewLegendReset: (() => void) | null = null;
   private audioContext: AudioContext | null = null;
   private readonly editRestoreSessions = new Map<string, RestoredEditSession>();
 
@@ -232,10 +236,10 @@ export default class DrumNotationPlugin extends Plugin {
     let editSelectedSlotIndex: number | null = restored?.selectedSlotIndex ?? selectedSlotIndexFromSession(restored?.session) ?? null;
     let highlightedEditNote: SVGGElement | null = null;
     let gridEditor: GridEditorHandle | null = null;
-    let visuals = makePlaybackVisuals(block, state);
+    let playbackSpeedPercent = DEFAULT_PLAYBACK_SPEED_PERCENT;
+    let visuals = makePlaybackVisuals(block, state, root, () => playbackSpeedPercent);
     let isLoopingBar = false;
     let isLoopingAll = false;
-    let playbackSpeedPercent = DEFAULT_PLAYBACK_SPEED_PERCENT;
     let metronomeMode: MetronomeMode = DEFAULT_METRONOME_MODE;
     const mutedInstrumentIds = new Set<string>();
     let resizeTimer: number | null = null;
@@ -581,12 +585,12 @@ export default class DrumNotationPlugin extends Plugin {
             selectedBarIndex = clampBarIndex(block, slotBarIndex);
             updateBarSelectorState();
           }
-          void this.previewSlot(block, slot, renderOwner);
+          void this.previewSlot(block, slot, renderOwner, root);
         });
         if (block.legendMode !== "off") {
           renderInstrumentLegend(block, root);
         }
-        visuals = makePlaybackVisuals(block, state);
+        visuals = makePlaybackVisuals(block, state, root, () => playbackSpeedPercent);
         renderBarSelectors();
         applyEditHighlight();
       } catch (error) {
@@ -1056,7 +1060,7 @@ export default class DrumNotationPlugin extends Plugin {
       selectEditSlot(changedSlotIndex);
       const slot = block.slots.find((candidate) => candidate.index === changedSlotIndex);
       if (slot) {
-        void this.previewSlot(block, slot, renderOwner);
+        void this.previewSlot(block, slot, renderOwner, root);
       }
     };
 
@@ -1090,7 +1094,7 @@ export default class DrumNotationPlugin extends Plugin {
           const slot = previewBlock.slots.find((candidate) => candidate.index === slotIndex);
           if (slot) {
             selectEditSlot(slotIndex);
-            void this.previewSlot(previewBlock, slot, renderOwner);
+            void this.previewSlot(previewBlock, slot, renderOwner, root);
           }
         },
         onSelectBar: (barIndex) => selectBar(barIndex, false),
@@ -1430,7 +1434,7 @@ export default class DrumNotationPlugin extends Plugin {
     reset?.();
   }
 
-  private async previewSlot(block: DrumBlock, slot: DrumSlot, owner: symbol): Promise<void> {
+  private async previewSlot(block: DrumBlock, slot: DrumSlot, owner: symbol, legendContainer?: HTMLElement): Promise<void> {
     this.stopActivePreview();
 
     if (slot.hits.length === 0) {
@@ -1446,6 +1450,21 @@ export default class DrumNotationPlugin extends Plugin {
     if (this.activePreview !== preview || this.activePreviewOwner !== owner) {
       preview.stop();
       return;
+    }
+
+    if (block.showHighlight && legendContainer) {
+      setLegendInstrumentHighlight(
+        legendContainer,
+        "preview",
+        slot.hits.map((hit) => hit.instrument.id)
+      );
+      const legendTimer = window.setTimeout(() => {
+        clearLegendInstrumentHighlight(legendContainer, "preview");
+      }, getLegendHighlightDurationMs(block, slot));
+      this.activePreviewLegendReset = () => {
+        window.clearTimeout(legendTimer);
+        clearLegendInstrumentHighlight(legendContainer, "preview");
+      };
     }
 
     preview.scheduleHits(
@@ -1473,6 +1492,8 @@ export default class DrumNotationPlugin extends Plugin {
     this.activePreview?.stop();
     this.activePreview = null;
     this.activePreviewOwner = null;
+    this.activePreviewLegendReset?.();
+    this.activePreviewLegendReset = null;
   }
 
   // A single AudioContext is shared across every block and every preview. Browsers
@@ -1512,15 +1533,45 @@ export default class DrumNotationPlugin extends Plugin {
 
 function makePlaybackVisuals(
   block: DrumBlock,
-  state: RenderState
+  state: RenderState,
+  legendContainer: HTMLElement,
+  getSpeedPercent: () => number
 ): { clearCursor: () => void; moveCursor: (slotIndex: number) => void } {
   let highlightedNote: SVGGElement | null = null;
+  let legendTimer: number | null = null;
+
+  const clearPlaybackLegendHighlight = () => {
+    if (legendTimer !== null) {
+      window.clearTimeout(legendTimer);
+      legendTimer = null;
+    }
+    clearLegendInstrumentHighlight(legendContainer, "playback");
+  };
+
+  const flashPlaybackLegendHighlight = (slot: DrumSlot | undefined) => {
+    clearPlaybackLegendHighlight();
+
+    if (!block.showHighlight || !slot || slot.hits.length === 0) {
+      return;
+    }
+
+    setLegendInstrumentHighlight(
+      legendContainer,
+      "playback",
+      slot.hits.map((hit) => hit.instrument.id)
+    );
+    legendTimer = window.setTimeout(
+      clearPlaybackLegendHighlight,
+      getLegendHighlightDurationMs(block, slot, getSpeedPercent())
+    );
+  };
 
   const clearCursor = () => {
     state.cursor?.removeClass("is-active");
     state.cursor?.removeAttribute("style");
     highlightedNote?.classList.remove("is-playing");
     highlightedNote = null;
+    clearPlaybackLegendHighlight();
   };
 
   const moveCursor = (slotIndex: number) => {
@@ -1530,6 +1581,9 @@ function makePlaybackVisuals(
       highlightedNote?.classList.remove("is-playing");
       highlightedNote = state.noteElements[slotIndex] ?? null;
       highlightedNote?.classList.add("is-playing");
+      flashPlaybackLegendHighlight(block.slots[slotIndex]);
+    } else {
+      clearPlaybackLegendHighlight();
     }
 
     if (cursorPosition === undefined) {
