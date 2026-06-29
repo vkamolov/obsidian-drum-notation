@@ -124,6 +124,7 @@ export type DrumPlaybackKind =
   | "hatFoot"
   | "hatFootSplash"
   | "ride"
+  | "rideBell"
   | "crash"
   | "splash"
   | "china"

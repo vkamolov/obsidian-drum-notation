@@ -89,10 +89,20 @@ describe("INSTRUMENTS_BY_ALIAS", () => {
     expect(INSTRUMENTS_BY_ALIAS.get("hfs")?.id).toBe("hi-hat-foot-splash");
     expect(INSTRUMENTS_BY_ALIAS.get("hihatsplash")?.id).toBe("hi-hat-foot-splash");
     expect(INSTRUMENTS_BY_ALIAS.get("sd")?.id).toBe("snare");
+    expect(INSTRUMENTS_BY_ALIAS.get("rb")?.id).toBe("ride-bell");
+    expect(INSTRUMENTS_BY_ALIAS.get("bell")?.id).toBe("ride-bell");
+    expect(INSTRUMENTS_BY_ALIAS.get("ridebell")?.id).toBe("ride-bell");
   });
 
   it("returns undefined for unknown labels", () => {
     expect(INSTRUMENTS_BY_ALIAS.get("zzz")).toBeUndefined();
+  });
+
+  it("keeps ride bell and cowbell on distinct playback voices", () => {
+    expect(INSTRUMENTS_BY_ALIAS.get("rb")?.playback).toBe("rideBell");
+    expect(INSTRUMENTS_BY_ALIAS.get("bell")?.playback).toBe("rideBell");
+    expect(INSTRUMENTS_BY_ALIAS.get("ridebell")?.playback).toBe("rideBell");
+    expect(INSTRUMENTS_BY_ALIAS.get("cb")?.playback).toBe("cowbell");
   });
 });
 

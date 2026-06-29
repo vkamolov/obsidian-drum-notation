@@ -136,7 +136,11 @@ export class DrumSynth implements DrumPlaybackBackend {
         this.scheduleMetal(time, 0.07, 1200, velocity * 0.14);
         break;
       case "ride":
-        this.scheduleMetal(time, 0.12, 1800, velocity * 0.3);
+        this.scheduleFilteredNoise(time, 0.11, "highpass", 6400, velocity * 0.26, 0.7);
+        this.scheduleTone(time, 0.08, 2300, velocity * 0.18, "triangle");
+        break;
+      case "rideBell":
+        this.scheduleRideBellChoke(time, velocity);
         break;
       default:
         this.scheduleInstrument(playback, time, velocity);
@@ -180,11 +184,13 @@ export class DrumSynth implements DrumPlaybackBackend {
         this.scheduleClick(time, velocity * 0.18);
         break;
       case "ride":
-        this.scheduleMetal(time, 0.38, 1800, velocity * 0.35);
+        this.scheduleRide(time, velocity);
+        break;
+      case "rideBell":
+        this.scheduleRideBell(time, velocity);
         break;
       case "crash":
-        this.scheduleNoise(time, 0.8, 4200, velocity * 0.55);
-        this.scheduleMetal(time, 0.8, 900, velocity * 0.35);
+        this.scheduleCrash(time, velocity);
         break;
       case "splash":
         this.scheduleFilteredNoise(time, 0.36, "highpass", 6200, velocity * 0.46, 0.65);
@@ -363,6 +369,41 @@ export class DrumSynth implements DrumPlaybackBackend {
     this.scheduleTone(time, 0.16, 800, velocity * 0.25, "square");
   }
 
+  private scheduleRide(time: number, velocity: number): void {
+    const shimmer = 0.97 + Math.random() * 0.06;
+
+    this.scheduleTone(time, 0.065, 2550 * shimmer, velocity * 0.28, "triangle");
+    this.scheduleTone(time, 0.11, 3820 * shimmer, velocity * 0.13, "sine");
+    this.scheduleFilteredNoiseEnvelope(time, 0.34, "highpass", 7200 * shimmer, velocity * 0.16, 0.72, 0.006);
+    this.scheduleFilteredNoiseEnvelope(time + 0.01, 0.58, "bandpass", 5200 * shimmer, velocity * 0.08, 0.9, 0.012);
+  }
+
+  private scheduleRideBell(time: number, velocity: number): void {
+    const shimmer = 0.985 + Math.random() * 0.03;
+
+    this.scheduleTone(time, 0.18, 2850 * shimmer, velocity * 0.42, "triangle");
+    this.scheduleTone(time, 0.13, 4020 * shimmer, velocity * 0.24, "sine");
+    this.scheduleTone(time, 0.09, 5750 * shimmer, velocity * 0.12, "sine");
+    this.scheduleFilteredNoiseEnvelope(time, 0.24, "highpass", 8600 * shimmer, velocity * 0.1, 0.8, 0.004);
+  }
+
+  private scheduleRideBellChoke(time: number, velocity: number): void {
+    const shimmer = 0.985 + Math.random() * 0.03;
+
+    this.scheduleTone(time, 0.08, 2850 * shimmer, velocity * 0.34, "triangle");
+    this.scheduleTone(time, 0.06, 4020 * shimmer, velocity * 0.16, "sine");
+    this.scheduleFilteredNoiseEnvelope(time, 0.09, "highpass", 8200 * shimmer, velocity * 0.08, 0.75, 0.004);
+  }
+
+  private scheduleCrash(time: number, velocity: number): void {
+    const shimmer = 0.94 + Math.random() * 0.12;
+
+    this.scheduleFilteredNoiseEnvelope(time, 1.28, "highpass", 3900 * shimmer, velocity * 0.64, 0.72, 0.026);
+    this.scheduleFilteredNoiseEnvelope(time + 0.012, 0.92, "bandpass", 6900 * shimmer, velocity * 0.28, 0.8, 0.018);
+    this.scheduleTone(time, 0.34, 580 * shimmer, velocity * 0.1, "triangle");
+    this.scheduleTone(time + 0.006, 0.24, 1280 * shimmer, velocity * 0.08, "triangle");
+  }
+
   private scheduleClick(time: number, velocity: number): void {
     this.scheduleTone(time, 0.045, 1800, velocity * 0.35, "triangle");
   }
@@ -429,6 +470,44 @@ export class DrumSynth implements DrumPlaybackBackend {
     source.connect(filter).connect(gain).connect(this.target());
     source.start(time);
     source.stop(time + duration + 0.02);
+    this.track(source, filter, gain);
+  }
+
+  private scheduleFilteredNoiseEnvelope(
+    time: number,
+    duration: number,
+    filterType: BiquadFilterType,
+    frequency: number,
+    velocity: number,
+    q = 1,
+    attack = 0.01
+  ): void {
+    const context = this.audioContext;
+    const clippedDuration = Math.max(attack + 0.02, duration);
+    const bufferSize = Math.max(1, Math.floor(context.sampleRate * clippedDuration));
+    const buffer = context.createBuffer(1, bufferSize, context.sampleRate);
+    const data = buffer.getChannelData(0);
+
+    for (let i = 0; i < bufferSize; i += 1) {
+      data[i] = Math.random() * 2 - 1;
+    }
+
+    const source = context.createBufferSource();
+    const filter = context.createBiquadFilter();
+    const gain = context.createGain();
+    const attackEnd = time + Math.min(attack, clippedDuration * 0.45);
+
+    source.buffer = buffer;
+    filter.type = filterType;
+    filter.frequency.setValueAtTime(frequency, time);
+    filter.Q.setValueAtTime(q, time);
+    gain.gain.setValueAtTime(0.001, time);
+    gain.gain.linearRampToValueAtTime(velocity, attackEnd);
+    gain.gain.exponentialRampToValueAtTime(0.001, time + clippedDuration);
+
+    source.connect(filter).connect(gain).connect(this.target());
+    source.start(time);
+    source.stop(time + clippedDuration + 0.02);
     this.track(source, filter, gain);
   }
 

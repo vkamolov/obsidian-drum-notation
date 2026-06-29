@@ -73,6 +73,24 @@ HH | --x---x---x---x-
 SD | ----o-------o---
 BD | o-------o-------`,
 
+  "Cymbal synth test": `Title: Cymbal synth test
+Tempo: 90
+Time: 4/4
+Grid: 16
+Cursor: on
+Subtitle: Single hits: compare normal and accented Ride, Ride bell, Crash, and Cowbell
+RD | x--------------- | X---------------
+RB | ----x----------- | ----X-----------
+CR | --------x------- | --------X-------
+CB | ------------x--- | ------------X---
+
+Bar
+Subtitle: Repeated ride pattern, ride bell pings, crash wash, and choked crash
+RD | x-x-x-x-x-x-x-x- | X-x-x-x-X-x-x-x-
+RB | ----x-------x--- | ----X-------x---
+CR | x--------------- | c---------------
+CB | ---------------- | ----------------`,
+
   "32nd-note fill": `Title: 32nd-note fill
 Grid: 32
 SD | o-o-oo-oo-o-oo-oo-o-oo-oo-o-oo-o

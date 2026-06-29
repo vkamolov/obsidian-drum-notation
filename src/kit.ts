@@ -54,7 +54,7 @@ export const DRUM_KIT: DrumInstrument[] = [
     vexKey: "e/5/X",
     midi: 53,
     color: "#92400e",
-    playback: "cowbell"
+    playback: "rideBell"
   },
   {
     id: "open-hat",
