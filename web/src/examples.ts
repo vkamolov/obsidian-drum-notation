@@ -86,7 +86,7 @@ CB | ------------x--- | ------------X---
 
 Bar
 Subtitle: Repeated ride pattern, ride bell pings, crash wash, and choked crash
-RD | x-x-x-x-x-x-x-x- | X-x-x-x-X-x-x-x-
+RD | --x---x-x-x---x- | --x---x-X-x---x-
 RB | ----x-------x--- | ----X-------x---
 CR | x--------------- | c---------------
 CB | ---------------- | ----------------`,
