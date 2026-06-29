@@ -42,6 +42,8 @@ In reading view, the plugin renders the block as page-width percussion staff not
 
 Speed, metronome, and mute choices are playback-only: they do not change the fenced notation text. Obsidian resets them when the rendered block is recreated; the playground keeps them for the current page session. Changing any of these controls during playback restarts from the current slot while preserving the active Play/Loop mode. Instrument mutes do not silence the metronome. Muting affects transport playback only, so clicking a rendered note or previewing an editor cell remains audible.
 
+On mobile, if playback becomes silent after Obsidian was backgrounded or another audio app was used, tap **Play** again. If sound does not recover, relaunch Obsidian. This can happen when the mobile WebView audio session is interrupted.
+
 Add `Cursor: on` if you want a blinking cursor to follow playback. Click a rendered note to preview that hit or stacked chord.
 
 ## Visual Edit Mode

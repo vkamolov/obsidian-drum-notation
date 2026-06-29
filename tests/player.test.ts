@@ -7,7 +7,8 @@ import {
   filterMutedHits,
   getEffectivePlaybackTempo,
   getMetronomePulses,
-  normalizePlaybackSpeedPercent
+  normalizePlaybackSpeedPercent,
+  recoverAudioContext
 } from "../src/playback";
 import { DrumPlayer } from "../src/player";
 import { DrumHit } from "../src/types";
@@ -33,6 +34,30 @@ class FakePlaybackBackend implements DrumPlaybackBackend {
 
   scheduleHits(hits: DrumHit[], time: number, slotDuration?: number, noteDuration?: number): void {
     this.scheduled.push({ hits, time, slotDuration, noteDuration });
+  }
+}
+
+interface FakeAudioContextOptions {
+  state: string;
+  resumeFails?: boolean;
+}
+
+class FakeAudioContext {
+  state: string;
+  resume = vi.fn(async () => {
+    if (this.resumeFails) {
+      throw new Error("resume failed");
+    }
+
+    this.state = "running";
+  });
+
+  constructor(private readonly options: FakeAudioContextOptions) {
+    this.state = options.state;
+  }
+
+  private get resumeFails(): boolean {
+    return this.options.resumeFails === true;
   }
 }
 
@@ -481,5 +506,93 @@ HH | xxxx`);
     backend.currentTime = 20;
 
     expect(player.getCurrentSlotIndex()).toBe(3);
+  });
+});
+
+describe("recoverAudioContext", () => {
+  it("succeeds for an already running context without recreating or resuming", async () => {
+    const context = new FakeAudioContext({ state: "running" });
+    const create = vi.fn();
+    const set = vi.fn();
+
+    await expect(
+      recoverAudioContext({
+        get: () => context as unknown as AudioContext,
+        set,
+        create: create as unknown as () => AudioContext
+      })
+    ).resolves.toBe(true);
+
+    expect(context.resume).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
+    expect(set).not.toHaveBeenCalled();
+  });
+
+  it("resumes a suspended context", async () => {
+    const context = new FakeAudioContext({ state: "suspended" });
+
+    await expect(
+      recoverAudioContext({
+        get: () => context as unknown as AudioContext,
+        set: vi.fn(),
+        create: vi.fn() as unknown as () => AudioContext
+      })
+    ).resolves.toBe(true);
+
+    expect(context.resume).toHaveBeenCalledTimes(1);
+    expect(context.state).toBe("running");
+  });
+
+  it("returns failure when resume fails", async () => {
+    const context = new FakeAudioContext({ state: "suspended", resumeFails: true });
+
+    await expect(
+      recoverAudioContext({
+        get: () => context as unknown as AudioContext,
+        set: vi.fn(),
+        create: vi.fn() as unknown as () => AudioContext
+      })
+    ).resolves.toBe(false);
+  });
+
+  it("recreates a closed context", async () => {
+    let context: FakeAudioContext | null = new FakeAudioContext({ state: "closed" });
+    const replacement = new FakeAudioContext({ state: "running" });
+    const create = vi.fn(() => replacement as unknown as AudioContext);
+    const set = vi.fn((next: AudioContext | null) => {
+      context = next as unknown as FakeAudioContext | null;
+    });
+
+    await expect(
+      recoverAudioContext({
+        get: () => context as unknown as AudioContext | null,
+        set,
+        create
+      })
+    ).resolves.toBe(true);
+
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(set).toHaveBeenCalledWith(replacement);
+    expect(context).toBe(replacement);
+  });
+
+  it("creates a missing context", async () => {
+    let context: FakeAudioContext | null = null;
+    const replacement = new FakeAudioContext({ state: "suspended" });
+    const create = vi.fn(() => replacement as unknown as AudioContext);
+
+    await expect(
+      recoverAudioContext({
+        get: () => context as unknown as AudioContext | null,
+        set: (next) => {
+          context = next as unknown as FakeAudioContext | null;
+        },
+        create
+      })
+    ).resolves.toBe(true);
+
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(replacement.resume).toHaveBeenCalledTimes(1);
+    expect(context).toBe(replacement);
   });
 });

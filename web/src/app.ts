@@ -24,7 +24,8 @@ import {
   MAX_PLAYBACK_SPEED_PERCENT,
   METRONOME_MODE_OPTIONS,
   MIN_PLAYBACK_SPEED_PERCENT,
-  PLAYBACK_SPEED_STEP_PERCENT
+  PLAYBACK_SPEED_STEP_PERCENT,
+  recoverAudioContext
 } from "../../src/playback";
 import { DrumPlayer } from "../../src/player";
 import { getMeasureRepeatProgress } from "../../src/repeat-progress";
@@ -47,6 +48,8 @@ import { iconSvg } from "./icons";
 
 const STORAGE_KEY = "drum-playground.notation";
 const THEME_KEY = "drum-playground.theme";
+const AUDIO_RECOVERY_WARNING =
+  "Audio was interrupted by the mobile system. Try Play again, or relaunch Obsidian if playback stays silent.";
 
 /* ---------- element handles ---------- */
 const $ = <T extends HTMLElement>(id: string): T => {
@@ -106,6 +109,7 @@ let metronomeMode: MetronomeMode = DEFAULT_METRONOME_MODE;
 const mutedInstrumentIds = new Set<string>();
 let gridEditor: GridEditorHandle | null = null;
 let isApplyingGridEdit = false;
+let audioRecoveryWarning: string | null = null;
 
 /* ---------- audio (lazy, created on first user gesture) ---------- */
 let audioContext: AudioContext | null = null;
@@ -121,6 +125,43 @@ function getAudioContext(): AudioContext {
   return audioContext;
 }
 
+async function recoverPlaybackAudio(): Promise<boolean> {
+  const recovered = await recoverAudioContext({
+    get: () => audioContext,
+    set: (context) => {
+      audioContext = context;
+    },
+    create: () => new AudioContext()
+  });
+
+  if (recovered) {
+    clearAudioRecoveryWarning();
+    return true;
+  }
+
+  showAudioRecoveryWarning();
+  return false;
+}
+
+function showAudioRecoveryWarning(): void {
+  audioRecoveryWarning = AUDIO_RECOVERY_WARNING;
+  console.warn(AUDIO_RECOVERY_WARNING);
+  if (currentBlock) {
+    renderNotes(currentBlock, editor.value);
+  }
+}
+
+function clearAudioRecoveryWarning(): void {
+  if (!audioRecoveryWarning) {
+    return;
+  }
+
+  audioRecoveryWarning = null;
+  if (currentBlock) {
+    renderNotes(currentBlock, editor.value);
+  }
+}
+
 function createPlaybackBackend(audioContext: AudioContext): DrumPlaybackBackend {
   return createSynthPlaybackBackend(audioContext);
 }
@@ -131,6 +172,7 @@ function renderPreview(): void {
   const block = parseDrumBlock(editor.value);
   currentBlock = block;
   lastRenderError = null;
+  audioRecoveryWarning = null;
   selectedBarIndex = clampBarIndex(block, selectedBarIndex);
 
   clearEditHighlight();
@@ -402,10 +444,23 @@ function stopPlayback(): void {
   clearRepeatProgress();
 }
 
-function play(initialSlot = 0): void {
+async function preparePlaybackStart(recoverBeforeStart: boolean): Promise<boolean> {
   stopPlayback();
+
+  if (!recoverBeforeStart) {
+    return true;
+  }
+
+  return recoverPlaybackAudio();
+}
+
+async function play(initialSlot = 0, recoverBeforeStart = false): Promise<boolean> {
+  if (!(await preparePlaybackStart(recoverBeforeStart))) {
+    return false;
+  }
+
   if (!currentBlock || currentBlock.rows.length === 0) {
-    return;
+    return false;
   }
 
   const block = currentBlock;
@@ -438,6 +493,7 @@ function play(initialSlot = 0): void {
   );
   showRepeatProgressForBar(block, barIndexForSlot(block, currentSlotIndex));
   void player.play();
+  return true;
 }
 
 function loopBar(): void {
@@ -449,15 +505,18 @@ function loopBar(): void {
     return;
   }
 
-  startLoopBar();
+  void startLoopBar(selectedBarIndex, undefined, true);
 }
 
-function startLoopBar(barIndex = selectedBarIndex, initialSlot?: number): void {
-  if (!currentBlock || currentBlock.rows.length === 0) {
-    return;
+async function startLoopBar(barIndex = selectedBarIndex, initialSlot?: number, recoverBeforeStart = false): Promise<boolean> {
+  if (!(await preparePlaybackStart(recoverBeforeStart))) {
+    return false;
   }
 
-  stopPlayback();
+  if (!currentBlock || currentBlock.rows.length === 0) {
+    return false;
+  }
+
   const block = currentBlock;
   const bar = block.bars[clampBarIndex(block, barIndex)];
   const barStartSlot = bar?.startSlot ?? clampSlotIndex(block, currentSlotIndex);
@@ -491,6 +550,7 @@ function startLoopBar(barIndex = selectedBarIndex, initialSlot?: number): void {
     createPlaybackBackend
   );
   void player.play();
+  return true;
 }
 
 function loopAll(): void {
@@ -502,15 +562,18 @@ function loopAll(): void {
     return;
   }
 
-  startLoopAll();
+  void startLoopAll(0, true);
 }
 
-function startLoopAll(initialSlot = 0): void {
-  if (!currentBlock || currentBlock.rows.length === 0) {
-    return;
+async function startLoopAll(initialSlot = 0, recoverBeforeStart = false): Promise<boolean> {
+  if (!(await preparePlaybackStart(recoverBeforeStart))) {
+    return false;
   }
 
-  stopPlayback();
+  if (!currentBlock || currentBlock.rows.length === 0) {
+    return false;
+  }
+
   const block = currentBlock;
   currentSlotIndex = clampSlotIndex(block, initialSlot);
   isLoopingAll = true;
@@ -543,6 +606,7 @@ function startLoopAll(initialSlot = 0): void {
   );
   showRepeatProgressForBar(block, barIndexForSlot(block, currentSlotIndex));
   void player.play();
+  return true;
 }
 
 function restartPlaybackAfterEdit(
@@ -557,11 +621,11 @@ function restartPlaybackAfterEdit(
   }
 
   if (wasLoopingAll) {
-    startLoopAll();
+    void startLoopAll();
   } else if (wasLooping) {
-    startLoopBar(restartBarIndex);
+    void startLoopBar(restartBarIndex);
   } else {
-    play(restartSlotIndex);
+    void play(restartSlotIndex);
   }
 }
 
@@ -575,7 +639,7 @@ function capturePlaybackRestart(): (barIndex?: number) => void {
   return (barIndex = restartBarIndex) => restartPlaybackAfterEdit(wasPlaying, wasLooping, wasLoopingAll, restartSlotIndex, barIndex);
 }
 
-function restartPlaybackForControlChange(): void {
+async function restartPlaybackForControlChange(): Promise<void> {
   if (!player || !currentBlock) {
     return;
   }
@@ -587,11 +651,11 @@ function restartPlaybackForControlChange(): void {
 
   stopPlayback();
   if (wasLoopingAll) {
-    startLoopAll(restartSlotIndex);
+    await startLoopAll(restartSlotIndex, true);
   } else if (wasLooping) {
-    startLoopBar(restartBarIndex, restartSlotIndex);
+    await startLoopBar(restartBarIndex, restartSlotIndex, true);
   } else {
-    play(restartSlotIndex);
+    await play(restartSlotIndex, true);
   }
 }
 
@@ -672,7 +736,7 @@ function renderMetronomeMenu(): void {
       metronomeMode = option.value;
       syncPlaybackControls(currentBlock!);
       setMetronomeMenuOpen(false);
-      restartPlaybackForControlChange();
+      void restartPlaybackForControlChange();
     });
   });
 }
@@ -731,7 +795,7 @@ function renderMuteMenu(): void {
         mutedInstrumentIds.add(instrument.id);
       }
       syncPlaybackControls(currentBlock!);
-      restartPlaybackForControlChange();
+      void restartPlaybackForControlChange();
     });
   });
 
@@ -744,7 +808,7 @@ function renderMuteMenu(): void {
   reset.addEventListener("click", () => {
     mutedInstrumentIds.clear();
     syncPlaybackControls(currentBlock!);
-    restartPlaybackForControlChange();
+    void restartPlaybackForControlChange();
   });
 }
 
@@ -941,6 +1005,11 @@ function renderNotes(block: DrumBlock, raw: string): void {
 
   if (lastRenderError) {
     notesOut.createEl("p", { cls: "pg-note pg-note--error", text: `render error: ${lastRenderError}` });
+    any = true;
+  }
+
+  if (audioRecoveryWarning) {
+    notesOut.createEl("p", { cls: "pg-note pg-note--warn", text: audioRecoveryWarning });
     any = true;
   }
 
@@ -1226,7 +1295,9 @@ function init(): void {
   syncMetronomeButton();
   syncMuteButton();
 
-  playBtn.addEventListener("click", () => play());
+  playBtn.addEventListener("click", () => {
+    void play(0, true);
+  });
   stopBtn.addEventListener("click", stopPlayback);
   loopBtn.addEventListener("click", loopBar);
   loopAllBtn.addEventListener("click", loopAll);
@@ -1235,7 +1306,7 @@ function init(): void {
     if (currentBlock) {
       syncPlaybackControls(currentBlock);
     }
-    restartPlaybackForControlChange();
+    void restartPlaybackForControlChange();
   });
   metronomeBtn.addEventListener("click", (event) => {
     event.stopPropagation();

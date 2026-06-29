@@ -39,7 +39,8 @@ import {
   MAX_PLAYBACK_SPEED_PERCENT,
   METRONOME_MODE_OPTIONS,
   MIN_PLAYBACK_SPEED_PERCENT,
-  PLAYBACK_SPEED_STEP_PERCENT
+  PLAYBACK_SPEED_STEP_PERCENT,
+  recoverAudioContext
 } from "./src/playback";
 import { DrumPlayer } from "./src/player";
 import { getMeasureRepeatProgress } from "./src/repeat-progress";
@@ -67,6 +68,8 @@ const WRITEBACK_DEBOUNCE_MS = 450;
 const PLAYBACK_RESTART_DEBOUNCE_MS = 220;
 const EDIT_RESTORE_RETRY_MS = 50;
 const EDIT_RESTORE_MAX_ATTEMPTS = 40;
+const AUDIO_RECOVERY_NOTICE =
+  "Audio was interrupted by the mobile system. Try Play again, or relaunch Obsidian if playback stays silent.";
 
 interface DrumNotationSettings {
   enableVisualEditMode: boolean;
@@ -600,8 +603,31 @@ export default class DrumNotationPlugin extends Plugin {
       clearRepeatProgress();
     };
 
-    const startPlayback = (initialSlot = 0) => {
+    const prepareTransportStart = async (recoverBeforeStart: boolean): Promise<boolean> => {
       this.stopActivePlayer();
+      clearTransportHighlights();
+      visuals.clearCursor();
+      clearRepeatProgress();
+      isLoopingBar = false;
+      isLoopingAll = false;
+
+      if (!recoverBeforeStart) {
+        return true;
+      }
+
+      const recovered = await this.recoverAudioContext();
+
+      if (!recovered) {
+        new Notice(AUDIO_RECOVERY_NOTICE);
+      }
+
+      return recovered;
+    };
+
+    const startPlayback = async (initialSlot = 0, recoverBeforeStart = false): Promise<boolean> => {
+      if (!(await prepareTransportStart(recoverBeforeStart))) {
+        return false;
+      }
 
       isLoopingBar = false;
       isLoopingAll = false;
@@ -646,10 +672,13 @@ export default class DrumNotationPlugin extends Plugin {
       playButton.addClass("is-playing");
       handleBarChange(barIndexForSlot(block, currentSlotIndex));
       void this.activePlayer.play();
+      return true;
     };
 
-    const startLoopBar = (barIndex = selectedBarIndex, initialSlot?: number) => {
-      this.stopActivePlayer();
+    const startLoopBar = async (barIndex = selectedBarIndex, initialSlot?: number, recoverBeforeStart = false): Promise<boolean> => {
+      if (!(await prepareTransportStart(recoverBeforeStart))) {
+        return false;
+      }
 
       const bar = block.bars[clampBarIndex(block, barIndex)];
       const barStartSlot = bar?.startSlot ?? clampSlotIndex(block, currentSlotIndex);
@@ -699,10 +728,13 @@ export default class DrumNotationPlugin extends Plugin {
         isLoopingAll = false;
       };
       void this.activePlayer.play();
+      return true;
     };
 
-    const startLoopAll = (initialSlot = 0) => {
-      this.stopActivePlayer();
+    const startLoopAll = async (initialSlot = 0, recoverBeforeStart = false): Promise<boolean> => {
+      if (!(await prepareTransportStart(recoverBeforeStart))) {
+        return false;
+      }
 
       isLoopingBar = false;
       isLoopingAll = true;
@@ -749,9 +781,10 @@ export default class DrumNotationPlugin extends Plugin {
       };
       handleBarChange(barIndexForSlot(block, currentSlotIndex));
       void this.activePlayer.play();
+      return true;
     };
 
-    const restartActivePlaybackForControls = () => {
+    const restartActivePlaybackForControls = async () => {
       if (this.activePlaybackOwner !== renderOwner || !this.activePlayer) {
         return;
       }
@@ -763,11 +796,11 @@ export default class DrumNotationPlugin extends Plugin {
 
       this.stopActivePlayer(renderOwner);
       if (wasLoopingAll) {
-        startLoopAll(restartSlotIndex);
+        await startLoopAll(restartSlotIndex, true);
       } else if (wasLoopingBar) {
-        startLoopBar(restartBarIndex, restartSlotIndex);
+        await startLoopBar(restartBarIndex, restartSlotIndex, true);
       } else {
-        startPlayback(restartSlotIndex);
+        await startPlayback(restartSlotIndex, true);
       }
     };
 
@@ -787,7 +820,7 @@ export default class DrumNotationPlugin extends Plugin {
                 mutedInstrumentIds.add(instrument.id);
               }
               updateHeader();
-              restartActivePlaybackForControls();
+              void restartActivePlaybackForControls();
             });
         });
       });
@@ -801,7 +834,7 @@ export default class DrumNotationPlugin extends Plugin {
           .onClick(() => {
             mutedInstrumentIds.clear();
             updateHeader();
-            restartActivePlaybackForControls();
+            void restartActivePlaybackForControls();
           });
       });
       menu.showAtMouseEvent(event);
@@ -818,7 +851,7 @@ export default class DrumNotationPlugin extends Plugin {
             .onClick(() => {
               metronomeMode = option.value;
               updateHeader();
-              restartActivePlaybackForControls();
+              void restartActivePlaybackForControls();
             });
         });
       });
@@ -844,11 +877,11 @@ export default class DrumNotationPlugin extends Plugin {
       playbackRestartTimer = window.setTimeout(() => {
         playbackRestartTimer = null;
         if (wasLoopingAll) {
-          startLoopAll();
+          void startLoopAll();
         } else if (wasLooping) {
-          startLoopBar(barIndex);
+          void startLoopBar(barIndex);
         } else {
-          startPlayback(slotIndex);
+          void startPlayback(slotIndex);
         }
       }, PLAYBACK_RESTART_DEBOUNCE_MS);
     };
@@ -1199,7 +1232,9 @@ export default class DrumNotationPlugin extends Plugin {
       this.stopActivePreview(renderOwner);
     });
 
-    playButton.addEventListener("click", () => startPlayback());
+    playButton.addEventListener("click", () => {
+      void startPlayback(0, true);
+    });
 
     stopButton.addEventListener("click", () => {
       stopLocalPlayback();
@@ -1211,7 +1246,7 @@ export default class DrumNotationPlugin extends Plugin {
         return;
       }
 
-      startLoopBar();
+      void startLoopBar(selectedBarIndex, undefined, true);
     });
 
     loopAllButton.addEventListener("click", () => {
@@ -1220,13 +1255,13 @@ export default class DrumNotationPlugin extends Plugin {
         return;
       }
 
-      startLoopAll();
+      void startLoopAll(0, true);
     });
 
     speedSelect.addEventListener("change", () => {
       playbackSpeedPercent = Number(speedSelect.value);
       updateHeader();
-      restartActivePlaybackForControls();
+      void restartActivePlaybackForControls();
     });
 
     metronomeButton.addEventListener("click", openMetronomeMenu);
@@ -1420,6 +1455,16 @@ export default class DrumNotationPlugin extends Plugin {
     }
 
     return this.audioContext;
+  }
+
+  private async recoverAudioContext(): Promise<boolean> {
+    return recoverAudioContext({
+      get: () => this.audioContext,
+      set: (context) => {
+        this.audioContext = context;
+      },
+      create: () => new AudioContext()
+    });
   }
 
   private closeAudioContext(): void {

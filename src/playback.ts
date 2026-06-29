@@ -113,6 +113,36 @@ export function filterMutedHits(hits: DrumHit[], mutedInstrumentIds?: ReadonlySe
   return hits.filter((hit) => !mutedInstrumentIds.has(hit.instrument.id));
 }
 
+export interface AudioContextStore {
+  get(): AudioContext | null;
+  set(context: AudioContext | null): void;
+  create(): AudioContext;
+}
+
+export async function recoverAudioContext(store: AudioContextStore): Promise<boolean> {
+  let context = store.get();
+
+  if (!context || context.state === "closed") {
+    try {
+      context = store.create();
+      store.set(context);
+    } catch {
+      store.set(null);
+      return false;
+    }
+  }
+
+  if (context.state !== "running" && context.state !== "closed") {
+    try {
+      await context.resume();
+    } catch {
+      return false;
+    }
+  }
+
+  return context.state === "running";
+}
+
 function getMetronomePulseIntervalSlots(
   timeSignature: string,
   gridResolution: DrumBlock["gridResolution"]
