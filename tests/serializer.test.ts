@@ -62,6 +62,13 @@ HH | x---`);
     expect(out).toContain("HFS | xX--");
   });
 
+  it("round-trips ride bell rows as cymbal-style text despite diamond rendering", () => {
+    const out = roundTrips("RB | xX--\nCB | x---");
+
+    expect(out).toContain("RB | xX--");
+    expect(out).toContain("CB | x---");
+  });
+
   it("round-trips second kick rows as drum-notehead hits", () => {
     const out = roundTrips("BD  | o---\nBD2 | --O-");
 

@@ -104,6 +104,12 @@ describe("INSTRUMENTS_BY_ALIAS", () => {
     expect(INSTRUMENTS_BY_ALIAS.get("ridebell")?.playback).toBe("rideBell");
     expect(INSTRUMENTS_BY_ALIAS.get("cb")?.playback).toBe("cowbell");
   });
+
+  it("renders ride bell as a diamond on the ride line", () => {
+    expect(INSTRUMENTS_BY_ALIAS.get("rd")?.vexKey).toBe("f/5/X");
+    expect(INSTRUMENTS_BY_ALIAS.get("rb")?.vexKey).toBe("f/5/d2");
+    expect(INSTRUMENTS_BY_ALIAS.get("cb")?.vexKey).toBe("e/5/X");
+  });
 });
 
 describe("getAllowedArticulations", () => {

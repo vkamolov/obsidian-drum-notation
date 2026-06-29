@@ -130,7 +130,7 @@ The pattern is one character per grid slot. By default one character is a sixtee
 | `LFT`, `Low Floor Tom` | Low floor tom |
 | `CB`, `Cowbell` | Cowbell |
 
-`SD` uses a fuller synthesized snare sound. `RS` / cross-stick stays shorter and clickier. `BD2` / second kick is for double-bass-pedal notation and renders below the main kick while using the same synthesized kick voice. `RD`, `RB`, `CR`, `SP`, `China`, and `Stack` use separate synthesized cymbal voices so their playback is distinguishable; ride bell is distinct from cowbell. `OH` / open hi-hat renders with the standard open-circle mark above the note. `HO` / half-open hi-hat renders the open circle with a vertical line through it. `HFS` / hi-hat foot splash renders as a circled x on the foot-hat line.
+`SD` uses a fuller synthesized snare sound. `RS` / cross-stick stays shorter and clickier. `BD2` / second kick is for double-bass-pedal notation and renders below the main kick while using the same synthesized kick voice. `RD`, `RB`, `CR`, `SP`, `China`, and `Stack` use separate synthesized cymbal voices so their playback is distinguishable; ride bell is distinct from cowbell and renders as a diamond notehead on the ride line. `OH` / open hi-hat renders with the standard open-circle mark above the note. `HO` / half-open hi-hat renders the open circle with a vertical line through it. `HFS` / hi-hat foot splash renders as a circled x on the foot-hat line.
 
 ## Sticking
 

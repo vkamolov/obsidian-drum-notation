@@ -51,7 +51,7 @@ export const DRUM_KIT: DrumInstrument[] = [
     id: "ride-bell",
     label: "Ride bell",
     aliases: ["rb", "bell", "ridebell", "ride bell"],
-    vexKey: "e/5/X",
+    vexKey: "f/5/d2",
     midi: 53,
     color: "#92400e",
     playback: "rideBell"
@@ -288,10 +288,11 @@ export function isRest(value: string): boolean {
   return REST_CHARS.has(value);
 }
 
-// Cross noteheads (cymbals, hi-hats, cross-stick) are written with x/X by
-// convention; drum voices use o/O. The notehead lives in the vexKey suffix.
+// Cymbal-style rows (cymbals, hats, cross-stick, ride bell) are written with
+// x/X by convention; drum voices use o/O. Most rendered noteheads live in the
+// vexKey suffix, but some cymbal-style voices render with other noteheads.
 export function isCrossNotehead(instrument: DrumInstrument): boolean {
-  return instrument.vexKey.includes("/X");
+  return instrument.vexKey.includes("/X") || instrument.id === "ride-bell";
 }
 
 // The canonical character the serializer emits for a hit. Several input

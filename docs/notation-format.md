@@ -121,7 +121,7 @@ rows to stack simultaneous hits (e.g. kick + hi-hat foot).
 | China | `chna`, `china cymbal` | × | 52 |
 | Stack | `st`, `stack cymbal` | × | 52 |
 | Ride | `rd`, `rc` | × | 51 |
-| Ride bell | `rb`, `bell`, `ride bell` | × | 53 |
+| Ride bell | `rb`, `bell`, `ride bell` | ◆, ride line | 53 |
 | Open hat | `oh`, `open hh`, `open-hat` | × | 46 |
 | Half-open hat | `ho`, `hho`, `half-open hi-hat` | × | 46 |
 | Hi-hat (closed) | `hh`, `ch`, `hat`, `hihat`, `closed` | × | 42 |
@@ -185,9 +185,11 @@ Every pattern character is either a **rest** or a **hit with an articulation**.
 is intentional and is why round-tripping is defined at the model level, not as
 byte equality (see §7).
 
-By convention, cross-notehead voices (cymbals, hats, cross-stick) are written
-with `x`/`X` and drum voices with `o`/`O`. The parser does not enforce this, but
-the serializer emits the convention-correct character per voice.
+By convention, cymbal-style voices (cymbals, hats, cross-stick, ride bell) are
+written with `x`/`X` and drum voices with `o`/`O`. Ride bell renders as a diamond
+notehead on the ride line even though its text row still serializes with `x`/`X`.
+The parser does not enforce the text convention, but the serializer emits the
+convention-correct character per voice.
 
 ---
 
