@@ -1,4 +1,4 @@
-import { Beam, Formatter, GraceNote, GraceNoteGroup, Modifier, Parenthesis, Renderer, RepeatNote, Stave, StaveNote, Stem, Tickable, TimeSignature, Tuplet, Voice } from "vexflow";
+import { Beam, Formatter, GraceNote, GraceNoteGroup, Modifier, Parenthesis, Renderer, RepeatNote, Stave, StaveNote, Stem, Tickable, TimeSignature, Tuplet, Voice } from "vexflow/bravura";
 import { DRUM_KIT } from "./kit";
 import {
   compareVexKeys,

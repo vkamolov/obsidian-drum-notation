@@ -10,7 +10,7 @@ See [docs/notation-format.md](docs/notation-format.md) for the full notation for
 
 You can start without writing drum rows manually:
 
-- In an open Markdown editor, run **Drum Notation: Create drum notation** from
+- In an open Markdown editor, run **Drum Notation: Insert notation block** from
   the Command palette. Choose the title, tempo, time signature, and grid, then
   the plugin inserts a complete fenced `drums` block with one empty HH/SD/BD
   bar at the cursor.
@@ -52,7 +52,7 @@ Visual edit mode is opt-in because it writes changes back to your notes. Enable 
 
 Visual edit mode is intentionally limited in v1:
 
-- It is available in reading view only. Live Preview/source-mode blocks remain read-only because writing to the file underneath the active text editor can conflict with Obsidian's editor state.
+- It is available in reading view only. Live Preview/source-mode visual editing is planned, but remains read-only for now to avoid conflicts with Obsidian's active editor buffer.
 - It edits only top-level `drums` fences. Blocks nested inside callouts, lists, or indented Markdown are rendered and playable, but visual editing is disabled.
 - The first visual edit serializes the whole block in the plugin's canonical authoring form. This keeps the model safe and deterministic, but it may normalize spacing, labels, header order, and equivalent hit characters.
 - One-bar repeat bars are selectable and can be marked/unmarked with the grid controls, but the repeated bar body itself remains read-only.

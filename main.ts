@@ -134,7 +134,7 @@ export default class DrumNotationPlugin extends Plugin {
 
     this.addCommand({
       id: "create-drum-notation",
-      name: "Create drum notation",
+      name: "Insert notation block",
       editorCallback: (editor: Editor) => {
         new DrumSetupModal(this.app, {
           mode: "command",
@@ -1365,7 +1365,7 @@ export default class DrumNotationPlugin extends Plugin {
     section: ReturnType<MarkdownPostProcessorContext["getSectionInfo"]>
   ): EditAvailability {
     if (!this.isReadingViewRender(el, ctx.sourcePath)) {
-      return { ok: false, reason: "This action is available in Reading view only." };
+      return { ok: false, reason: "Visual editing is available in Reading view. Live Preview editing is planned." };
     }
 
     if (!this.getSourceFile(ctx.sourcePath)) {
