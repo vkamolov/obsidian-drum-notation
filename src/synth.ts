@@ -121,11 +121,11 @@ export class DrumSynth implements DrumPlaybackBackend {
     switch (playback) {
       case "crash":
         this.scheduleFilteredNoise(time, 0.12, "highpass", 4500, velocity * 0.5, 0.8);
-        this.scheduleMetal(time, 0.1, 900, velocity * 0.24);
+        this.scheduleMetallicShimmer(time, 0.09, velocity * 0.12, 5800);
         break;
       case "splash":
         this.scheduleFilteredNoise(time, 0.1, "highpass", 6400, velocity * 0.44, 0.65);
-        this.scheduleMetal(time, 0.09, 1450, velocity * 0.18);
+        this.scheduleMetallicShimmer(time, 0.08, velocity * 0.08, 7000);
         break;
       case "china":
         this.scheduleFilteredNoise(time, 0.13, "bandpass", 1900, velocity * 0.56, 1.1);
@@ -133,7 +133,7 @@ export class DrumSynth implements DrumPlaybackBackend {
         break;
       case "stack":
         this.scheduleFilteredNoise(time, 0.08, "bandpass", 3100, velocity * 0.52, 2.2);
-        this.scheduleMetal(time, 0.07, 1200, velocity * 0.14);
+        this.scheduleMetallicShimmer(time, 0.06, velocity * 0.08, 6400);
         break;
       case "ride":
         this.scheduleFilteredNoise(time, 0.11, "highpass", 6400, velocity * 0.26, 0.7);
@@ -167,20 +167,25 @@ export class DrumSynth implements DrumPlaybackBackend {
         break;
       case "hatClosed":
         this.scheduleNoise(time, 0.045, 7000, velocity * 0.55);
+        this.scheduleMetallicShimmer(time, 0.045, velocity * 0.1, 7800);
         break;
       case "hatHalfOpen":
         this.scheduleFilteredNoise(time, 0.14, "highpass", 6600, velocity * 0.5, 0.9);
+        this.scheduleMetallicShimmer(time, 0.13, velocity * 0.1, 7400);
         this.scheduleClick(time, velocity * 0.12);
         break;
       case "hatOpen":
         this.scheduleNoise(time, 0.24, 6200, velocity * 0.5);
+        this.scheduleMetallicShimmer(time, 0.22, velocity * 0.12, 7000);
         break;
       case "hatFoot":
         this.scheduleNoise(time, 0.08, 5200, velocity * 0.35);
+        this.scheduleMetallicShimmer(time, 0.05, velocity * 0.06, 7200);
         this.scheduleClick(time, velocity * 0.25);
         break;
       case "hatFootSplash":
         this.scheduleFilteredNoise(time, 0.22, "highpass", 5600, velocity * 0.42, 0.75);
+        this.scheduleMetallicShimmer(time, 0.18, velocity * 0.08, 6800);
         this.scheduleClick(time, velocity * 0.18);
         break;
       case "ride":
@@ -194,17 +199,17 @@ export class DrumSynth implements DrumPlaybackBackend {
         break;
       case "splash":
         this.scheduleFilteredNoise(time, 0.36, "highpass", 6200, velocity * 0.46, 0.65);
-        this.scheduleMetal(time, 0.32, 1450, velocity * 0.22);
+        this.scheduleMetallicShimmer(time, 0.3, velocity * 0.14, 6800);
         break;
       case "china":
         this.scheduleFilteredNoise(time, 0.95, "bandpass", 1900, velocity * 0.62, 1.1);
         this.scheduleFilteredNoise(time, 0.62, "highpass", 3600, velocity * 0.24, 0.55);
-        this.scheduleMetal(time, 0.78, 650, velocity * 0.26);
+        this.scheduleMetallicShimmer(time, 0.7, velocity * 0.18, 4200);
         break;
       case "stack":
         this.scheduleFilteredNoise(time, 0.18, "bandpass", 3100, velocity * 0.58, 2.2);
         this.scheduleFilteredNoise(time, 0.12, "highpass", 7600, velocity * 0.28, 0.8);
-        this.scheduleMetal(time, 0.14, 1200, velocity * 0.18);
+        this.scheduleMetallicShimmer(time, 0.12, velocity * 0.12, 6200);
         break;
       case "cowbell":
         this.scheduleCowbell(time, velocity);
@@ -217,25 +222,30 @@ export class DrumSynth implements DrumPlaybackBackend {
 
   private scheduleAccentedClosedHat(time: number, velocity: number): void {
     this.scheduleFilteredNoise(time, 0.06, "highpass", 7600, velocity * 0.72, 1.05);
+    this.scheduleMetallicShimmer(time, 0.055, velocity * 0.14, 8000);
   }
 
   private scheduleAccentedHalfOpenHat(time: number, velocity: number): void {
     this.scheduleFilteredNoise(time, 0.18, "highpass", 7200, velocity * 0.62, 1.05);
+    this.scheduleMetallicShimmer(time, 0.16, velocity * 0.12, 7600);
     this.scheduleClick(time, velocity * 0.18);
   }
 
   private scheduleAccentedOpenHat(time: number, velocity: number): void {
     this.scheduleFilteredNoise(time, 0.3, "highpass", 6800, velocity * 0.62, 0.9);
+    this.scheduleMetallicShimmer(time, 0.26, velocity * 0.14, 7200);
     this.scheduleClick(time, velocity * 0.1);
   }
 
   private scheduleAccentedFootHat(time: number, velocity: number): void {
     this.scheduleNoise(time, 0.09, 5800, velocity * 0.46);
+    this.scheduleMetallicShimmer(time, 0.06, velocity * 0.08, 7400);
     this.scheduleClick(time, velocity * 0.34);
   }
 
   private scheduleAccentedFootSplash(time: number, velocity: number): void {
     this.scheduleFilteredNoise(time, 0.26, "highpass", 6200, velocity * 0.52, 0.85);
+    this.scheduleMetallicShimmer(time, 0.2, velocity * 0.1, 7000);
     this.scheduleClick(time, velocity * 0.24);
   }
 
@@ -254,6 +264,10 @@ export class DrumSynth implements DrumPlaybackBackend {
     oscillator.start(time);
     oscillator.stop(time + 0.18);
     this.track(oscillator, gain);
+
+    // Beater attack: a tiny dark noise tap gives the hit definition without
+    // changing the fundamental's character.
+    this.scheduleFilteredNoise(time, 0.02, "bandpass", 3000, velocity * 0.12, 0.8);
   }
 
   private scheduleSnare(time: number, velocity: number): void {
@@ -362,6 +376,11 @@ export class DrumSynth implements DrumPlaybackBackend {
     oscillator.start(time);
     oscillator.stop(time + 0.3);
     this.track(oscillator, gain);
+
+    // First membrane overtone (~1.59x on an ideal head) plus a short stick
+    // tap: a lone sine sweep reads as an electronic blip rather than a drum.
+    this.scheduleTone(time, 0.08, frequency * 1.59, velocity * 0.16, "sine");
+    this.scheduleFilteredNoise(time, 0.025, "bandpass", 2600, velocity * 0.18, 1);
   }
 
   private scheduleCowbell(time: number, velocity: number): void {
@@ -370,47 +389,86 @@ export class DrumSynth implements DrumPlaybackBackend {
   }
 
   private scheduleRide(time: number, velocity: number): void {
-    const shimmer = 0.97 + Math.random() * 0.06;
+    // The stick ping on a real ride is genuinely pitched, so its partials stay
+    // fixed between hits; only the noise wash drifts a little. Randomizing the
+    // tone frequencies makes consecutive hits play recognizably different
+    // notes (the flaw that made the old crash sound like a xylophone).
+    const drift = 0.97 + Math.random() * 0.06;
 
-    this.scheduleTone(time, 0.065, 2550 * shimmer, velocity * 0.28, "triangle");
-    this.scheduleTone(time, 0.11, 3820 * shimmer, velocity * 0.13, "sine");
-    this.scheduleFilteredNoiseEnvelope(time, 0.34, "highpass", 7200 * shimmer, velocity * 0.16, 0.72, 0.006);
-    this.scheduleFilteredNoiseEnvelope(time + 0.01, 0.58, "bandpass", 5200 * shimmer, velocity * 0.08, 0.9, 0.012);
+    this.scheduleTone(time, 0.065, 2550, velocity * 0.28, "triangle");
+    this.scheduleTone(time, 0.11, 3820, velocity * 0.13, "sine");
+    this.scheduleFilteredNoiseEnvelope(time, 0.34, "highpass", 7200 * drift, velocity * 0.16, 0.72, 0.006);
+    this.scheduleFilteredNoiseEnvelope(time + 0.01, 0.58, "bandpass", 5200 * drift, velocity * 0.08, 0.9, 0.012);
+    this.scheduleMetallicShimmer(time, 0.5, velocity * 0.05, 7600);
   }
 
   private scheduleRideBell(time: number, velocity: number): void {
-    const shimmer = 0.985 + Math.random() * 0.03;
+    // A bell strike is pitched and does not change pitch between hits.
+    const drift = 0.985 + Math.random() * 0.03;
 
-    this.scheduleTone(time, 0.18, 2850 * shimmer, velocity * 0.42, "triangle");
-    this.scheduleTone(time, 0.13, 4020 * shimmer, velocity * 0.24, "sine");
-    this.scheduleTone(time, 0.09, 5750 * shimmer, velocity * 0.12, "sine");
-    this.scheduleFilteredNoiseEnvelope(time, 0.24, "highpass", 8600 * shimmer, velocity * 0.1, 0.8, 0.004);
+    this.scheduleTone(time, 0.18, 2850, velocity * 0.42, "triangle");
+    this.scheduleTone(time, 0.13, 4020, velocity * 0.24, "sine");
+    this.scheduleTone(time, 0.09, 5750, velocity * 0.12, "sine");
+    this.scheduleFilteredNoiseEnvelope(time, 0.24, "highpass", 8600 * drift, velocity * 0.1, 0.8, 0.004);
   }
 
   private scheduleRideBellChoke(time: number, velocity: number): void {
-    const shimmer = 0.985 + Math.random() * 0.03;
+    const drift = 0.985 + Math.random() * 0.03;
 
-    this.scheduleTone(time, 0.08, 2850 * shimmer, velocity * 0.34, "triangle");
-    this.scheduleTone(time, 0.06, 4020 * shimmer, velocity * 0.16, "sine");
-    this.scheduleFilteredNoiseEnvelope(time, 0.09, "highpass", 8200 * shimmer, velocity * 0.08, 0.75, 0.004);
+    this.scheduleTone(time, 0.08, 2850, velocity * 0.34, "triangle");
+    this.scheduleTone(time, 0.06, 4020, velocity * 0.16, "sine");
+    this.scheduleFilteredNoiseEnvelope(time, 0.09, "highpass", 8200 * drift, velocity * 0.08, 0.75, 0.004);
   }
 
   private scheduleCrash(time: number, velocity: number): void {
-    const shimmer = 0.94 + Math.random() * 0.12;
+    // Per-hit variation lives only on noise-filter cutoffs, where ±3% keeps
+    // repeated crashes from sounding machine-identical without any pitch
+    // change. The old voice randomized two audible triangle tones instead,
+    // which read as a cowbell/xylophone playing a different note every hit.
+    const drift = 0.97 + Math.random() * 0.06;
 
-    this.scheduleFilteredNoiseEnvelope(time, 1.28, "highpass", 3900 * shimmer, velocity * 0.64, 0.72, 0.026);
-    this.scheduleFilteredNoiseEnvelope(time + 0.012, 0.92, "bandpass", 6900 * shimmer, velocity * 0.28, 0.8, 0.018);
-    this.scheduleTone(time, 0.34, 580 * shimmer, velocity * 0.1, "triangle");
-    this.scheduleTone(time + 0.006, 0.24, 1280 * shimmer, velocity * 0.08, "triangle");
+    this.scheduleFilteredNoiseEnvelope(time, 0.42, "highpass", 5200 * drift, velocity * 0.5, 0.6, 0.003);
+    this.scheduleFilteredNoiseEnvelope(time + 0.01, 1.65, "highpass", 3300 * drift, velocity * 0.46, 0.55, 0.03);
+    this.scheduleFilteredNoiseEnvelope(time + 0.02, 1.1, "bandpass", 2300 * drift, velocity * 0.26, 0.8, 0.05);
+    this.scheduleMetallicShimmer(time, 0.85, velocity * 0.16, 5600);
+  }
+
+  // Six inharmonic square oscillators through a shared highpass — the classic
+  // analog-cymbal technique. Only the dense upper harmonics survive the
+  // filter, so the cluster contributes metallic sheen with no single audible
+  // pitch (unlike discrete tones, which read as cowbell/xylophone).
+  private scheduleMetallicShimmer(
+    time: number,
+    duration: number,
+    velocity: number,
+    highpassFrequency: number
+  ): void {
+    const context = this.audioContext;
+    const frequencies = [205.3, 304.4, 369.6, 522.7, 540, 800];
+    const highpass = context.createBiquadFilter();
+    const gain = context.createGain();
+
+    highpass.type = "highpass";
+    highpass.frequency.setValueAtTime(highpassFrequency, time);
+    gain.gain.setValueAtTime(velocity, time);
+    gain.gain.exponentialRampToValueAtTime(0.001, time + duration);
+    highpass.connect(gain).connect(this.target());
+    this.nodes.push(highpass, gain);
+
+    frequencies.forEach((frequency) => {
+      const oscillator = context.createOscillator();
+
+      oscillator.type = "square";
+      oscillator.frequency.setValueAtTime(frequency, time);
+      oscillator.connect(highpass);
+      oscillator.start(time);
+      oscillator.stop(time + duration + 0.02);
+      this.track(oscillator);
+    });
   }
 
   private scheduleClick(time: number, velocity: number): void {
     this.scheduleTone(time, 0.045, 1800, velocity * 0.35, "triangle");
-  }
-
-  private scheduleMetal(time: number, duration: number, frequency: number, velocity: number): void {
-    this.scheduleTone(time, duration, frequency, velocity, "square");
-    this.scheduleTone(time, duration * 0.8, frequency * 1.36, velocity * 0.55, "square");
   }
 
   private scheduleTone(
