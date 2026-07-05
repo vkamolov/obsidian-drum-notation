@@ -427,6 +427,13 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     clearSelectionHit();
   };
 
+  const stopGridGesturePropagation = (event: Event, preventDefault = false): void => {
+    event.stopPropagation();
+    if (preventDefault && event.cancelable) {
+      event.preventDefault();
+    }
+  };
+
   const now = (): number => (typeof performance === "undefined" ? Date.now() : performance.now());
 
   const instrumentGestureKey = (slotIndex: number, instrumentId: string): string => `instrument:${instrumentId}:${slotIndex}`;
@@ -498,6 +505,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
         return;
       }
 
+      stopGridGesturePropagation(event);
       clearLongPressTimer();
       activeLongPressGesture = {
         key,
@@ -529,15 +537,25 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
         return;
       }
 
+      stopGridGesturePropagation(event);
       const moved = Math.hypot(event.clientX - activeLongPressGesture.startX, event.clientY - activeLongPressGesture.startY);
       if (moved > GESTURE_LONG_PRESS_MOVE_PX) {
         clearLongPressTimer();
       }
     });
 
-    cell.addEventListener("pointerup", clearLongPressTimer);
-    cell.addEventListener("pointercancel", clearLongPressTimer);
-    cell.addEventListener("pointerleave", clearLongPressTimer);
+    cell.addEventListener("pointerup", (event) => {
+      stopGridGesturePropagation(event);
+      clearLongPressTimer();
+    });
+    cell.addEventListener("pointercancel", (event) => {
+      stopGridGesturePropagation(event);
+      clearLongPressTimer();
+    });
+    cell.addEventListener("pointerleave", (event) => {
+      stopGridGesturePropagation(event);
+      clearLongPressTimer();
+    });
   };
 
   const cycleInstrumentArticulation = (slotIndex: number, instrument: DrumInstrument): void => {
@@ -715,7 +733,12 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     }
   };
 
+  const onGridContextMenu = (event: Event): void => {
+    stopGridGesturePropagation(event, true);
+  };
+
   options.container.addEventListener("keydown", onKeyDown);
+  options.container.addEventListener("contextmenu", onGridContextMenu, true);
 
   const render = (restoreFocus = false) => {
     const scrollSnapshot = captureEditorScroll(options.container);
@@ -1073,6 +1096,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
         });
 
         cell.addEventListener("click", (event) => {
+          stopGridGesturePropagation(event);
           if (consumeSuppressedGestureClick(gestureKey)) {
             event.preventDefault();
             return;
@@ -1108,8 +1132,12 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
           applyChange(setHit(working, slot.index, instrument), slot.index);
         });
 
+        cell.addEventListener("dblclick", (event) => {
+          stopGridGesturePropagation(event, true);
+        });
+
         cell.addEventListener("contextmenu", (event) => {
-          event.preventDefault();
+          stopGridGesturePropagation(event, true);
           if (consumeSuppressedGestureClick(gestureKey)) {
             return;
           }
@@ -1164,6 +1192,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
       });
 
       cell.addEventListener("click", (event) => {
+        stopGridGesturePropagation(event);
         if (consumeSuppressedGestureClick(gestureKey)) {
           event.preventDefault();
           return;
@@ -1195,8 +1224,12 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
         applyChange(setSticking(working, slot.index, "right"), slot.index);
       });
 
+      cell.addEventListener("dblclick", (event) => {
+        stopGridGesturePropagation(event, true);
+      });
+
       cell.addEventListener("contextmenu", (event) => {
-        event.preventDefault();
+        stopGridGesturePropagation(event, true);
         if (consumeSuppressedGestureClick(gestureKey)) {
           return;
         }
@@ -1246,6 +1279,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     destroy() {
       clearLongPressTimer();
       options.container.removeEventListener("keydown", onKeyDown);
+      options.container.removeEventListener("contextmenu", onGridContextMenu, true);
       if (previousTabIndex === null) {
         options.container.removeAttribute("tabindex");
       } else {

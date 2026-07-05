@@ -547,6 +547,9 @@ body.is-mobile .drum-notation__speed {
   min-width: 0;
   max-width: 100%;
   overflow-x: hidden;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .theme-dark .pg-grid-editor,
@@ -1035,6 +1038,9 @@ body.is-mobile .drum-notation__speed {
   grid-template-columns: repeat(var(--pg-grid-cols), minmax(var(--pg-grid-cell-min), 1fr));
   gap: var(--pg-grid-gap);
   min-width: var(--pg-grid-width);
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .pg-grid__ruler-cell {
@@ -1065,6 +1071,7 @@ body.is-mobile .drum-notation__speed {
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
   -webkit-touch-callout: none;
+  -webkit-user-select: none;
   touch-action: manipulation;
   user-select: none;
 }
