@@ -1063,6 +1063,10 @@ body.is-mobile .drum-notation__speed {
   border: 1px solid var(--pg-border);
   border-radius: 3px;
   cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
+  user-select: none;
 }
 
 .pg-grid__cell:hover {

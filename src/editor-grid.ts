@@ -77,8 +77,51 @@ const ARTICULATION_LABELS: Record<DrumArticulation, string> = {
 };
 
 const SVG_NS = "http://www.w3.org/2000/svg";
+const GESTURE_DOUBLE_TAP_MS = 700;
+const GESTURE_LONG_PRESS_MS = 575;
+const GESTURE_LONG_PRESS_MOVE_PX = 10;
+const GESTURE_SUPPRESS_CLICK_MS = 900;
+const STICKING_CYCLE: StickingHand[] = ["right", "left", "both"];
 
 type BarActionIcon = "add" | "copy" | "copy-next" | "new-line" | "repeat" | "unrepeat" | "delete";
+type GestureTap =
+  | {
+      kind: "instrument";
+      slotIndex: number;
+      instrumentId: string;
+      hadValue: boolean;
+      time: number;
+    }
+  | {
+      kind: "sticking";
+      slotIndex: number;
+      hadValue: boolean;
+      time: number;
+    };
+type GestureTapInput =
+  | {
+      kind: "instrument";
+      slotIndex: number;
+      instrumentId: string;
+      hadValue: boolean;
+    }
+  | {
+      kind: "sticking";
+      slotIndex: number;
+      hadValue: boolean;
+    };
+
+interface ActiveLongPressGesture {
+  key: string;
+  pointerId: number;
+  startX: number;
+  startY: number;
+}
+
+interface SuppressedGestureClick {
+  key: string;
+  until: number;
+}
 
 export type SelectedCell = InstrumentSelectedCell | InstrumentRowSelectedCell | StickingSelectedCell;
 
@@ -112,6 +155,10 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
   const redoStack: HistoryEntry[] = initialSession?.redoStack ? [...initialSession.redoStack] : [];
   let selectedCell: SelectedCell | null = normalizeSelectedCell(initialSession?.selectedCell);
   let selectedBarIndex = clampBarIndex(working, initialSession?.selectedBarIndex ?? options.initialBarIndex ?? 0);
+  let lastGestureTap: GestureTap | null = null;
+  let activeLongPressGesture: ActiveLongPressGesture | null = null;
+  let longPressTimer: number | null = null;
+  let suppressedGestureClick: SuppressedGestureClick | null = null;
   // Instruments shown as rows: those already in the block, plus any the user
   // adds from the palette (kept visible even before they have a hit).
   const extraInstruments: DrumInstrument[] = (initialSession?.extraInstrumentIds ?? [])
@@ -378,6 +425,152 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     }
 
     clearSelectionHit();
+  };
+
+  const now = (): number => (typeof performance === "undefined" ? Date.now() : performance.now());
+
+  const instrumentGestureKey = (slotIndex: number, instrumentId: string): string => `instrument:${instrumentId}:${slotIndex}`;
+  const stickingGestureKey = (slotIndex: number): string => `sticking:${slotIndex}`;
+
+  const isSameGestureTap = (left: GestureTap, right: GestureTap): boolean => {
+    if (left.kind !== right.kind) {
+      return false;
+    }
+
+    if (left.kind === "instrument" && right.kind === "instrument") {
+      return left.slotIndex === right.slotIndex && left.instrumentId === right.instrumentId;
+    }
+
+    return left.slotIndex === right.slotIndex;
+  };
+
+  const consumeDoubleTap = (tap: GestureTapInput): boolean => {
+    const time = now();
+    const nextTap = { ...tap, time } as GestureTap;
+    const isDoubleTap =
+      tap.hadValue &&
+      lastGestureTap !== null &&
+      lastGestureTap.hadValue &&
+      isSameGestureTap(lastGestureTap, nextTap) &&
+      time - lastGestureTap.time <= GESTURE_DOUBLE_TAP_MS;
+
+    lastGestureTap = isDoubleTap ? null : nextTap;
+    return isDoubleTap;
+  };
+
+  const clearLongPressTimer = (): void => {
+    if (longPressTimer !== null) {
+      window.clearTimeout(longPressTimer);
+      longPressTimer = null;
+    }
+    activeLongPressGesture = null;
+  };
+
+  const markGestureClickSuppressed = (key: string): void => {
+    suppressedGestureClick = { key, until: now() + GESTURE_SUPPRESS_CLICK_MS };
+  };
+
+  const consumeSuppressedGestureClick = (key: string): boolean => {
+    if (!suppressedGestureClick) {
+      return false;
+    }
+
+    if (now() > suppressedGestureClick.until) {
+      suppressedGestureClick = null;
+      return false;
+    }
+
+    if (suppressedGestureClick.key !== key) {
+      return false;
+    }
+
+    suppressedGestureClick = null;
+    return true;
+  };
+
+  const attachLongPressDelete = (cell: HTMLButtonElement, key: string, enabled: boolean, onDelete: () => void): void => {
+    if (!enabled) {
+      return;
+    }
+
+    cell.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) {
+        return;
+      }
+
+      clearLongPressTimer();
+      activeLongPressGesture = {
+        key,
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY
+      };
+
+      try {
+        cell.setPointerCapture(event.pointerId);
+      } catch {
+        // Some embedded/mobile WebViews can decline pointer capture. The
+        // gesture still works with the element-level cancel handlers below.
+      }
+
+      longPressTimer = window.setTimeout(() => {
+        if (!activeLongPressGesture || activeLongPressGesture.key !== key) {
+          return;
+        }
+
+        markGestureClickSuppressed(key);
+        clearLongPressTimer();
+        onDelete();
+      }, GESTURE_LONG_PRESS_MS);
+    });
+
+    cell.addEventListener("pointermove", (event) => {
+      if (!activeLongPressGesture || activeLongPressGesture.key !== key || activeLongPressGesture.pointerId !== event.pointerId) {
+        return;
+      }
+
+      const moved = Math.hypot(event.clientX - activeLongPressGesture.startX, event.clientY - activeLongPressGesture.startY);
+      if (moved > GESTURE_LONG_PRESS_MOVE_PX) {
+        clearLongPressTimer();
+      }
+    });
+
+    cell.addEventListener("pointerup", clearLongPressTimer);
+    cell.addEventListener("pointercancel", clearLongPressTimer);
+    cell.addEventListener("pointerleave", clearLongPressTimer);
+  };
+
+  const cycleInstrumentArticulation = (slotIndex: number, instrument: DrumInstrument): void => {
+    const hit = findHit(working, slotIndex, instrument.id);
+
+    if (!hit) {
+      return;
+    }
+
+    const articulations = getAllowedArticulations(instrument);
+    if (articulations.length < 2) {
+      return;
+    }
+
+    const currentIndex = articulations.indexOf(hit.articulation);
+    const nextArticulation = articulations[(currentIndex + 1) % articulations.length] ?? articulations[0];
+
+    selectedCell = { kind: "instrument", slotIndex, instrumentId: instrument.id };
+    applyArticulationToSelection(nextArticulation);
+  };
+
+  const cycleSticking = (slotIndex: number): void => {
+    const sticking = findSticking(working, slotIndex);
+
+    if (!sticking) {
+      return;
+    }
+
+    const currentIndex = STICKING_CYCLE.indexOf(sticking);
+    const nextSticking = STICKING_CYCLE[(currentIndex + 1) % STICKING_CYCLE.length] ?? STICKING_CYCLE[0];
+
+    selectedCell = { kind: "sticking", slotIndex };
+    applyStickingToSelection(nextSticking);
   };
 
   const addBarAfterSelection = () => {
@@ -856,7 +1049,8 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
 
       for (const slot of bar.slots) {
         const hit = findHit(working, slot.index, instrument.id);
-        const cell = cells.createEl("button", { cls: "pg-grid__cell" });
+        const cell = cells.createEl("button", { cls: "pg-grid__cell" }) as HTMLButtonElement;
+        const gestureKey = instrumentGestureKey(slot.index, instrument.id);
         const isSingleCellSelected =
           selectedCell?.kind === "instrument" && selectedCell.slotIndex === slot.index && selectedCell.instrumentId === instrument.id;
         const isSelected = isSingleCellSelected || (isRowSelected && !!hit);
@@ -873,21 +1067,53 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
           cell.setAttr("aria-pressed", "true");
         }
 
-        cell.addEventListener("click", () => {
+        attachLongPressDelete(cell, gestureKey, !!hit, () => {
+          selectedCell = { kind: "instrument", slotIndex: slot.index, instrumentId: instrument.id };
+          clearSelectionHit();
+        });
+
+        cell.addEventListener("click", (event) => {
+          if (consumeSuppressedGestureClick(gestureKey)) {
+            event.preventDefault();
+            return;
+          }
+
           selectedCell = { kind: "instrument", slotIndex: slot.index, instrumentId: instrument.id };
 
           if (hit) {
+            if (
+              consumeDoubleTap({
+                kind: "instrument",
+                slotIndex: slot.index,
+                instrumentId: instrument.id,
+                hadValue: true
+              })
+            ) {
+              cycleInstrumentArticulation(slot.index, instrument);
+              return;
+            }
+
             options.onPreview(working, slot.index);
             render(true);
             return;
           }
 
+          consumeDoubleTap({
+            kind: "instrument",
+            slotIndex: slot.index,
+            instrumentId: instrument.id,
+            hadValue: false
+          });
           markExtraInstrumentModeled(instrument.id);
           applyChange(setHit(working, slot.index, instrument), slot.index);
         });
 
         cell.addEventListener("contextmenu", (event) => {
           event.preventDefault();
+          if (consumeSuppressedGestureClick(gestureKey)) {
+            return;
+          }
+
           selectedCell = { kind: "instrument", slotIndex: slot.index, instrumentId: instrument.id };
           if (hit) {
             options.onPreview(working, slot.index);
@@ -916,7 +1142,8 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
 
     for (const slot of bar.slots) {
       const sticking = findSticking(working, slot.index);
-      const cell = cells.createEl("button", { cls: "pg-grid__cell pg-grid__cell--sticking" });
+      const cell = cells.createEl("button", { cls: "pg-grid__cell pg-grid__cell--sticking" }) as HTMLButtonElement;
+      const gestureKey = stickingGestureKey(slot.index);
       const isSelected = selectedCell?.kind === "sticking" && selectedCell.slotIndex === slot.index;
 
       addBoundaryClasses(cell, slot.index, slotsPerBeat, barStartSlots, localIndex);
@@ -931,19 +1158,49 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
         cell.setAttr("aria-pressed", "true");
       }
 
-      cell.addEventListener("click", () => {
+      attachLongPressDelete(cell, gestureKey, !!sticking, () => {
+        selectedCell = { kind: "sticking", slotIndex: slot.index };
+        clearSelectionSticking();
+      });
+
+      cell.addEventListener("click", (event) => {
+        if (consumeSuppressedGestureClick(gestureKey)) {
+          event.preventDefault();
+          return;
+        }
+
         selectedCell = { kind: "sticking", slotIndex: slot.index };
 
         if (sticking) {
+          if (
+            consumeDoubleTap({
+              kind: "sticking",
+              slotIndex: slot.index,
+              hadValue: true
+            })
+          ) {
+            cycleSticking(slot.index);
+            return;
+          }
+
           render(true);
           return;
         }
 
+        consumeDoubleTap({
+          kind: "sticking",
+          slotIndex: slot.index,
+          hadValue: false
+        });
         applyChange(setSticking(working, slot.index, "right"), slot.index);
       });
 
       cell.addEventListener("contextmenu", (event) => {
         event.preventDefault();
+        if (consumeSuppressedGestureClick(gestureKey)) {
+          return;
+        }
+
         selectedCell = { kind: "sticking", slotIndex: slot.index };
         render(true);
       });
@@ -987,6 +1244,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
       syncBlock(block, nextSelectedBarIndex);
     },
     destroy() {
+      clearLongPressTimer();
       options.container.removeEventListener("keydown", onKeyDown);
       if (previousTabIndex === null) {
         options.container.removeAttribute("tabindex");
