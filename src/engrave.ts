@@ -1281,12 +1281,12 @@ function buildGridVisualBarNotes(
     hitIndexes.forEach((hitIndex, indexInBeat) => {
       if (hitIndex > cursor) {
         finishBeamGroup();
-        appendHiddenGridRests(notes, hitIndex - cursor, 32);
+        appendHiddenGridRests(notes, hitIndex - cursor, gridResolution);
       }
 
       const slot = beatSlots[hitIndex];
       const nextHitIndex = hitIndexes[indexInBeat + 1] ?? beatSlots.length;
-      const span = getGridSpanToNextHit(hitIndex, nextHitIndex, beatSlots.length);
+      const span = getGridSpanToNextHit(hitIndex, nextHitIndex, beatSlots.length, gridResolution);
       const note = makeStaveNote(slot, span.duration, colorNoteheads, span.dots);
 
       notes.push(note);
@@ -1305,7 +1305,7 @@ function buildGridVisualBarNotes(
     finishBeamGroup();
 
     if (cursor < beatSlots.length) {
-      appendHiddenGridRests(notes, beatSlots.length - cursor, 32);
+      appendHiddenGridRests(notes, beatSlots.length - cursor, gridResolution);
     }
   }
 

@@ -86,7 +86,7 @@ describe("duration helpers", () => {
 
 describe("getGridSpanToNextHit", () => {
   it("keeps simple power-of-two spans", () => {
-    expect(getGridSpanToNextHit(0, 2, 4)).toEqual({
+    expect(getGridSpanToNextHit(0, 2, 4, 16)).toEqual({
       duration: "8",
       dots: 0,
       supportedSpan: 2
@@ -94,12 +94,12 @@ describe("getGridSpanToNextHit", () => {
   });
 
   it("supports common dotted spans", () => {
-    expect(getGridSpanToNextHit(0, 3, 4)).toEqual({
+    expect(getGridSpanToNextHit(0, 3, 4, 16)).toEqual({
       duration: "8",
       dots: 1,
       supportedSpan: 3
     });
-    expect(getGridSpanToNextHit(0, 6, 8)).toEqual({
+    expect(getGridSpanToNextHit(0, 6, 8, 32)).toEqual({
       duration: "8",
       dots: 1,
       supportedSpan: 6
@@ -107,10 +107,47 @@ describe("getGridSpanToNextHit", () => {
   });
 
   it("falls back safely for unsupported spans", () => {
-    expect(getGridSpanToNextHit(0, 5, 8)).toEqual({
+    expect(getGridSpanToNextHit(0, 5, 8, 32)).toEqual({
       duration: "32",
       dots: 0,
       supportedSpan: 1
+    });
+  });
+
+  it("maps compound-meter eighth-note beats in Grid 16", () => {
+    // 6/8 or 12/8 in Grid 16: two sixteenth slots per eighth-note beat.
+    expect(getGridSpanToNextHit(0, 2, 2, 16)).toEqual({
+      duration: "8",
+      dots: 0,
+      supportedSpan: 2
+    });
+    expect(getGridSpanToNextHit(0, 1, 2, 16)).toEqual({
+      duration: "16",
+      dots: 0,
+      supportedSpan: 1
+    });
+  });
+
+  it("maps compound-meter eighth-note beats in Grid 32", () => {
+    // 6/8 or 12/8 in Grid 32: four thirty-second slots per eighth-note beat.
+    expect(getGridSpanToNextHit(0, 4, 4, 32)).toEqual({
+      duration: "8",
+      dots: 0,
+      supportedSpan: 4
+    });
+    expect(getGridSpanToNextHit(0, 3, 4, 32)).toEqual({
+      duration: "16",
+      dots: 1,
+      supportedSpan: 3
+    });
+  });
+
+  it("maps half-note beats in cut time", () => {
+    // 2/2 in Grid 16: eight sixteenth slots per half-note beat.
+    expect(getGridSpanToNextHit(0, 8, 8, 16)).toEqual({
+      duration: "2",
+      dots: 0,
+      supportedSpan: 8
     });
   });
 });
@@ -142,6 +179,16 @@ HH | x---x---`);
     expect(getSecondsPerSlot(block)).toBeCloseTo(0.0625, 10);
     expect(getSlotVisualDurationSeconds(block, block.slots[0])).toBeCloseTo(0.25, 10);
     expect(getSlotVisualDurationSeconds(block, block.slots[4])).toBeCloseTo(0.25, 10);
+  });
+
+  it("uses eighth-note beats for compound meters", () => {
+    const block = parseDrumBlock(`Tempo: 120
+Time: 6/8
+HH | x-x-x-x-x-x-`);
+
+    expect(getSecondsPerSlot(block)).toBeCloseTo(0.125, 10);
+    expect(getSlotVisualDurationSeconds(block, block.slots[0])).toBeCloseTo(0.25, 10);
+    expect(getSlotVisualDurationSeconds(block, block.slots[10])).toBeCloseTo(0.25, 10);
   });
 });
 

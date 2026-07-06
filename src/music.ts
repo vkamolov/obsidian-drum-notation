@@ -80,7 +80,12 @@ export function getSlotVisualDurationSeconds(block: DrumBlock, targetSlot: DrumS
     return getSecondsPerSlot(block, speedPercent);
   }
 
-  const span = getGridSpanToNextHit(indexInBeat, hitIndexes[hitPosition + 1], beatSlots.length).supportedSpan;
+  const span = getGridSpanToNextHit(
+    indexInBeat,
+    hitIndexes[hitPosition + 1],
+    beatSlots.length,
+    block.gridResolution
+  ).supportedSpan;
 
   return Math.max(
     getSecondsPerSlot(block, speedPercent),
@@ -98,13 +103,18 @@ export interface GridSpanDuration {
   supportedSpan: number;
 }
 
-export function getGridSpanToNextHit(hitIndex: number, nextHitIndex: number | undefined, beatSlotCount: number): GridSpanDuration {
+export function getGridSpanToNextHit(
+  hitIndex: number,
+  nextHitIndex: number | undefined,
+  beatSlotCount: number,
+  gridResolution: GridResolution
+): GridSpanDuration {
   const span = Math.max(1, Math.round((nextHitIndex ?? beatSlotCount) - hitIndex));
   const dottedBaseSpan = baseSpanForSingleDottedSpan(span);
 
   if (dottedBaseSpan !== null) {
     return {
-      duration: durationForGridSpanFromBeatSlotCount(beatSlotCount, dottedBaseSpan),
+      duration: durationForGridSpan(gridResolution, dottedBaseSpan),
       dots: 1,
       supportedSpan: span
     };
@@ -113,14 +123,10 @@ export function getGridSpanToNextHit(hitIndex: number, nextHitIndex: number | un
   const supportedSpan = isPowerOfTwo(span) ? span : 1;
 
   return {
-    duration: durationForGridSpanFromBeatSlotCount(beatSlotCount, supportedSpan),
+    duration: durationForGridSpan(gridResolution, supportedSpan),
     dots: 0,
     supportedSpan
   };
-}
-
-function durationForGridSpanFromBeatSlotCount(beatSlotCount: number, span: number): string {
-  return durationForDenominator(4 * (beatSlotCount / Math.max(1, span)));
 }
 
 function baseSpanForSingleDottedSpan(span: number): number | null {
