@@ -280,6 +280,10 @@ export function getArticulationForKey(value: string): DrumArticulation | null {
   return ARTICULATION_BY_CHAR[value] ?? null;
 }
 
+export function isSupportedHitChar(value: string): boolean {
+  return isRest(value) || getArticulationForKey(value) !== null;
+}
+
 export function getVelocity(value: string): number {
   return VELOCITY_BY_ARTICULATION[getArticulation(value)];
 }

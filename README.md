@@ -8,6 +8,9 @@ See [docs/notation-format.md](docs/notation-format.md) for the full notation for
 
 ## Beta Notes
 
+- `0.9.3` adds advisory parser warnings in Obsidian and the playground for
+  ignored rows, fallback settings, unsupported characters, and removed settings.
+  Warnings do not block rendering, playback, or visual editing.
 - `0.9.2` corrects Grid-16 engraving and buzz/legend durations to follow the
   written distance to the next hit. Three hits in one Grid-16 count no longer
   imply a triplet; use compound meters such as 6/8 or 12/8 for triplet-feel

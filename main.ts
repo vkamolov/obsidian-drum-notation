@@ -31,7 +31,7 @@ import {
   ReplaceDrumsBlockFailure
 } from "./src/markdown";
 import { getBarRange, getSecondsPerSlot, getSlotVisualDurationSeconds } from "./src/music";
-import { getTitle, parseDrumBlock } from "./src/parser";
+import { getTitle, parseDrumBlockWithWarnings } from "./src/parser";
 import {
   DEFAULT_METRONOME_MODE,
   DEFAULT_PLAYBACK_SPEED_PERCENT,
@@ -64,6 +64,7 @@ import {
   DrumBlock,
   DrumSlot,
   MetronomeMode,
+  ParseWarning,
   ScoreBarRegion
 } from "./src/types";
 
@@ -71,6 +72,7 @@ const WRITEBACK_DEBOUNCE_MS = 450;
 const PLAYBACK_RESTART_DEBOUNCE_MS = 220;
 const EDIT_RESTORE_RETRY_MS = 50;
 const EDIT_RESTORE_MAX_ATTEMPTS = 40;
+const MAX_INLINE_PARSE_WARNINGS = 5;
 const AUDIO_RECOVERY_NOTICE =
   "Audio was interrupted by the mobile system. Try Play again, or relaunch Obsidian if playback stays silent.";
 
@@ -173,7 +175,9 @@ export default class DrumNotationPlugin extends Plugin {
   }
 
   private renderDrumNotation(source: string, el: HTMLElement, ctx: MarkdownPostProcessorContext): void {
-    let block = parseDrumBlock(source);
+    const parsed = parseDrumBlockWithWarnings(source);
+    let block = parsed.block;
+    let parseWarnings = parsed.warnings;
     let sourceBody = source;
     const initialSection = ctx.getSectionInfo(el);
     const initialSessionKey = initialSection ? this.getEditSessionKey(ctx.sourcePath, initialSection.lineStart) : null;
@@ -220,6 +224,8 @@ export default class DrumNotationPlugin extends Plugin {
     const editButton = makeIconButton("pencil", "Edit notation");
     const createButton = makeIconButton("square-plus", "Create first bar");
 
+    const warningsEl = root.createEl("div", { cls: "drum-notation__warnings" });
+    warningsEl.hidden = true;
     const notationViewport = root.createEl("div", { cls: "drum-notation__score-viewport" });
     const notation = notationViewport.createEl("div", { cls: "drum-notation__score" });
     const editRoot = root.createEl("div", { cls: "drum-notation__edit-root" });
@@ -260,6 +266,27 @@ export default class DrumNotationPlugin extends Plugin {
       this.getEditAvailability(el, ctx, getCurrentSection(), block);
     const getCurrentCreateAvailability = () =>
       this.getCreateAvailability(el, ctx, getCurrentSection(), block);
+
+    const renderParseWarnings = () => {
+      warningsEl.empty();
+      warningsEl.hidden = parseWarnings.length === 0;
+
+      if (parseWarnings.length === 0) {
+        return;
+      }
+
+      const visibleWarnings = parseWarnings.slice(0, MAX_INLINE_PARSE_WARNINGS);
+      const list = warningsEl.createEl("ul");
+
+      for (const warning of visibleWarnings) {
+        list.createEl("li", { text: formatParseWarning(warning) });
+      }
+
+      const hiddenCount = parseWarnings.length - visibleWarnings.length;
+      if (hiddenCount > 0) {
+        list.createEl("li", { text: `…and ${hiddenCount} more parser warning${hiddenCount === 1 ? "" : "s"}.` });
+      }
+    };
 
     const updateHeader = () => {
       const playbackInstruments = getPlaybackInstruments(block);
@@ -991,6 +1018,8 @@ export default class DrumNotationPlugin extends Plugin {
 
       if (wrote) {
         sourceBody = nextBody;
+        parseWarnings = parseDrumBlockWithWarnings(nextBody).warnings;
+        renderParseWarnings();
         hasPendingWriteback = false;
       } else if (failure) {
         new Notice(formatWritebackFailure(failure));
@@ -1040,6 +1069,7 @@ export default class DrumNotationPlugin extends Plugin {
       }
 
       block = next;
+      parseWarnings = parseDrumBlockWithWarnings(serializeDrumBlock(block, { mode: "authoring" })).warnings;
       selectedBarIndex =
         nextSelectedBarIndex !== undefined
           ? clampBarIndex(block, nextSelectedBarIndex)
@@ -1200,6 +1230,7 @@ export default class DrumNotationPlugin extends Plugin {
     };
 
     updateHeader();
+    renderParseWarnings();
     renderScore();
     queueModeAvailabilityRefresh();
     child.registerEvent(this.app.workspace.on("layout-change", () => queueModeAvailabilityRefresh()));
@@ -1876,6 +1907,12 @@ function selectedSlotIndexFromSession(session: GridEditorSessionState | undefine
   }
 
   return selectedCell.slotIndex;
+}
+
+function formatParseWarning(warning: ParseWarning): string {
+  const location = warning.column !== undefined ? `line ${warning.line}, column ${warning.column}` : `line ${warning.line}`;
+
+  return `${location}: ${warning.message}`;
 }
 
 class DrumConfirmModal extends Modal {

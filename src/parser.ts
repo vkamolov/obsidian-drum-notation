@@ -1,4 +1,4 @@
-import { getArticulation, getVelocity, INSTRUMENTS_BY_ALIAS, isRest } from "./kit";
+import { getArticulation, getVelocity, INSTRUMENTS_BY_ALIAS, isRest, isSupportedHitChar } from "./kit";
 import {
   DEFAULT_GRID_RESOLUTION,
   DEFAULT_LEGEND_MODE,
@@ -19,6 +19,9 @@ import {
   GridResolution,
   LegendMode,
   MeasureRepeatInput,
+  ParseResult,
+  ParseWarning,
+  ParseWarningCode,
   StickingHand
 } from "./types";
 import { normalizeLabel } from "./util";
@@ -36,9 +39,70 @@ interface BarSnapshot {
 }
 
 const STICKING_LABELS = new Set(["st", "stick", "sticking", "hands"]);
+const SETTING_KEYS = new Set([
+  "title",
+  "author",
+  "comment",
+  "tempo",
+  "bpm",
+  "time",
+  "timesignature",
+  "meter",
+  "count",
+  "repeat",
+  "repeats",
+  "cursor",
+  "playbackcursor",
+  "highlight",
+  "notehighlight",
+  "playbackhighlight",
+  "legend",
+  "instrumentlegend",
+  "kitlegend",
+  "colorlegend",
+  "grid",
+  "subdivision",
+  "resolution"
+]);
+const DIAGNOSTIC_SETTING_KEYS = new Set([
+  "tempo",
+  "bpm",
+  "time",
+  "timesignature",
+  "meter",
+  "repeat",
+  "repeats",
+  "cursor",
+  "playbackcursor",
+  "highlight",
+  "notehighlight",
+  "playbackhighlight",
+  "legend",
+  "instrumentlegend",
+  "kitlegend",
+  "colorlegend",
+  "grid",
+  "subdivision",
+  "resolution"
+]);
+const REMOVED_SETTING_KEYS = new Set(["engraving"]);
+const TRUE_BOOLEAN_VALUES = new Set(["on", "true", "yes", "y", "1", "show", "visible"]);
+const FALSE_BOOLEAN_VALUES = new Set(["off", "false", "no", "n", "0", "hide", "hidden"]);
+const USED_LEGEND_VALUES = new Set(["on", "true", "yes", "y", "1", "show", "visible", "used", "current", "present"]);
+const ALL_LEGEND_VALUES = new Set(["all", "full", "kit", "complete", "supported", "everything"]);
+const OFF_LEGEND_VALUES = new Set(["off", "false", "no", "n", "0", "hide", "hidden", "none"]);
 
 export function parseDrumBlock(source: string): DrumBlock {
+  return parseDrumBlockInternal(source, false).block;
+}
+
+export function parseDrumBlockWithWarnings(source: string): ParseResult {
+  return parseDrumBlockInternal(source, true);
+}
+
+function parseDrumBlockInternal(source: string, collectWarnings: boolean): ParseResult {
   const metadata: string[] = [];
+  const warnings: ParseWarning[] = [];
   const rowSections: DrumRowInput[][] = [];
   const stickingSections: Array<DrumStickingInput | undefined> = [];
   const repeatSections: Array<Array<MeasureRepeatInput | undefined>> = [];
@@ -55,6 +119,18 @@ export function parseDrumBlock(source: string): DrumBlock {
   let showHighlight = DEFAULT_SHOW_HIGHLIGHT;
   let legendMode = DEFAULT_LEGEND_MODE;
   let gridResolution = DEFAULT_GRID_RESOLUTION;
+  const warn = (line: number, code: ParseWarningCode, message: string, column?: number) => {
+    if (!collectWarnings) {
+      return;
+    }
+
+    warnings.push({
+      code,
+      message,
+      line,
+      ...(column !== undefined ? { column } : {})
+    });
+  };
 
   const pushCurrentBar = () => {
     if (currentRows.length === 0 && !currentSticking) {
@@ -75,89 +151,159 @@ export function parseDrumBlock(source: string): DrumBlock {
     currentSubtitle = undefined;
   };
 
-  source
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0)
-    .forEach((line) => {
-      if (isBarSeparator(line)) {
-        pushCurrentBar();
-        return;
+  source.split(/\r?\n/).forEach((rawLine, lineIndex) => {
+    const line = rawLine.trim();
+    const lineNumber = lineIndex + 1;
+
+    if (line.length === 0) {
+      return;
+    }
+
+    if (isBarSeparator(line)) {
+      pushCurrentBar();
+      return;
+    }
+
+    const subtitle = parseSubtitleLine(line);
+
+    if (subtitle !== null) {
+      if (subtitle.length > 0) {
+        currentSubtitle = subtitle;
       }
 
-      const subtitle = parseSubtitleLine(line);
+      return;
+    }
 
-      if (subtitle !== null) {
-        if (subtitle.length > 0) {
-          currentSubtitle = subtitle;
+    const removedSetting = parseRemovedSettingLine(line);
+
+    if (removedSetting) {
+      warn(lineNumber, "removed-setting", `${removedSetting.originalKey}: is preserved as metadata but no longer affects rendering.`);
+      metadata.push(line);
+      return;
+    }
+
+    const emptyKnownSetting = parseEmptyKnownSettingLine(line);
+
+    if (emptyKnownSetting) {
+      warn(lineNumber, "invalid-setting", `${emptyKnownSetting.originalKey}: has no value and is preserved as metadata.`);
+      metadata.push(line);
+      return;
+    }
+
+    const setting = parseSettingLine(line);
+
+    if (setting) {
+      if (setting.key === "tempo" || setting.key === "bpm") {
+        const value = Number.parseInt(setting.value, 10);
+        const nextTempo = clampTempo(value);
+
+        if (!Number.isFinite(value)) {
+          warn(lineNumber, "invalid-setting", `${setting.originalKey}: "${setting.value}" is not a valid tempo; using ${nextTempo} BPM.`);
+        } else if (value !== nextTempo) {
+          warn(lineNumber, "clamped-setting", `${setting.originalKey}: ${value} is outside the supported 30–260 BPM range; using ${nextTempo} BPM.`);
         }
 
-        return;
-      }
+        tempo = nextTempo;
+      } else if (setting.key === "time" || setting.key === "timesignature" || setting.key === "meter") {
+        const nextTimeSignature = parseTimeSignature(setting.value);
 
-      const setting = parseSettingLine(line);
-
-      if (setting) {
-        if (setting.key === "tempo" || setting.key === "bpm") {
-          tempo = clampTempo(Number.parseInt(setting.value, 10));
-        } else if (setting.key === "time" || setting.key === "timesignature" || setting.key === "meter") {
-          timeSignature = parseTimeSignature(setting.value);
-        } else if (setting.key === "repeat" || setting.key === "repeats") {
-          repeatCount = parseRepeatCount(setting.value);
-        } else if (setting.key === "cursor" || setting.key === "playbackcursor") {
-          showCursor = parseBooleanSetting(setting.value, DEFAULT_SHOW_CURSOR);
-        } else if (setting.key === "highlight" || setting.key === "notehighlight" || setting.key === "playbackhighlight") {
-          showHighlight = parseBooleanSetting(setting.value, DEFAULT_SHOW_HIGHLIGHT);
-        } else if (setting.key === "legend" || setting.key === "instrumentlegend" || setting.key === "kitlegend" || setting.key === "colorlegend") {
-          legendMode = parseLegendMode(setting.value);
-        } else if (setting.key === "grid" || setting.key === "subdivision" || setting.key === "resolution") {
-          gridResolution = parseGridResolution(setting.value);
-        } else {
-          metadata.push(`${setting.originalKey}: ${setting.value}`);
+        if (nextTimeSignature === DEFAULT_TIME_SIGNATURE && !isValidTimeSignatureSetting(setting.value)) {
+          warn(lineNumber, "invalid-setting", `${setting.originalKey}: "${setting.value}" is not a valid time signature; using ${DEFAULT_TIME_SIGNATURE}.`);
         }
 
-        return;
-      }
+        timeSignature = nextTimeSignature;
+      } else if (setting.key === "repeat" || setting.key === "repeats") {
+        const parsedRepeat = parseRepeatSettingValue(setting.value);
+        const nextRepeatCount = parseRepeatCount(setting.value);
 
-      const measureRepeat = parseMeasureRepeatLine(line);
-
-      if (measureRepeat) {
-        const repeatedSticking = appendMeasureRepeat(currentRows, currentSticking, currentRepeats, barHistory, measureRepeat);
-
-        if (repeatedSticking === null) {
-          metadata.push(line);
-        } else {
-          currentSticking = repeatedSticking;
+        if (parsedRepeat === null) {
+          warn(lineNumber, "invalid-setting", `${setting.originalKey}: "${setting.value}" is not a valid repeat count; using ${nextRepeatCount}.`);
+        } else if (parsedRepeat !== nextRepeatCount) {
+          warn(lineNumber, "clamped-setting", `${setting.originalKey}: ${parsedRepeat} is outside the supported 1–64 range; using ${nextRepeatCount}.`);
         }
 
-        return;
-      }
+        repeatCount = nextRepeatCount;
+      } else if (setting.key === "cursor" || setting.key === "playbackcursor") {
+        if (!isBooleanSettingValue(setting.value)) {
+          warn(lineNumber, "invalid-setting", `${setting.originalKey}: "${setting.value}" is not a recognized on/off value; using ${DEFAULT_SHOW_CURSOR ? "on" : "off"}.`);
+        }
 
-      const sticking = parseStickingRowInput(line);
+        showCursor = parseBooleanSetting(setting.value, DEFAULT_SHOW_CURSOR);
+      } else if (setting.key === "highlight" || setting.key === "notehighlight" || setting.key === "playbackhighlight") {
+        if (!isBooleanSettingValue(setting.value)) {
+          warn(lineNumber, "invalid-setting", `${setting.originalKey}: "${setting.value}" is not a recognized on/off value; using ${DEFAULT_SHOW_HIGHLIGHT ? "on" : "off"}.`);
+        }
 
-      if (sticking) {
-        currentSticking = sticking;
-        return;
-      }
+        showHighlight = parseBooleanSetting(setting.value, DEFAULT_SHOW_HIGHLIGHT);
+      } else if (setting.key === "legend" || setting.key === "instrumentlegend" || setting.key === "kitlegend" || setting.key === "colorlegend") {
+        if (!isLegendSettingValue(setting.value)) {
+          warn(lineNumber, "invalid-setting", `${setting.originalKey}: "${setting.value}" is not a recognized legend mode; using ${DEFAULT_LEGEND_MODE}.`);
+        }
 
-      const row = parseDrumRowInput(line);
+        legendMode = parseLegendMode(setting.value);
+      } else if (setting.key === "grid" || setting.key === "subdivision" || setting.key === "resolution") {
+        const parsedGrid = parseGridSettingValue(setting.value);
+        const nextGridResolution = parseGridResolution(setting.value);
 
-      if (row) {
-        currentRows.push(row);
+        if (parsedGrid === null) {
+          warn(lineNumber, "invalid-setting", `${setting.originalKey}: "${setting.value}" is not a valid grid value; using Grid ${nextGridResolution}.`);
+        } else if (parsedGrid !== 16 && parsedGrid !== 32) {
+          warn(lineNumber, "invalid-setting", `${setting.originalKey}: ${parsedGrid} is unsupported; using Grid ${nextGridResolution}.`);
+        }
+
+        gridResolution = parseGridResolution(setting.value);
       } else {
-        metadata.push(line);
+        metadata.push(`${setting.originalKey}: ${setting.value}`);
       }
-    });
+
+      return;
+    }
+
+    const measureRepeat = parseMeasureRepeatLine(line);
+
+    if (measureRepeat) {
+      const repeatedSticking = appendMeasureRepeat(currentRows, currentSticking, currentRepeats, barHistory, measureRepeat);
+
+      if (repeatedSticking === null) {
+        warn(lineNumber, "repeat-without-previous-bar", "Repeat notation needs a previous bar; this line is preserved as metadata.");
+        metadata.push(line);
+      } else {
+        currentSticking = repeatedSticking;
+      }
+
+      return;
+    }
+
+    const sticking = parseStickingRowInput(line);
+
+    if (sticking) {
+      warnForUnsupportedStickingCharacters(line, lineNumber, warn);
+      currentSticking = sticking;
+      return;
+    }
+
+    const row = parseDrumRowInput(line);
+
+    if (row) {
+      warnForUnsupportedPatternCharacters(line, row.label, lineNumber, warn);
+      currentRows.push(row);
+    } else {
+      warnForUnparsedPipeLine(line, lineNumber, warn);
+      metadata.push(line);
+    }
+  });
 
   pushCurrentBar();
 
-  return finalizeDrumBlock(
+  const block = finalizeDrumBlock(
     { tempo, timeSignature, repeatCount, showCursor, showHighlight, legendMode, gridResolution, metadata },
     rowSections,
     repeatSections,
     stickingSections,
     subtitleSections
   );
+
+  return { block, warnings };
 }
 
 // Assembles the structural model (systems -> bars -> rows -> slots) from a
@@ -220,13 +366,44 @@ function parseSettingLine(line: string): { key: string; originalKey: string; val
   const originalKey = match[1].trim();
   const key = normalizeLabel(originalKey);
   const value = match[2].trim();
-  const settingKeys = new Set(["title", "author", "comment", "tempo", "bpm", "time", "timesignature", "meter", "count", "repeat", "repeats", "cursor", "playbackcursor", "highlight", "notehighlight", "playbackhighlight", "legend", "instrumentlegend", "kitlegend", "colorlegend", "grid", "subdivision", "resolution"]);
 
-  if (!settingKeys.has(key)) {
+  if (!SETTING_KEYS.has(key)) {
     return null;
   }
 
   return { key, originalKey, value };
+}
+
+function parseRemovedSettingLine(line: string): { originalKey: string; value: string } | null {
+  const match = /^([A-Za-z][A-Za-z\s-]*):\s*(.*)$/.exec(line);
+
+  if (!match) {
+    return null;
+  }
+
+  const originalKey = match[1].trim();
+
+  if (!REMOVED_SETTING_KEYS.has(normalizeLabel(originalKey))) {
+    return null;
+  }
+
+  return { originalKey, value: match[2].trim() };
+}
+
+function parseEmptyKnownSettingLine(line: string): { originalKey: string } | null {
+  const match = /^([A-Za-z][A-Za-z\s-]*):\s*$/.exec(line);
+
+  if (!match) {
+    return null;
+  }
+
+  const originalKey = match[1].trim();
+
+  if (!DIAGNOSTIC_SETTING_KEYS.has(normalizeLabel(originalKey))) {
+    return null;
+  }
+
+  return { originalKey };
 }
 
 function parseDrumRowInput(line: string): DrumRowInput | null {
@@ -276,6 +453,93 @@ function parseStickingRowInput(line: string): DrumStickingInput | null {
   }
 
   return { label, patterns };
+}
+
+function warnForUnparsedPipeLine(
+  line: string,
+  lineNumber: number,
+  warn: (line: number, code: ParseWarningCode, message: string, column?: number) => void
+): void {
+  const dividerIndex = line.indexOf("|");
+
+  if (dividerIndex <= 0) {
+    return;
+  }
+
+  const label = line.slice(0, dividerIndex).trim();
+
+  if (!label || label.includes(":")) {
+    return;
+  }
+
+  const normalizedLabel = normalizeLabel(label);
+  const isKnownInstrument = INSTRUMENTS_BY_ALIAS.has(normalizedLabel);
+  const isKnownSticking = STICKING_LABELS.has(normalizedLabel);
+  const patterns = line
+    .slice(dividerIndex + 1)
+    .split("|")
+    .map((pattern) => pattern.replace(/\s+/g, "").trim())
+    .filter((pattern) => pattern.length > 0);
+
+  if ((isKnownInstrument || isKnownSticking) && patterns.length === 0) {
+    warn(lineNumber, "empty-row", `${label} row has no usable pattern and is preserved as metadata.`, dividerIndex + 1);
+    return;
+  }
+
+  if (!isKnownInstrument && !isKnownSticking) {
+    warn(lineNumber, "unknown-row-label", `Unrecognized instrument row "${label}" is preserved as metadata.`, 1);
+  }
+}
+
+function warnForUnsupportedPatternCharacters(
+  line: string,
+  label: string,
+  lineNumber: number,
+  warn: (line: number, code: ParseWarningCode, message: string, column?: number) => void
+): void {
+  warnForUnsupportedRowCharacters(line, lineNumber, (char) => !isSupportedHitChar(char), (char, column) => {
+    warn(lineNumber, "unsupported-pattern-character", `${label} row contains unsupported character "${char}"; it will play as a normal hit.`, column);
+  });
+}
+
+function warnForUnsupportedStickingCharacters(
+  line: string,
+  lineNumber: number,
+  warn: (line: number, code: ParseWarningCode, message: string, column?: number) => void
+): void {
+  warnForUnsupportedRowCharacters(line, lineNumber, isUnsupportedStickingChar, (char, column) => {
+    warn(lineNumber, "unsupported-sticking-character", `Sticking row contains unsupported character "${char}"; it will be treated as a rest.`, column);
+  });
+}
+
+function warnForUnsupportedRowCharacters(
+  line: string,
+  lineNumber: number,
+  isUnsupported: (char: string) => boolean,
+  emit: (char: string, column: number) => void
+): void {
+  const dividerIndex = line.indexOf("|");
+
+  if (dividerIndex < 0) {
+    return;
+  }
+
+  const seen = new Set<string>();
+
+  for (let index = dividerIndex + 1; index < line.length; index++) {
+    const char = line[index];
+
+    if (char === "|" || /\s/.test(char) || seen.has(char) || !isUnsupported(char)) {
+      continue;
+    }
+
+    seen.add(char);
+    emit(char, index + 1);
+  }
+}
+
+function isUnsupportedStickingChar(char: string): boolean {
+  return !isRest(char) && !["R", "r", "L", "l", "B", "b"].includes(char);
 }
 
 function buildSystems(
@@ -534,6 +798,10 @@ export function getTitle(block: DrumBlock): string {
   return title.slice(title.indexOf(":") + 1).trim() || "Drum notation";
 }
 
+function isValidTimeSignatureSetting(value: string): boolean {
+  return /^(\d{1,2})\s*\/\s*(\d{1,2})$/.test(value);
+}
+
 function parseTimeSignature(value: string): string {
   const match = /^(\d{1,2})\s*\/\s*(\d{1,2})$/.exec(value);
 
@@ -544,56 +812,88 @@ function parseTimeSignature(value: string): string {
   return `${match[1]}/${match[2]}`;
 }
 
-function parseRepeatCount(value: string): number {
+function parseRepeatSettingValue(value: string): number | null {
   const match = /(\d+)/.exec(value);
 
   if (!match) {
+    return null;
+  }
+
+  return Number.parseInt(match[1], 10);
+}
+
+function parseRepeatCount(value: string): number {
+  const count = parseRepeatSettingValue(value);
+
+  if (count === null) {
     return DEFAULT_REPEAT_COUNT;
   }
 
-  return Math.min(64, Math.max(1, Number.parseInt(match[1], 10)));
+  return Math.min(64, Math.max(1, count));
+}
+
+function isBooleanSettingValue(value: string): boolean {
+  const normalized = normalizeLabel(value);
+
+  return TRUE_BOOLEAN_VALUES.has(normalized) || FALSE_BOOLEAN_VALUES.has(normalized);
 }
 
 function parseBooleanSetting(value: string, fallback: boolean): boolean {
   const normalized = normalizeLabel(value);
 
-  if (["on", "true", "yes", "y", "1", "show", "visible"].includes(normalized)) {
+  if (TRUE_BOOLEAN_VALUES.has(normalized)) {
     return true;
   }
 
-  if (["off", "false", "no", "n", "0", "hide", "hidden"].includes(normalized)) {
+  if (FALSE_BOOLEAN_VALUES.has(normalized)) {
     return false;
   }
 
   return fallback;
 }
 
+function isLegendSettingValue(value: string): boolean {
+  const normalized = normalizeLabel(value);
+
+  return USED_LEGEND_VALUES.has(normalized) || ALL_LEGEND_VALUES.has(normalized) || OFF_LEGEND_VALUES.has(normalized);
+}
+
 function parseLegendMode(value: string): LegendMode {
   const normalized = normalizeLabel(value);
 
-  if (["on", "true", "yes", "y", "1", "show", "visible", "used", "current", "present"].includes(normalized)) {
+  if (USED_LEGEND_VALUES.has(normalized)) {
     return "used";
   }
 
-  if (["all", "full", "kit", "complete", "supported", "everything"].includes(normalized)) {
+  if (ALL_LEGEND_VALUES.has(normalized)) {
     return "all";
   }
 
-  if (["off", "false", "no", "n", "0", "hide", "hidden", "none"].includes(normalized)) {
+  if (OFF_LEGEND_VALUES.has(normalized)) {
     return "off";
   }
 
   return DEFAULT_LEGEND_MODE;
 }
 
-function parseGridResolution(value: string): GridResolution {
+function parseGridSettingValue(value: string): number | null {
   const match = /(\d+)/.exec(value);
 
   if (!match) {
+    return null;
+  }
+
+  return Number.parseInt(match[1], 10);
+}
+
+function parseGridResolution(value: string): GridResolution {
+  const parsedGrid = parseGridSettingValue(value);
+
+  if (parsedGrid === null) {
     return DEFAULT_GRID_RESOLUTION;
   }
 
-  return Number.parseInt(match[1], 10) === 32 ? 32 : 16;
+  return parsedGrid === 32 ? 32 : 16;
 }
 
 function clampTempo(value: number): number {

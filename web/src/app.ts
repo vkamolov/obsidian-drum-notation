@@ -14,9 +14,8 @@ import {
   setLegendInstrumentHighlight,
   updateMeasureRepeatProgress
 } from "../../src/engrave";
-import { INSTRUMENTS_BY_ALIAS } from "../../src/kit";
 import { getBarRange, getSecondsPerSlot, getSlotVisualDurationSeconds } from "../../src/music";
-import { getTitle, parseDrumBlock } from "../../src/parser";
+import { getTitle, parseDrumBlock, parseDrumBlockWithWarnings } from "../../src/parser";
 import {
   DEFAULT_METRONOME_MODE,
   DEFAULT_PLAYBACK_SPEED_PERCENT,
@@ -42,6 +41,7 @@ import {
   GridResolution,
   LegendMode,
   MetronomeMode,
+  ParseWarning,
   ScoreBarRegion
 } from "../../src/types";
 import { normalizeLabel } from "../../src/util";
@@ -94,6 +94,7 @@ const notesOut = $<HTMLDivElement>("pg-notes");
 
 /* ---------- render state ---------- */
 let currentBlock: DrumBlock | null = null;
+let currentParseWarnings: ParseWarning[] = [];
 let scoreEl: HTMLElement | null = null;
 let cursorEl: HTMLElement | null = null;
 let cursorPositions: Array<CursorPosition | undefined> = [];
@@ -174,8 +175,10 @@ function createPlaybackBackend(audioContext: AudioContext): DrumPlaybackBackend 
 /* ---------- rendering ---------- */
 function renderPreview(): void {
   const scrollSnapshot = capturePreviewScroll();
-  const block = parseDrumBlock(editor.value);
+  const parsed = parseDrumBlockWithWarnings(editor.value);
+  const block = parsed.block;
   currentBlock = block;
+  currentParseWarnings = parsed.warnings;
   lastRenderError = null;
   audioRecoveryWarning = null;
   selectedBarIndex = clampBarIndex(block, selectedBarIndex);
@@ -1112,10 +1115,10 @@ function renderNotes(block: DrumBlock, raw: string): void {
     any = true;
   }
 
-  for (const unknown of unrecognizedRowLabels(raw)) {
+  for (const warning of currentParseWarnings) {
     notesOut.createEl("p", {
       cls: "pg-note pg-note--warn",
-      text: `unrecognized instrument "${unknown}" — line kept as text, not rendered`
+      text: formatParseWarning(warning)
     });
     any = true;
   }
@@ -1128,25 +1131,10 @@ function renderNotes(block: DrumBlock, raw: string): void {
   notesOut.hidden = !any;
 }
 
-// A line with a pipe whose label is not a known instrument silently becomes
-// metadata. Surfacing it is the kind of validation the playground is for.
-function unrecognizedRowLabels(raw: string): string[] {
-  const found: string[] = [];
-  for (const line of raw.split(/\r?\n/)) {
-    const trimmed = line.trim();
-    const pipe = trimmed.indexOf("|");
-    if (pipe <= 0) {
-      continue;
-    }
-    const label = trimmed.slice(0, pipe).trim();
-    if (label.includes(":")) {
-      continue; // setting-like line
-    }
-    if (label && !INSTRUMENTS_BY_ALIAS.has(normalizeLabel(label)) && !found.includes(label)) {
-      found.push(label);
-    }
-  }
-  return found;
+function formatParseWarning(warning: ParseWarning): string {
+  const location = warning.column !== undefined ? `line ${warning.line}, column ${warning.column}` : `line ${warning.line}`;
+
+  return `${location}: ${warning.message}`;
 }
 
 /* ---------- persistence & examples ---------- */

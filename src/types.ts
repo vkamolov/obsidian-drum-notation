@@ -16,6 +16,28 @@ export interface DrumBlock extends DrumBlockHeader {
   slots: DrumSlot[];
 }
 
+export interface ParseResult {
+  block: DrumBlock;
+  warnings: ParseWarning[];
+}
+
+export interface ParseWarning {
+  code: ParseWarningCode;
+  message: string;
+  line: number;
+  column?: number;
+}
+
+export type ParseWarningCode =
+  | "unknown-row-label"
+  | "empty-row"
+  | "repeat-without-previous-bar"
+  | "invalid-setting"
+  | "clamped-setting"
+  | "unsupported-pattern-character"
+  | "unsupported-sticking-character"
+  | "removed-setting";
+
 // The pre-structure form of a row: a label, the instrument it resolved to,
 // and one pattern string per bar segment it spans. Both the parser (text ->
 // model) and the editor/serializer (model -> text) build the model from this

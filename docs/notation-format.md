@@ -30,6 +30,11 @@ Leading/trailing whitespace is ignored. Blank lines are ignored. Unknown lines
 never break parsing — they are retained as metadata, so hand-written notes
 survive a round-trip.
 
+Parser warnings are advisory. Obsidian and the playground may show warnings for
+ignored rows, fallback settings, unsupported pattern characters, repeat notation
+without a previous bar, or removed settings such as `Engraving:`, but the parser
+still produces the same best-effort model and keeps rendering non-blocking.
+
 A minimal block:
 
 ```drums

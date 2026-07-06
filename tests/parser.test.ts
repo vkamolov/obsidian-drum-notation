@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { getBarRange } from "../src/music";
-import { getTitle, parseDrumBlock } from "../src/parser";
+import { getTitle, parseDrumBlock, parseDrumBlockWithWarnings } from "../src/parser";
 
 const TEMPLATE = `Title: Basic rock groove
 Tempo: 100
@@ -241,6 +241,122 @@ describe("parseDrumBlock - non-row lines", () => {
 HH | x-x-`);
     expect(block.rows).toHaveLength(1);
     expect(block.rows[0].instrument.id).toBe("closed-hat");
+  });
+});
+
+describe("parseDrumBlockWithWarnings", () => {
+  it("returns the same parsed block plus advisory warnings", () => {
+    const source = `Foo | x-x-
+HH | x-x-`;
+    const parsed = parseDrumBlockWithWarnings(source);
+
+    expect(parsed.block).toEqual(parseDrumBlock(source));
+    expect(Object.prototype.hasOwnProperty.call(parseDrumBlock(source), "warnings")).toBe(false);
+    expect(parsed.warnings).toEqual([
+      expect.objectContaining({
+        code: "unknown-row-label",
+        line: 1,
+        message: expect.stringContaining("Foo")
+      })
+    ]);
+  });
+
+  it("warns for empty known rows without changing parseDrumBlock behavior", () => {
+    const source = `HH |
+ST |
+SD | --o-`;
+    const parsed = parseDrumBlockWithWarnings(source);
+
+    expect(parsed.block).toEqual(parseDrumBlock(source));
+    expect(parsed.warnings.map((warning) => warning.code)).toEqual(["empty-row", "empty-row"]);
+    expect(parsed.warnings.map((warning) => warning.line)).toEqual([1, 2]);
+  });
+
+  it("warns when repeat notation has no previous bar", () => {
+    const parsed = parseDrumBlockWithWarnings(`%
+HH | x---`);
+
+    expect(parsed.block.metadata).toContain("%");
+    expect(parsed.warnings).toEqual([
+      expect.objectContaining({
+        code: "repeat-without-previous-bar",
+        line: 1
+      })
+    ]);
+  });
+
+  it("warns for invalid or clamped parser-affecting settings", () => {
+    const parsed = parseDrumBlockWithWarnings(`Tempo: 999
+Time: four/four
+Repeat: none
+Cursor: maybe
+Highlight: maybe
+Legend: maybe
+Grid: 24
+HH | x---`);
+
+    expect(parsed.block).toEqual(parseDrumBlock(`Tempo: 999
+Time: four/four
+Repeat: none
+Cursor: maybe
+Highlight: maybe
+Legend: maybe
+Grid: 24
+HH | x---`));
+    expect(parsed.warnings.map((warning) => warning.code)).toEqual([
+      "clamped-setting",
+      "invalid-setting",
+      "invalid-setting",
+      "invalid-setting",
+      "invalid-setting",
+      "invalid-setting",
+      "invalid-setting"
+    ]);
+    expect(parsed.warnings.map((warning) => warning.line)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+  });
+
+  it("warns for unsupported drum and sticking characters with original line numbers", () => {
+    const parsed = parseDrumBlockWithWarnings(`
+
+SD | --?-
+ST | R?B-
+HH | x---`);
+
+    expect(parsed.block.slots[2].hits[0]).toMatchObject({ instrument: expect.objectContaining({ id: "snare" }), articulation: "normal" });
+    expect(parsed.block.bars[0].stickingPattern).toBe("R-B-");
+    expect(parsed.warnings).toEqual([
+      expect.objectContaining({
+        code: "unsupported-pattern-character",
+        line: 3,
+        column: 8
+      }),
+      expect.objectContaining({
+        code: "unsupported-sticking-character",
+        line: 4,
+        column: 7
+      })
+    ]);
+  });
+
+  it("warns for removed settings but preserves them as metadata", () => {
+    const parsed = parseDrumBlockWithWarnings(`Engraving: classic
+HH | x---`);
+
+    expect(parsed.block.metadata).toContain("Engraving: classic");
+    expect(parsed.warnings).toEqual([
+      expect.objectContaining({
+        code: "removed-setting",
+        line: 1
+      })
+    ]);
+  });
+
+  it("does not warn for unknown metadata without row syntax", () => {
+    const parsed = parseDrumBlockWithWarnings(`Title:
+Comment: free text
+HH | x---`);
+
+    expect(parsed.warnings).toEqual([]);
   });
 });
 
