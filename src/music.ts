@@ -71,35 +71,66 @@ export function getSlotVisualDurationSeconds(block: DrumBlock, targetSlot: DrumS
     return getSecondsPerSlot(block, speedPercent);
   }
 
-  if (block.gridResolution === 32) {
-    const hitIndexes = beatSlots
-      .map((slot, index) => (slot.hits.length > 0 ? index : -1))
-      .filter((index) => index >= 0);
-    const hitPosition = hitIndexes.indexOf(indexInBeat);
-    const nextHitIndex = hitIndexes[hitPosition + 1] ?? beatSlots.length;
-    const span = nextHitIndex - indexInBeat;
-    const supportedSpan = isPowerOfTwo(span) ? span : 1;
+  const hitIndexes = beatSlots
+    .map((slot, index) => (slot.hits.length > 0 ? index : -1))
+    .filter((index) => index >= 0);
+  const hitPosition = hitIndexes.indexOf(indexInBeat);
 
-    return Math.max(
-      getSecondsPerSlot(block, speedPercent),
-      supportedSpan * getSecondsPerSlot(block, speedPercent)
-    );
-  }
-
-  const hitCount = beatSlots.filter((slot) => slot.hits.length > 0).length;
-
-  if (hitCount <= 0) {
+  if (hitPosition < 0) {
     return getSecondsPerSlot(block, speedPercent);
   }
 
+  const span = getGridSpanToNextHit(indexInBeat, hitIndexes[hitPosition + 1], beatSlots.length).supportedSpan;
+
   return Math.max(
     getSecondsPerSlot(block, speedPercent),
-    (slotsPerBeat / hitCount) * getSecondsPerSlot(block, speedPercent)
+    span * getSecondsPerSlot(block, speedPercent)
   );
 }
 
 export function durationForGridSpan(gridResolution: GridResolution, span: number): string {
   return durationForDenominator(gridResolution / Math.max(1, span));
+}
+
+export interface GridSpanDuration {
+  duration: string;
+  dots: number;
+  supportedSpan: number;
+}
+
+export function getGridSpanToNextHit(hitIndex: number, nextHitIndex: number | undefined, beatSlotCount: number): GridSpanDuration {
+  const span = Math.max(1, Math.round((nextHitIndex ?? beatSlotCount) - hitIndex));
+  const dottedBaseSpan = baseSpanForSingleDottedSpan(span);
+
+  if (dottedBaseSpan !== null) {
+    return {
+      duration: durationForGridSpanFromBeatSlotCount(beatSlotCount, dottedBaseSpan),
+      dots: 1,
+      supportedSpan: span
+    };
+  }
+
+  const supportedSpan = isPowerOfTwo(span) ? span : 1;
+
+  return {
+    duration: durationForGridSpanFromBeatSlotCount(beatSlotCount, supportedSpan),
+    dots: 0,
+    supportedSpan
+  };
+}
+
+function durationForGridSpanFromBeatSlotCount(beatSlotCount: number, span: number): string {
+  return durationForDenominator(4 * (beatSlotCount / Math.max(1, span)));
+}
+
+function baseSpanForSingleDottedSpan(span: number): number | null {
+  const halfBaseSpan = span / 3;
+
+  if (!Number.isInteger(halfBaseSpan) || !isPowerOfTwo(halfBaseSpan)) {
+    return null;
+  }
+
+  return halfBaseSpan * 2;
 }
 
 export function largestPowerOfTwoAtMost(value: number): number {
@@ -114,18 +145,6 @@ export function largestPowerOfTwoAtMost(value: number): number {
 
 export function isPowerOfTwo(value: number): boolean {
   return value > 0 && (value & (value - 1)) === 0;
-}
-
-export function durationForSubdivision(beatValue: number, noteCount: number): string {
-  if (noteCount === 3) {
-    return durationForDenominator(beatValue * 2);
-  }
-
-  if (noteCount === 6) {
-    return durationForDenominator(beatValue * 4);
-  }
-
-  return durationForDenominator(beatValue * Math.max(1, noteCount));
 }
 
 export function durationForDenominator(denominator: number): string {
@@ -152,10 +171,6 @@ export function durationForDenominator(denominator: number): string {
   }
 
   return "32";
-}
-
-export function shouldBeamSubdivision(noteCount: number, duration: string): boolean {
-  return noteCount > 1 && duration !== "4" && duration !== "2" && duration !== "1";
 }
 
 export function compareVexKeys(left: string, right: string): number {

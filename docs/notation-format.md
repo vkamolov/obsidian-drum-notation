@@ -278,11 +278,17 @@ the current local one-bar repeat.
 
 ## 6. Grid resolution
 
-`Grid: 16` (default) means one character is a sixteenth note. `Grid: 32` means
-one character is a thirty-second note. In `Grid: 32`, note values are derived
-from the distance to the next hit within each beat, so `x---x---` renders as
-beamed eighths while `xxxxxxxx` renders as thirty-seconds. Slots-per-bar is
-`beats × (grid ÷ beat-value)`; e.g. 4/4 at grid 16 = 16 slots per bar.
+`Grid: 16` (default) means one character is a sixteenth-note slot. `Grid: 32`
+means one character is a thirty-second-note slot. In both grids, rendered note
+values are derived from the distance to the next hit within each beat: `x-x-`
+renders as eighth notes, `x--x` renders as dotted eighth plus sixteenth, and
+`xxxx` renders as sixteenth notes. Hidden rests preserve spacing for unusual
+gaps that cannot be represented by one simple or dotted value.
+
+Three hits in one Grid-16 count are not implicit triplets. Use compound meters
+such as 6/8 or 12/8 for triplet-feel notation until explicit triplet syntax is
+added. Slots-per-bar is `beats × (grid ÷ beat-value)`; e.g. 4/4 at grid 16 =
+16 slots per bar.
 
 ```drums
 Grid: 32
@@ -417,8 +423,8 @@ BD | o-------o-------
 
 ### Thirty-second-note fill
 
-In `Grid: 32` each character is a thirty-second note; note values are derived
-from the gap to the next hit within the beat:
+In `Grid: 32` each character is a thirty-second-note slot; note values are
+derived from the gap to the next hit within the beat:
 
 ```drums
 Title: Linear 32nd fill

@@ -1,16 +1,13 @@
-import { Beam, Formatter, GraceNote, GraceNoteGroup, Modifier, Parenthesis, Renderer, RepeatNote, Stave, StaveNote, Stem, Tickable, TimeSignature, Tuplet, Voice } from "vexflow/bravura";
+import { Beam, Dot, Formatter, GraceNote, GraceNoteGroup, Modifier, Parenthesis, Renderer, RepeatNote, Stave, StaveNote, Stem, Tickable, TimeSignature, Tuplet, Voice } from "vexflow/bravura";
 import { DRUM_KIT } from "./kit";
 import {
   compareVexKeys,
-  durationForDenominator,
   durationForGridSpan,
-  durationForSubdivision,
   getBeatValue,
+  getGridSpanToNextHit,
   getSlotVisualDurationSeconds,
   getSlotsPerBeat,
-  isPowerOfTwo,
-  largestPowerOfTwoAtMost,
-  shouldBeamSubdivision
+  largestPowerOfTwoAtMost
 } from "./music";
 import { MeasureRepeatProgress } from "./repeat-progress";
 import { allocateBarWidths } from "./spacing";
@@ -1196,46 +1193,7 @@ function buildVisualBarNotes(
     return buildMeasureRepeatVisualBarNotes(measureRepeat);
   }
 
-  if (gridResolution === 32) {
-    return buildGrid32VisualBarNotes(slots, timeSignature, colorNoteheads);
-  }
-
-  const notes: StaveNote[] = [];
-  const hitNotes: StaveNote[] = [];
-  const noteSlots: DrumSlot[] = [];
-  const beams: Beam[] = [];
-  const tuplets: Tuplet[] = [];
-  const slotsPerBeat = getSlotsPerBeat(timeSignature, gridResolution);
-  const beatValue = getBeatValue(timeSignature);
-
-  for (let start = 0; start < slots.length; start += slotsPerBeat) {
-    const beatSlots = slots.slice(start, start + slotsPerBeat);
-    const hitSlots = beatSlots.filter((slot) => slot.hits.length > 0);
-
-    if (hitSlots.length === 0) {
-      notes.push(makeStaveNote({ index: -1, hits: [] }, durationForDenominator(beatValue)));
-      continue;
-    }
-
-    const duration = durationForSubdivision(beatValue, hitSlots.length);
-    const beatNotes = hitSlots.map((slot) => makeStaveNote(slot, duration, colorNoteheads));
-
-    notes.push(...beatNotes);
-    hitNotes.push(...beatNotes);
-    noteSlots.push(...hitSlots);
-
-    if (shouldBeamSubdivision(hitSlots.length, duration)) {
-      beams.push(new Beam(beatNotes));
-    }
-
-    if (hitSlots.length === 3) {
-      tuplets.push(new Tuplet(beatNotes, { numNotes: 3, notesOccupied: 2, bracketed: false }));
-    } else if (hitSlots.length === 6) {
-      tuplets.push(new Tuplet(beatNotes, { numNotes: 6, notesOccupied: 4, bracketed: false }));
-    }
-  }
-
-  return { notes, hitNotes, noteSlots, cursorNotes: hitNotes, cursorSlots: noteSlots, beams, tuplets };
+  return buildGridVisualBarNotes(slots, timeSignature, gridResolution, colorNoteheads);
 }
 
 function buildMeasureRepeatVisualBarNotes(measureRepeat: MeasureRepeat): VisualBarNotes {
@@ -1286,13 +1244,18 @@ function drawMeasureRepeatCount(
   svg.appendChild(label);
 }
 
-function buildGrid32VisualBarNotes(slots: DrumSlot[], timeSignature: string, colorNoteheads: boolean): VisualBarNotes {
+function buildGridVisualBarNotes(
+  slots: DrumSlot[],
+  timeSignature: string,
+  gridResolution: GridResolution,
+  colorNoteheads: boolean
+): VisualBarNotes {
   const notes: Tickable[] = [];
   const hitNotes: StaveNote[] = [];
   const noteSlots: DrumSlot[] = [];
   const beams: Beam[] = [];
   const tuplets: Tuplet[] = [];
-  const slotsPerBeat = getSlotsPerBeat(timeSignature, 32);
+  const slotsPerBeat = getSlotsPerBeat(timeSignature, gridResolution);
 
   for (let start = 0; start < slots.length; start += slotsPerBeat) {
     const beatSlots = slots.slice(start, start + slotsPerBeat);
@@ -1311,7 +1274,7 @@ function buildGrid32VisualBarNotes(slots: DrumSlot[], timeSignature: string, col
     };
 
     if (hitIndexes.length === 0) {
-      appendHiddenGridRests(notes, beatSlots.length, 32);
+      appendHiddenGridRests(notes, beatSlots.length, gridResolution);
       continue;
     }
 
@@ -1323,20 +1286,18 @@ function buildGrid32VisualBarNotes(slots: DrumSlot[], timeSignature: string, col
 
       const slot = beatSlots[hitIndex];
       const nextHitIndex = hitIndexes[indexInBeat + 1] ?? beatSlots.length;
-      const span = nextHitIndex - hitIndex;
-      const supportedSpan = isPowerOfTwo(span) ? span : 1;
-      const duration = durationForGridSpan(32, supportedSpan);
-      const note = makeStaveNote(slot, duration, colorNoteheads);
+      const span = getGridSpanToNextHit(hitIndex, nextHitIndex, beatSlots.length);
+      const note = makeStaveNote(slot, span.duration, colorNoteheads, span.dots);
 
       notes.push(note);
       hitNotes.push(note);
       noteSlots.push(slot);
       beamGroup.push(note);
-      cursor = hitIndex + supportedSpan;
+      cursor = hitIndex + span.supportedSpan;
 
-      if (supportedSpan !== span) {
+      if (span.supportedSpan !== nextHitIndex - hitIndex) {
         finishBeamGroup();
-        appendHiddenGridRests(notes, span - supportedSpan, 32);
+        appendHiddenGridRests(notes, nextHitIndex - hitIndex - span.supportedSpan, gridResolution);
         cursor = nextHitIndex;
       }
     });
@@ -1425,7 +1386,7 @@ function getRenderedSlotIndexes(group: SVGGElement): number[] {
     .filter((value) => Number.isFinite(value));
 }
 
-function makeStaveNote(slot: DrumSlot, duration = "16", colorNoteheads = false): StaveNote {
+function makeStaveNote(slot: DrumSlot, duration = "16", colorNoteheads = false, dots = 0): StaveNote {
   if (slot.hits.length === 0) {
     const rest = new StaveNote({
       keys: ["b/4"],
@@ -1434,6 +1395,7 @@ function makeStaveNote(slot: DrumSlot, duration = "16", colorNoteheads = false):
       stemDirection: Stem.UP
     });
 
+    attachDots(rest, dots);
     rest.renderOptions.draw = false;
 
     return rest;
@@ -1448,6 +1410,8 @@ function makeStaveNote(slot: DrumSlot, duration = "16", colorNoteheads = false):
     stemDirection: Stem.UP
   });
 
+  attachDots(note, dots);
+
   if (colorNoteheads) {
     applyLegendNoteheadColors(note, slot.hits);
   }
@@ -1455,6 +1419,12 @@ function makeStaveNote(slot: DrumSlot, duration = "16", colorNoteheads = false):
   applyHitModifiers(note, slot.hits, colorNoteheads);
 
   return note;
+}
+
+function attachDots(note: StaveNote, dots: number): void {
+  for (let index = 0; index < dots; index++) {
+    Dot.buildAndAttach([note], { all: true });
+  }
 }
 
 function applyLegendNoteheadColors(note: StaveNote, hits: DrumHit[]): void {

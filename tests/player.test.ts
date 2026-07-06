@@ -144,6 +144,26 @@ SD | z---`);
     );
   });
 
+  it("schedules buzz rolls for the corrected Grid 16 visual span", async () => {
+    const block = parseDrumBlock(`Tempo: 100
+SD | z--o`);
+    const backend = new FakePlaybackBackend();
+    const player = new DrumPlayer(
+      {} as AudioContext,
+      block,
+      vi.fn(),
+      vi.fn(),
+      {},
+      (() => backend) as DrumPlaybackBackendFactory
+    );
+
+    await player.play();
+
+    expect(backend.scheduled[0].hits[0].articulation).toBe("buzz");
+    expect(backend.scheduled[0].noteDuration).toBeCloseTo(getSecondsPerSlot(block) * 3);
+    expect(backend.scheduled[3].noteDuration).toBeCloseTo(getSecondsPerSlot(block));
+  });
+
   it.each([
     ["4/4", 16, [0, 4, 8, 12]],
     ["4/4", 32, [0, 8, 16, 24]],

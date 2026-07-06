@@ -6,6 +6,13 @@ Render drum kit patterns as graphical SVG percussion staff notation in Obsidian,
 
 See [docs/notation-format.md](docs/notation-format.md) for the full notation format reference.
 
+## Beta Notes
+
+- `0.9.2` corrects Grid-16 engraving and buzz/legend durations to follow the
+  written distance to the next hit. Three hits in one Grid-16 count no longer
+  imply a triplet; use compound meters such as 6/8 or 12/8 for triplet-feel
+  practice until explicit triplet syntax is added.
+
 ## Create A Notation
 
 You can start without writing drum rows manually:
@@ -229,17 +236,22 @@ clicked note.
 
 ## Subdivisions And Beams
 
-The notation groups hits by beat/count:
+The notation is a literal grid: `Grid: 16` means each character is a sixteenth
+slot, and `Grid: 32` means each character is a thirty-second slot. The renderer
+derives note values from the distance to the next hit inside each beat:
 
-| Hits in one count | Rendered as |
+| Pattern inside one 4/4 count | Rendered as |
 | --- | --- |
-| 1 | Quarter note, no beam |
-| 2 | Eighth notes, one beam |
-| 3 | Eighth-note triplet, one beam plus `3` |
-| 4 | Sixteenth notes, two beams |
-| 8 in `Grid: 32` | Thirty-second notes, three beams |
+| `x---` | Quarter note |
+| `x-x-` | Two eighth notes |
+| `x--x` | Dotted eighth plus sixteenth |
+| `xxxx` | Four sixteenth notes |
+| `xxxxxxxx` in `Grid: 32` | Eight thirty-second notes |
 
-Use `Grid: 32` for written-out thirty-second-note fills. In `Grid: 32`, the renderer derives note values from the distance to the next hit inside each beat, so `x---x---` is drawn as beamed eighth notes while `xxxxxxxx` is drawn as thirty-second notes. Hidden rests keep spacing exact when a gap cannot be represented by one simple note value.
+Hidden rests keep spacing exact when a gap cannot be represented by one simple
+or dotted note value. Three hits in a Grid-16 count are not treated as an
+implicit triplet; use meters such as 6/8 or 12/8 for triplet-feel notation until
+explicit triplet syntax exists.
 
 ## Hit Characters
 

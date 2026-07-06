@@ -3,16 +3,17 @@ import {
   compareVexKeys,
   durationForDenominator,
   durationForGridSpan,
-  durationForSubdivision,
   getBeatValue,
+  getGridSpanToNextHit,
   getSecondsPerSlot,
+  getSlotVisualDurationSeconds,
   getSlotsPerBar,
   getSlotsPerBeat,
   isPowerOfTwo,
   largestPowerOfTwoAtMost,
-  shouldBeamSubdivision,
   vexKeyRank
 } from "../src/music";
+import { parseDrumBlock } from "../src/parser";
 import { DrumBlock } from "../src/types";
 
 describe("getSlotsPerBar", () => {
@@ -76,17 +77,71 @@ describe("duration helpers", () => {
     expect(durationForDenominator(64)).toBe("32");
   });
 
-  it("maps subdivisions, including triplets and sextuplets", () => {
-    expect(durationForSubdivision(4, 3)).toBe("8");
-    expect(durationForSubdivision(4, 6)).toBe("16");
-    expect(durationForSubdivision(4, 4)).toBe("16");
-    expect(durationForSubdivision(4, 1)).toBe("4");
-  });
-
   it("maps grid spans to durations", () => {
     expect(durationForGridSpan(16, 1)).toBe("16");
     expect(durationForGridSpan(16, 2)).toBe("8");
     expect(durationForGridSpan(16, 4)).toBe("4");
+  });
+});
+
+describe("getGridSpanToNextHit", () => {
+  it("keeps simple power-of-two spans", () => {
+    expect(getGridSpanToNextHit(0, 2, 4)).toEqual({
+      duration: "8",
+      dots: 0,
+      supportedSpan: 2
+    });
+  });
+
+  it("supports common dotted spans", () => {
+    expect(getGridSpanToNextHit(0, 3, 4)).toEqual({
+      duration: "8",
+      dots: 1,
+      supportedSpan: 3
+    });
+    expect(getGridSpanToNextHit(0, 6, 8)).toEqual({
+      duration: "8",
+      dots: 1,
+      supportedSpan: 6
+    });
+  });
+
+  it("falls back safely for unsupported spans", () => {
+    expect(getGridSpanToNextHit(0, 5, 8)).toEqual({
+      duration: "32",
+      dots: 0,
+      supportedSpan: 1
+    });
+  });
+});
+
+describe("getSlotVisualDurationSeconds", () => {
+  it("uses distance to the next hit for Grid 16 syncopation", () => {
+    const block = parseDrumBlock(`Tempo: 100
+SD | o--o`);
+
+    expect(getSecondsPerSlot(block)).toBeCloseTo(0.15, 10);
+    expect(getSlotVisualDurationSeconds(block, block.slots[0])).toBeCloseTo(0.45, 10);
+    expect(getSlotVisualDurationSeconds(block, block.slots[3])).toBeCloseTo(0.15, 10);
+  });
+
+  it("does not treat three Grid 16 hits as an implicit triplet", () => {
+    const block = parseDrumBlock(`Tempo: 100
+HH | x-xx`);
+
+    expect(getSlotVisualDurationSeconds(block, block.slots[0])).toBeCloseTo(0.3, 10);
+    expect(getSlotVisualDurationSeconds(block, block.slots[2])).toBeCloseTo(0.15, 10);
+    expect(getSlotVisualDurationSeconds(block, block.slots[3])).toBeCloseTo(0.15, 10);
+  });
+
+  it("preserves Grid 32 distance-based durations", () => {
+    const block = parseDrumBlock(`Tempo: 120
+Grid: 32
+HH | x---x---`);
+
+    expect(getSecondsPerSlot(block)).toBeCloseTo(0.0625, 10);
+    expect(getSlotVisualDurationSeconds(block, block.slots[0])).toBeCloseTo(0.25, 10);
+    expect(getSlotVisualDurationSeconds(block, block.slots[4])).toBeCloseTo(0.25, 10);
   });
 });
 
@@ -105,15 +160,6 @@ describe("power-of-two helpers", () => {
     expect(largestPowerOfTwoAtMost(5)).toBe(4);
     expect(largestPowerOfTwoAtMost(7)).toBe(4);
     expect(largestPowerOfTwoAtMost(8)).toBe(8);
-  });
-});
-
-describe("shouldBeamSubdivision", () => {
-  it("beams multi-note groups shorter than a quarter", () => {
-    expect(shouldBeamSubdivision(2, "8")).toBe(true);
-    expect(shouldBeamSubdivision(1, "8")).toBe(false);
-    expect(shouldBeamSubdivision(2, "4")).toBe(false);
-    expect(shouldBeamSubdivision(2, "2")).toBe(false);
   });
 });
 
