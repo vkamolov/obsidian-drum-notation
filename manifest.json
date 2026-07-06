@@ -1,7 +1,7 @@
 {
   "id": "drum-notation",
   "name": "Drum Notation",
-  "version": "0.9.4",
+  "version": "0.9.5",
   "minAppVersion": "1.5.0",
   "description": "Render drum kit notation as SVG staff notation with playback controls.",
   "author": "vkamolov",

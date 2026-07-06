@@ -82,6 +82,41 @@
   font-size: var(--font-smallest);
 }
 
+.drum-notation__tip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid color-mix(in srgb, var(--drum-accent) 32%, var(--drum-border));
+  border-radius: 6px;
+  color: var(--drum-muted);
+  background: color-mix(in srgb, var(--drum-panel) 92%, var(--drum-accent));
+  font-size: var(--font-smallest);
+}
+
+.drum-notation__tip[hidden] {
+  display: none;
+}
+
+.drum-notation__tip-dismiss {
+  flex: 0 0 auto;
+  padding: 0.12rem 0.42rem;
+  border: 1px solid var(--drum-border);
+  border-radius: 999px;
+  color: var(--drum-muted);
+  background: var(--background-primary);
+  font: inherit;
+  font-size: var(--font-smallest);
+  cursor: pointer;
+}
+
+.drum-notation__tip-dismiss:hover,
+.drum-notation__tip-dismiss:focus-visible {
+  color: var(--drum-text);
+  border-color: var(--drum-accent);
+}
+
 .drum-notation__warnings[hidden] {
   display: none;
 }
@@ -1268,5 +1303,81 @@ body.is-mobile .drum-notation__speed {
 
   .pg-grid-editor__bar-action-label {
     display: none;
+  }
+}
+
+/* PDF export and printing: drop the card chrome so the score sits directly on
+   the page, hide interactive controls that are meaningless on paper, force
+   near-black ink regardless of theme, and keep each rendered system on one
+   page. */
+@media print {
+  .drum-notation {
+    --drum-dark-ink: #1c1c1c;
+    --drum-notation-ink: #1c1c1c;
+    --drum-ink-line: #1c1c1c;
+    --drum-ink-stem: #1c1c1c;
+    --drum-ink-note: #1c1c1c;
+    --drum-ink-symbol: #1c1c1c;
+    --drum-text: #1c1c1c;
+    --drum-muted: #555555;
+    padding: 0;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    background: transparent;
+    color: #1c1c1c;
+  }
+
+  .drum-notation__tip,
+  .drum-notation__controls,
+  .drum-notation__warnings,
+  .drum-notation__edit-root,
+  .drum-notation__cursor,
+  .drum-notation__empty-action,
+  .pg-bar-selectors {
+    display: none !important;
+  }
+
+  .drum-notation__score-viewport {
+    overflow: visible;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  /* Rendered systems carry fixed pixel sizes from the screen layout, which
+     can be wider than the printable page. The viewBox set by the engraver
+     lets them scale down proportionally to the page width. !important is
+     required to beat VexFlow's inline width/height styles. */
+  .drum-notation__score {
+    min-height: 0 !important;
+  }
+
+  .drum-notation__system-score {
+    width: 100% !important;
+    height: auto !important;
+  }
+
+  .drum-notation__system-score svg {
+    width: 100% !important;
+    height: auto !important;
+  }
+
+  .drum-notation__toolbar,
+  .drum-notation__system,
+  .drum-notation__legend {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .drum-notation__legend-swatch,
+  .drum-notation__legend-code {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  .drum-notation__legend-item.is-playing .drum-notation__legend-swatch,
+  .drum-notation__legend-item.is-previewing .drum-notation__legend-swatch {
+    animation: none;
   }
 }

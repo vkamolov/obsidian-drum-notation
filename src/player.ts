@@ -4,6 +4,8 @@ import {
   DrumPlaybackBackendFactory,
   createMetronomeHit,
   filterMutedHits,
+  getCountInPulses,
+  getCountInSlotCount,
   getMetronomePulses,
   normalizePlaybackSpeedPercent
 } from "./playback";
@@ -21,6 +23,7 @@ export class DrumPlayer {
   private initialSlot = 0;
   private firstPassDurationSeconds = 0;
   private fullPassDurationSeconds = 0;
+  private countInDurationSeconds = 0;
 
   constructor(
     private readonly audioContext: AudioContext,
@@ -54,9 +57,12 @@ export class DrumPlayer {
     const speedPercent = normalizePlaybackSpeedPercent(this.options.speedPercent ?? 100);
 
     this.secondsPerSlot = getSecondsPerSlot(this.block, speedPercent);
+    this.countInDurationSeconds =
+      getCountInSlotCount(this.block, this.options.countInMode ?? "off") * this.secondsPerSlot;
     this.firstPassDurationSeconds = (this.rangeEndSlot - this.initialSlot) * this.secondsPerSlot;
     this.fullPassDurationSeconds = (this.rangeEndSlot - this.rangeStartSlot) * this.secondsPerSlot;
-    this.playbackStartTime = backend.currentTime + 0.08;
+    const transportStartTime = backend.currentTime + 0.08;
+    this.playbackStartTime = transportStartTime + this.countInDurationSeconds;
 
     if (this.rangeEndSlot <= this.rangeStartSlot) {
       this.stop();
@@ -64,7 +70,21 @@ export class DrumPlayer {
       return;
     }
 
+    this.scheduleCountIn(transportStartTime, backend);
     this.schedulePass(0);
+  }
+
+  private scheduleCountIn(transportStartTime: number, backend: DrumPlaybackBackend): void {
+    const countInPulses = getCountInPulses(this.block, this.options.countInMode ?? "off");
+
+    countInPulses.forEach((pulse) => {
+      backend.scheduleHits(
+        [createMetronomeHit(pulse.isDownbeat)],
+        transportStartTime + pulse.slotIndex * this.secondsPerSlot,
+        this.secondsPerSlot,
+        this.secondsPerSlot
+      );
+    });
   }
 
   private schedulePass(passIndex: number): void {

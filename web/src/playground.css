@@ -346,6 +346,21 @@ body {
   text-align: center;
 }
 
+.pg-metronome-menu__label {
+  padding: 0.3rem 0.45rem 0.15rem;
+  color: var(--pg-muted);
+  font-size: 0.68rem;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.pg-metronome-menu__label:not(:first-child) {
+  margin-top: 0.25rem;
+  padding-top: 0.45rem;
+  border-top: 1px solid var(--pg-border);
+}
+
 .pg-mute-menu__reset {
   grid-template-columns: 1fr;
   margin-top: 0.3rem;

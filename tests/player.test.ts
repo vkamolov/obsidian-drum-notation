@@ -2,9 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getSecondsPerSlot, getSlotVisualDurationSeconds, getSlotsPerBar } from "../src/music";
 import { parseDrumBlock } from "../src/parser";
 import {
+  DEFAULT_COUNT_IN_MODE,
   DrumPlaybackBackend,
   DrumPlaybackBackendFactory,
   filterMutedHits,
+  getCountInModeLabel,
+  getCountInPulses,
+  getCountInSlotCount,
   getEffectivePlaybackTempo,
   getMetronomePulses,
   normalizePlaybackSpeedPercent,
@@ -184,6 +188,103 @@ Grid: ${grid}
 HH | ${"-".repeat(slotsPerBar)}`);
 
     expect(getMetronomePulses(block).map((pulse) => pulse.slotIndex)).toEqual(expected);
+  });
+
+  it("defaults count-in to off and labels the one-bar mode", () => {
+    const block = parseDrumBlock("HH | x---");
+
+    expect(DEFAULT_COUNT_IN_MODE).toBe("off");
+    expect(getCountInModeLabel("off")).toBe("Off");
+    expect(getCountInModeLabel("1-bar")).toBe("1 bar");
+    expect(getCountInSlotCount(block)).toBe(0);
+    expect(getCountInPulses(block)).toEqual([]);
+  });
+
+  it.each([
+    ["4/4", 16, 16, [0, 4, 8, 12]],
+    ["3/4", 16, 12, [0, 4, 8]],
+    ["6/8", 16, 12, [0, 6]],
+    ["12/8", 16, 24, [0, 6, 12, 18]]
+  ] as const)("uses one expected meter bar for %s count-in", (timeSignature, grid, expectedSlots, expectedPulses) => {
+    const block = parseDrumBlock(`Time: ${timeSignature}
+Grid: ${grid}
+HH | x---`);
+
+    expect(getCountInSlotCount(block, "1-bar")).toBe(expectedSlots);
+    expect(getCountInPulses(block, "1-bar").map((pulse) => pulse.slotIndex)).toEqual(expectedPulses);
+  });
+
+  it("schedules one-bar count-in before playback without visual callbacks", async () => {
+    const block = parseDrumBlock(`Tempo: 100
+HH | x---------------`);
+    const backend = new FakePlaybackBackend();
+    const onSlotChange = vi.fn();
+    const onBarChange = vi.fn();
+    const player = new DrumPlayer(
+      {} as AudioContext,
+      block,
+      vi.fn(),
+      onSlotChange,
+      { countInMode: "1-bar", onBarChange },
+      (() => backend) as DrumPlaybackBackendFactory
+    );
+
+    await player.play();
+
+    expect(backend.scheduled.slice(0, 4).map((entry) => entry.hits.map((hit) => hit.instrument.id))).toEqual([
+      ["metronome"],
+      ["metronome"],
+      ["metronome"],
+      ["metronome"]
+    ]);
+    expect(backend.scheduled[0].time).toBeCloseTo(10.08);
+    expect(backend.scheduled[1].time).toBeCloseTo(10.08 + 4 * getSecondsPerSlot(block));
+    expect(backend.scheduled[4].hits.map((hit) => hit.instrument.id)).toEqual(["closed-hat"]);
+    expect(backend.scheduled[4].time).toBeCloseTo(10.08 + 16 * getSecondsPerSlot(block));
+    expect(onSlotChange).not.toHaveBeenCalled();
+    expect(onBarChange).not.toHaveBeenCalled();
+  });
+
+  it("scales count-in timing with playback speed", async () => {
+    const block = parseDrumBlock(`Tempo: 100
+HH | x---------------`);
+    const backend = new FakePlaybackBackend();
+    const player = new DrumPlayer(
+      {} as AudioContext,
+      block,
+      vi.fn(),
+      vi.fn(),
+      { countInMode: "1-bar", speedPercent: 50 },
+      (() => backend) as DrumPlaybackBackendFactory
+    );
+
+    await player.play();
+
+    expect(backend.scheduled[4].time).toBeCloseTo(10.08 + 16 * getSecondsPerSlot(block, 50));
+  });
+
+  it("stops callbacks when cancelled during count-in", async () => {
+    const block = parseDrumBlock(`Tempo: 100
+HH | x---------------`);
+    const backend = new FakePlaybackBackend();
+    const onEnded = vi.fn();
+    const onSlotChange = vi.fn();
+    const player = new DrumPlayer(
+      {} as AudioContext,
+      block,
+      onEnded,
+      onSlotChange,
+      { countInMode: "1-bar" },
+      (() => backend) as DrumPlaybackBackendFactory
+    );
+
+    await player.play();
+    player.stop();
+    scheduledTimers.forEach((timer) => timer());
+
+    expect(backend.stopped).toBe(true);
+    expect(onSlotChange).not.toHaveBeenCalled();
+    expect(onEnded).not.toHaveBeenCalled();
   });
 
   it("plays metronome pulses with drums and accents each bar downbeat", async () => {

@@ -1,4 +1,4 @@
-import { Beam, Dot, Formatter, GraceNote, GraceNoteGroup, Modifier, Parenthesis, Renderer, RepeatNote, Stave, StaveNote, Stem, Tickable, TimeSignature, Tuplet, Voice } from "vexflow/bravura";
+import { Beam, Dot, Element as VexFlowElement, Formatter, GraceNote, GraceNoteGroup, Modifier, Parenthesis, Renderer, RepeatNote, Stave, StaveNote, Stem, Tickable, TimeSignature, Tuplet, Voice } from "vexflow/bravura";
 import { DRUM_KIT } from "./kit";
 import {
   compareVexKeys,
@@ -137,6 +137,11 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
     const context = renderer.getContext();
     context.scale(layout.renderScale, layout.renderScale);
 
+    // scale() keeps the svg viewBox in sync, which lets the print stylesheet
+    // shrink systems to the page width. Keep the score left-aligned instead
+    // of centered when that scaling happens.
+    scoreSurface.querySelector<SVGSVGElement>("svg")?.setAttribute("preserveAspectRatio", "xMinYMin meet");
+
     context.setFillStyle("currentColor");
     context.setStrokeStyle("currentColor");
     context.setLineWidth(layout.strokeWidth);
@@ -251,13 +256,13 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
       visualBar.noteSlots.forEach((slot, noteIndex) => {
         const note = visualBar.hitNotes[noteIndex];
 
-        tagRenderedNoteSlot(note, slot);
+        tagRenderedNoteSlot(system, note, slot);
         pendingHitTargets.push({ note, slot });
       });
       visualBar.cursorSlots.forEach((slot, noteIndex) => {
         const note = visualBar.cursorNotes[noteIndex];
 
-        tagRenderedNoteSlot(note, slot);
+        tagRenderedNoteSlot(system, note, slot);
       });
 
       const cursorHeight = (stave.getYForLine(stave.getNumLines() - 1) - stave.getYForLine(0)) * layout.renderScale;
@@ -287,7 +292,7 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
             }
 
             cursorPositions[slot.index] = anchor.cursorPosition;
-            tagRenderedNoteSlot(anchor.note, slot);
+            tagRenderedNoteSlot(system, anchor.note, slot);
           });
         });
       } else {
@@ -542,8 +547,22 @@ function getUniqueHitsForRenderedNoteheads(hits: DrumHit[]): DrumHit[] {
   return Array.from(hitsByVexKey.values()).sort((left, right) => compareVexKeys(left.instrument.vexKey, right.instrument.vexKey));
 }
 
-function tagRenderedNoteSlot(note: Tickable | undefined, slot: DrumSlot): void {
-  const noteElement = note?.getSVGElement();
+// VexFlow's Element.getSVGElement() resolves ids through the global document,
+// which fails when the score renders in another window (Obsidian PDF export,
+// pop-out windows) and silently disables note tagging and legend coloring
+// there. Resolve ids through the document that owns the rendered score.
+function getRenderedSvgElement(scope: HTMLElement | SVGElement, element: VexFlowElement | undefined): SVGElement | null {
+  if (!element) {
+    return null;
+  }
+
+  const rendered = scope.ownerDocument.getElementById(`vf-${String(element.getAttribute("id"))}`);
+
+  return (rendered as SVGElement | null) ?? element.getSVGElement() ?? null;
+}
+
+function tagRenderedNoteSlot(scope: HTMLElement, note: Tickable | undefined, slot: DrumSlot): void {
+  const noteElement = getRenderedSvgElement(scope, note);
 
   if (!noteElement) {
     return;
@@ -565,16 +584,16 @@ function tagRenderedNoteSlot(note: Tickable | undefined, slot: DrumSlot): void {
   }
 
   if (note instanceof StaveNote) {
-    tagRenderedNoteheadColors(note, slot);
+    tagRenderedNoteheadColors(scope, note, slot);
   }
 }
 
-function tagRenderedNoteheadColors(note: StaveNote, slot: DrumSlot): void {
+function tagRenderedNoteheadColors(scope: HTMLElement, note: StaveNote, slot: DrumSlot): void {
   const keys = note.getKeys();
 
   keys.forEach((key, keyIndex) => {
     const hit = slot.hits.find((candidate) => candidate.instrument.vexKey === key);
-    const noteheadElement = note.noteHeads[keyIndex]?.getSVGElement();
+    const noteheadElement = getRenderedSvgElement(scope, note.noteHeads[keyIndex]);
 
     if (!hit || !noteheadElement) {
       return;
@@ -968,7 +987,7 @@ function drawGraceNoteSlurs(system: HTMLElement, notes: StaveNote[], layout: Not
       }
 
       if (color) {
-        colorGraceNoteElements(anchor.graceNotes, color);
+        colorGraceNoteElements(svg, anchor.graceNotes, color);
       }
 
       const graceBox = graceNotehead.getBoundingBox();
@@ -997,9 +1016,9 @@ function drawGraceNoteSlurs(system: HTMLElement, notes: StaveNote[], layout: Not
   });
 }
 
-function colorGraceNoteElements(graceNotes: GraceNote[], color: string): void {
+function colorGraceNoteElements(scope: HTMLElement | SVGElement, graceNotes: GraceNote[], color: string): void {
   graceNotes.forEach((graceNote) => {
-    const graceElement = graceNote.getSVGElement();
+    const graceElement = getRenderedSvgElement(scope, graceNote);
 
     if (!graceElement) {
       return;

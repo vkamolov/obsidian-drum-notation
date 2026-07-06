@@ -31,11 +31,15 @@ import {
   ReplaceDrumsBlockFailure
 } from "./src/markdown";
 import { getBarRange, getSecondsPerSlot, getSlotVisualDurationSeconds } from "./src/music";
+import { ensureNotationFontsInDocument } from "./src/notation-fonts";
 import { getTitle, parseDrumBlockWithWarnings } from "./src/parser";
 import {
+  COUNT_IN_MODE_OPTIONS,
+  DEFAULT_COUNT_IN_MODE,
   DEFAULT_METRONOME_MODE,
   DEFAULT_PLAYBACK_SPEED_PERCENT,
   DrumPlaybackBackend,
+  getCountInModeLabel,
   getEffectivePlaybackTempo,
   getMetronomeModeLabel,
   getPlaybackInstruments,
@@ -61,6 +65,7 @@ import {
 import { createSynthPlaybackBackend } from "./src/synth";
 import {
   CursorPosition,
+  CountInMode,
   DrumBlock,
   DrumSlot,
   MetronomeMode,
@@ -78,10 +83,12 @@ const AUDIO_RECOVERY_NOTICE =
 
 interface DrumNotationSettings {
   enableVisualEditMode: boolean;
+  dismissedFirstRunTip: boolean;
 }
 
 const DEFAULT_SETTINGS: DrumNotationSettings = {
-  enableVisualEditMode: false
+  enableVisualEditMode: false,
+  dismissedFirstRunTip: false
 };
 
 interface RenderState {
@@ -130,7 +137,12 @@ export default class DrumNotationPlugin extends Plugin {
     await this.loadSettings();
     this.addSettingTab(new DrumNotationSettingTab(this.app, this));
 
-    this.registerMarkdownCodeBlockProcessor("drums", (source, el, ctx) => {
+    this.registerMarkdownCodeBlockProcessor("drums", async (source, el, ctx) => {
+      // PDF export and pop-out windows render in separate documents that lack
+      // VexFlow's FontFace registrations. Ensure the music fonts exist there
+      // before engraving; the returned promise keeps Obsidian's export flow
+      // waiting until the block renders with real glyphs.
+      await ensureNotationFontsInDocument(el.ownerDocument);
       this.renderDrumNotation(source, el, ctx);
     });
 
@@ -224,6 +236,7 @@ export default class DrumNotationPlugin extends Plugin {
     const editButton = makeIconButton("pencil", "Edit notation");
     const createButton = makeIconButton("square-plus", "Create first bar");
 
+    const tipEl = root.createEl("div", { cls: "drum-notation__tip" });
     const warningsEl = root.createEl("div", { cls: "drum-notation__warnings" });
     warningsEl.hidden = true;
     const notationViewport = root.createEl("div", { cls: "drum-notation__score-viewport" });
@@ -247,6 +260,7 @@ export default class DrumNotationPlugin extends Plugin {
     let isLoopingBar = false;
     let isLoopingAll = false;
     let metronomeMode: MetronomeMode = DEFAULT_METRONOME_MODE;
+    let countInMode: CountInMode = DEFAULT_COUNT_IN_MODE;
     const mutedInstrumentIds = new Set<string>();
     let resizeTimer: number | null = null;
     let writebackTimer: number | null = null;
@@ -266,6 +280,31 @@ export default class DrumNotationPlugin extends Plugin {
       this.getEditAvailability(el, ctx, getCurrentSection(), block);
     const getCurrentCreateAvailability = () =>
       this.getCreateAvailability(el, ctx, getCurrentSection(), block);
+
+    const renderFirstRunTip = () => {
+      tipEl.empty();
+      tipEl.hidden = this.settings.dismissedFirstRunTip;
+
+      if (this.settings.dismissedFirstRunTip) {
+        return;
+      }
+
+      tipEl.createEl("span", {
+        text: "Tip: Use the playback controls here, and switch to Reading view to edit notation visually with the pencil button. Live Preview visual editing is planned."
+      });
+      const dismiss = tipEl.createEl("button", {
+        cls: "drum-notation__tip-dismiss",
+        text: "Dismiss",
+        attr: { type: "button" }
+      });
+      dismiss.addEventListener("click", () => {
+        this.settings.dismissedFirstRunTip = true;
+        void this.saveSettings();
+        root.ownerDocument.querySelectorAll<HTMLElement>(".drum-notation__tip").forEach((tip) => {
+          tip.hidden = true;
+        });
+      });
+    };
 
     const renderParseWarnings = () => {
       warningsEl.empty();
@@ -320,8 +359,8 @@ export default class DrumNotationPlugin extends Plugin {
       speedSelect.title = speedDescription;
       speedSelect.setAttribute("aria-label", speedDescription);
       metronomeButton.disabled = block.slots.length === 0;
-      metronomeButton.classList.toggle("is-active", metronomeMode !== "off");
-      const metronomeDescription = `Metronome: ${getMetronomeModeLabel(metronomeMode)}`;
+      metronomeButton.classList.toggle("is-active", metronomeMode !== "off" || countInMode !== "off");
+      const metronomeDescription = `Metronome: ${getMetronomeModeLabel(metronomeMode)} · Count-in: ${getCountInModeLabel(countInMode)}`;
       metronomeButton.title = metronomeDescription;
       metronomeButton.setAttribute("aria-label", metronomeDescription);
       muteButton.disabled = !hasRows;
@@ -685,7 +724,11 @@ export default class DrumNotationPlugin extends Plugin {
       return recovered;
     };
 
-    const startPlayback = async (initialSlot = 0, recoverBeforeStart = false): Promise<boolean> => {
+    const startPlayback = async (
+      initialSlot = 0,
+      recoverBeforeStart = false,
+      useCountIn = true
+    ): Promise<boolean> => {
       if (!(await prepareTransportStart(recoverBeforeStart))) {
         return false;
       }
@@ -718,6 +761,7 @@ export default class DrumNotationPlugin extends Plugin {
           speedPercent: playbackSpeedPercent,
           mutedInstrumentIds,
           metronomeMode,
+          countInMode: useCountIn ? countInMode : "off",
           onBarChange: handleBarChange
         },
         playbackBackendFactory
@@ -731,12 +775,19 @@ export default class DrumNotationPlugin extends Plugin {
       };
       clearTransportHighlights();
       playButton.addClass("is-playing");
-      handleBarChange(barIndexForSlot(block, currentSlotIndex));
+      if (!useCountIn || countInMode === "off") {
+        handleBarChange(barIndexForSlot(block, currentSlotIndex));
+      }
       void this.activePlayer.play();
       return true;
     };
 
-    const startLoopBar = async (barIndex = selectedBarIndex, initialSlot?: number, recoverBeforeStart = false): Promise<boolean> => {
+    const startLoopBar = async (
+      barIndex = selectedBarIndex,
+      initialSlot?: number,
+      recoverBeforeStart = false,
+      useCountIn = true
+    ): Promise<boolean> => {
       if (!(await prepareTransportStart(recoverBeforeStart))) {
         return false;
       }
@@ -777,7 +828,8 @@ export default class DrumNotationPlugin extends Plugin {
           loop: true,
           speedPercent: playbackSpeedPercent,
           mutedInstrumentIds,
-          metronomeMode
+          metronomeMode,
+          countInMode: useCountIn ? countInMode : "off"
         },
         playbackBackendFactory
       );
@@ -792,7 +844,11 @@ export default class DrumNotationPlugin extends Plugin {
       return true;
     };
 
-    const startLoopAll = async (initialSlot = 0, recoverBeforeStart = false): Promise<boolean> => {
+    const startLoopAll = async (
+      initialSlot = 0,
+      recoverBeforeStart = false,
+      useCountIn = true
+    ): Promise<boolean> => {
       if (!(await prepareTransportStart(recoverBeforeStart))) {
         return false;
       }
@@ -829,6 +885,7 @@ export default class DrumNotationPlugin extends Plugin {
           speedPercent: playbackSpeedPercent,
           mutedInstrumentIds,
           metronomeMode,
+          countInMode: useCountIn ? countInMode : "off",
           onBarChange: handleBarChange
         },
         playbackBackendFactory
@@ -840,7 +897,9 @@ export default class DrumNotationPlugin extends Plugin {
         isLoopingBar = false;
         isLoopingAll = false;
       };
-      handleBarChange(barIndexForSlot(block, currentSlotIndex));
+      if (!useCountIn || countInMode === "off") {
+        handleBarChange(barIndexForSlot(block, currentSlotIndex));
+      }
       void this.activePlayer.play();
       return true;
     };
@@ -857,11 +916,11 @@ export default class DrumNotationPlugin extends Plugin {
 
       this.stopActivePlayer(renderOwner);
       if (wasLoopingAll) {
-        await startLoopAll(restartSlotIndex, true);
+        await startLoopAll(restartSlotIndex, true, false);
       } else if (wasLoopingBar) {
-        await startLoopBar(restartBarIndex, restartSlotIndex, true);
+        await startLoopBar(restartBarIndex, restartSlotIndex, true, false);
       } else {
-        await startPlayback(restartSlotIndex, true);
+        await startPlayback(restartSlotIndex, true, false);
       }
     };
 
@@ -917,6 +976,20 @@ export default class DrumNotationPlugin extends Plugin {
         });
       });
 
+      menu.addSeparator();
+      COUNT_IN_MODE_OPTIONS.forEach((option) => {
+        menu.addItem((item) => {
+          item
+            .setTitle(`Count-in: ${option.label}`)
+            .setChecked(countInMode === option.value)
+            .onClick(() => {
+              countInMode = option.value;
+              updateHeader();
+              void restartActivePlaybackForControls();
+            });
+        });
+      });
+
       menu.showAtMouseEvent(event);
     };
 
@@ -938,11 +1011,11 @@ export default class DrumNotationPlugin extends Plugin {
       playbackRestartTimer = window.setTimeout(() => {
         playbackRestartTimer = null;
         if (wasLoopingAll) {
-          void startLoopAll();
+          void startLoopAll(undefined, false, false);
         } else if (wasLooping) {
-          void startLoopBar(barIndex);
+          void startLoopBar(barIndex, undefined, false, false);
         } else {
-          void startPlayback(slotIndex);
+          void startPlayback(slotIndex, false, false);
         }
       }, PLAYBACK_RESTART_DEBOUNCE_MS);
     };
@@ -1230,6 +1303,7 @@ export default class DrumNotationPlugin extends Plugin {
     };
 
     updateHeader();
+    renderFirstRunTip();
     renderParseWarnings();
     renderScore();
     queueModeAvailabilityRefresh();

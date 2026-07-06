@@ -37,6 +37,14 @@ const context = await esbuild.context({
   },
   entryPoints: ["main.ts"],
   bundle: true,
+  alias: {
+    // Font-data modules are not exposed through vexflow's export map. These
+    // resolve to the same files the vexflow/bravura entry imports, so esbuild
+    // dedupes them and the bundle does not grow.
+    "vexflow-fonts/bravura": "./node_modules/vexflow/build/esm/src/fonts/bravura.js",
+    "vexflow-fonts/academico": "./node_modules/vexflow/build/esm/src/fonts/academico.js",
+    "vexflow-fonts/academicobold": "./node_modules/vexflow/build/esm/src/fonts/academicobold.js"
+  },
   external: [
     "obsidian",
     "electron",

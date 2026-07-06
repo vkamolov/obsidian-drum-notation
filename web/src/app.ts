@@ -17,9 +17,12 @@ import {
 import { getBarRange, getSecondsPerSlot, getSlotVisualDurationSeconds } from "../../src/music";
 import { getTitle, parseDrumBlock, parseDrumBlockWithWarnings } from "../../src/parser";
 import {
+  COUNT_IN_MODE_OPTIONS,
+  DEFAULT_COUNT_IN_MODE,
   DEFAULT_METRONOME_MODE,
   DEFAULT_PLAYBACK_SPEED_PERCENT,
   DrumPlaybackBackend,
+  getCountInModeLabel,
   getEffectivePlaybackTempo,
   getMetronomeModeLabel,
   getPlaybackInstruments,
@@ -36,6 +39,7 @@ import { setGrid, setRepeatCount, setTempo, setTimeSignature } from "../../src/e
 import { createSynthPlaybackBackend } from "../../src/synth";
 import {
   CursorPosition,
+  CountInMode,
   DrumBlock,
   DrumSlot,
   GridResolution,
@@ -51,6 +55,7 @@ import { iconSvg } from "./icons";
 
 const STORAGE_KEY = "drum-playground.notation";
 const THEME_KEY = "drum-playground.theme";
+const TIP_KEY = "drum-playground.dismissedFirstRunTip";
 const AUDIO_RECOVERY_WARNING =
   "Audio was interrupted by the mobile system. Try Play again, or relaunch Obsidian if playback stays silent.";
 
@@ -110,6 +115,7 @@ let isLooping = false;
 let isLoopingAll = false;
 let playbackSpeedPercent = DEFAULT_PLAYBACK_SPEED_PERCENT;
 let metronomeMode: MetronomeMode = DEFAULT_METRONOME_MODE;
+let countInMode: CountInMode = DEFAULT_COUNT_IN_MODE;
 const mutedInstrumentIds = new Set<string>();
 let gridEditor: GridEditorHandle | null = null;
 let isApplyingGridEdit = false;
@@ -187,6 +193,8 @@ function renderPreview(): void {
   preview.empty();
   preview.classList.toggle("drum-notation--legend-color", block.legendMode !== "off");
 
+  renderFirstRunTip();
+
   const viewport = preview.createEl("div", { cls: "drum-notation__score-viewport" });
   const score = viewport.createEl("div", { cls: "drum-notation__score" });
   scoreEl = score;
@@ -229,6 +237,38 @@ function renderPreview(): void {
   }
   applyEditHighlight();
   restorePreviewScroll(scrollSnapshot);
+}
+
+function renderFirstRunTip(): void {
+  if (isFirstRunTipDismissed()) {
+    return;
+  }
+
+  const tip = preview.createEl("div", { cls: "drum-notation__tip pg-discovery-tip" });
+  tip.createEl("span", {
+    text: "Tip: Try the pencil/edit controls to edit notes visually, or choose an example from the list."
+  });
+  const dismiss = tip.createEl("button", {
+    cls: "drum-notation__tip-dismiss",
+    text: "Dismiss",
+    attr: { type: "button" }
+  });
+  dismiss.addEventListener("click", () => {
+    try {
+      localStorage.setItem(TIP_KEY, "1");
+    } catch {
+      // Ignore private-mode storage failures; the tip is harmless.
+    }
+    tip.remove();
+  });
+}
+
+function isFirstRunTipDismissed(): boolean {
+  try {
+    return localStorage.getItem(TIP_KEY) === "1";
+  } catch {
+    return false;
+  }
 }
 
 function drawScore(block: DrumBlock, score: HTMLElement): void {
@@ -553,7 +593,11 @@ async function preparePlaybackStart(recoverBeforeStart: boolean): Promise<boolea
   return recoverPlaybackAudio();
 }
 
-async function play(initialSlot = 0, recoverBeforeStart = false): Promise<boolean> {
+async function play(
+  initialSlot = 0,
+  recoverBeforeStart = false,
+  useCountIn = true
+): Promise<boolean> {
   if (!(await preparePlaybackStart(recoverBeforeStart))) {
     return false;
   }
@@ -586,11 +630,14 @@ async function play(initialSlot = 0, recoverBeforeStart = false): Promise<boolea
       speedPercent: playbackSpeedPercent,
       mutedInstrumentIds,
       metronomeMode,
+      countInMode: useCountIn ? countInMode : "off",
       onBarChange: (barIndex) => showRepeatProgressForBar(block, barIndex)
     },
     createPlaybackBackend
   );
-  showRepeatProgressForBar(block, barIndexForSlot(block, currentSlotIndex));
+  if (!useCountIn || countInMode === "off") {
+    showRepeatProgressForBar(block, barIndexForSlot(block, currentSlotIndex));
+  }
   void player.play();
   return true;
 }
@@ -607,7 +654,12 @@ function loopBar(): void {
   void startLoopBar(barIndexForSlot(currentBlock, currentSlotIndex), undefined, true);
 }
 
-async function startLoopBar(barIndex = selectedBarIndex, initialSlot?: number, recoverBeforeStart = false): Promise<boolean> {
+async function startLoopBar(
+  barIndex = selectedBarIndex,
+  initialSlot?: number,
+  recoverBeforeStart = false,
+  useCountIn = true
+): Promise<boolean> {
   if (!(await preparePlaybackStart(recoverBeforeStart))) {
     return false;
   }
@@ -644,7 +696,8 @@ async function startLoopBar(barIndex = selectedBarIndex, initialSlot?: number, r
       loop: true,
       speedPercent: playbackSpeedPercent,
       mutedInstrumentIds,
-      metronomeMode
+      metronomeMode,
+      countInMode: useCountIn ? countInMode : "off"
     },
     createPlaybackBackend
   );
@@ -664,7 +717,11 @@ function loopAll(): void {
   void startLoopAll(0, true);
 }
 
-async function startLoopAll(initialSlot = 0, recoverBeforeStart = false): Promise<boolean> {
+async function startLoopAll(
+  initialSlot = 0,
+  recoverBeforeStart = false,
+  useCountIn = true
+): Promise<boolean> {
   if (!(await preparePlaybackStart(recoverBeforeStart))) {
     return false;
   }
@@ -699,11 +756,14 @@ async function startLoopAll(initialSlot = 0, recoverBeforeStart = false): Promis
       speedPercent: playbackSpeedPercent,
       mutedInstrumentIds,
       metronomeMode,
+      countInMode: useCountIn ? countInMode : "off",
       onBarChange: (barIndex) => showRepeatProgressForBar(block, barIndex)
     },
     createPlaybackBackend
   );
-  showRepeatProgressForBar(block, barIndexForSlot(block, currentSlotIndex));
+  if (!useCountIn || countInMode === "off") {
+    showRepeatProgressForBar(block, barIndexForSlot(block, currentSlotIndex));
+  }
   void player.play();
   return true;
 }
@@ -720,11 +780,11 @@ function restartPlaybackAfterEdit(
   }
 
   if (wasLoopingAll) {
-    void startLoopAll();
+    void startLoopAll(undefined, false, false);
   } else if (wasLooping) {
-    void startLoopBar(restartBarIndex);
+    void startLoopBar(restartBarIndex, undefined, false, false);
   } else {
-    void play(restartSlotIndex);
+    void play(restartSlotIndex, false, false);
   }
 }
 
@@ -750,11 +810,11 @@ async function restartPlaybackForControlChange(): Promise<void> {
 
   stopPlayback();
   if (wasLoopingAll) {
-    await startLoopAll(restartSlotIndex, true);
+    await startLoopAll(restartSlotIndex, true, false);
   } else if (wasLooping) {
-    await startLoopBar(restartBarIndex, restartSlotIndex, true);
+    await startLoopBar(restartBarIndex, restartSlotIndex, true, false);
   } else {
-    await play(restartSlotIndex, true);
+    await play(restartSlotIndex, true, false);
   }
 }
 
@@ -804,16 +864,18 @@ function syncPlaybackControls(block: DrumBlock): void {
 }
 
 function syncMetronomeButton(): void {
-  const description = `Metronome: ${getMetronomeModeLabel(metronomeMode)}`;
+  const description = `Metronome: ${getMetronomeModeLabel(metronomeMode)} · Count-in: ${getCountInModeLabel(countInMode)}`;
 
   metronomeBtn.innerHTML = iconSvg("timer");
-  metronomeBtn.classList.toggle("is-active", metronomeMode !== "off");
+  metronomeBtn.classList.toggle("is-active", metronomeMode !== "off" || countInMode !== "off");
   metronomeBtn.title = description;
   metronomeBtn.setAttribute("aria-label", description);
 }
 
 function renderMetronomeMenu(): void {
   metronomeMenu.empty();
+
+  metronomeMenu.createEl("div", { cls: "pg-metronome-menu__label", text: "Metronome" });
 
   METRONOME_MODE_OPTIONS.forEach((option) => {
     const item = metronomeMenu.createEl("button", {
@@ -833,6 +895,32 @@ function renderMetronomeMenu(): void {
     item.createEl("span", { text: option.label });
     item.addEventListener("click", () => {
       metronomeMode = option.value;
+      syncPlaybackControls(currentBlock!);
+      setMetronomeMenuOpen(false);
+      void restartPlaybackForControlChange();
+    });
+  });
+
+  metronomeMenu.createEl("div", { cls: "pg-metronome-menu__label", text: "Count-in" });
+
+  COUNT_IN_MODE_OPTIONS.forEach((option) => {
+    const item = metronomeMenu.createEl("button", {
+      cls: "pg-metronome-menu__item",
+      attr: {
+        type: "button",
+        role: "menuitemradio",
+        "aria-label": `Count-in: ${option.label}`,
+        "aria-checked": countInMode === option.value ? "true" : "false"
+      }
+    }) as HTMLButtonElement;
+
+    item.createEl("span", {
+      cls: "pg-metronome-menu__check",
+      text: countInMode === option.value ? "✓" : ""
+    });
+    item.createEl("span", { text: option.label });
+    item.addEventListener("click", () => {
+      countInMode = option.value;
       syncPlaybackControls(currentBlock!);
       setMetronomeMenuOpen(false);
       void restartPlaybackForControlChange();
