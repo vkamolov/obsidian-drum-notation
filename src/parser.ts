@@ -1,4 +1,5 @@
 import { getArticulation, getVelocity, INSTRUMENTS_BY_ALIAS, isRest, isSupportedHitChar } from "./kit";
+import { getSlotsPerBar } from "./music";
 import {
   DEFAULT_GRID_RESOLUTION,
   DEFAULT_LEGEND_MODE,
@@ -36,6 +37,16 @@ interface BarSnapshot {
   rows: BarSnapshotRow[];
   stickingPattern?: string;
   width: number;
+}
+
+interface ParsedDrumRowInput extends DrumRowInput {
+  lineNumber: number;
+  generatedSegments?: ReadonlySet<number>;
+}
+
+interface ParsedDrumStickingInput extends DrumStickingInput {
+  lineNumber: number;
+  generatedSegments?: ReadonlySet<number>;
 }
 
 const STICKING_LABELS = new Set(["st", "stick", "sticking", "hands"]);
@@ -103,12 +114,12 @@ export function parseDrumBlockWithWarnings(source: string): ParseResult {
 function parseDrumBlockInternal(source: string, collectWarnings: boolean): ParseResult {
   const metadata: string[] = [];
   const warnings: ParseWarning[] = [];
-  const rowSections: DrumRowInput[][] = [];
-  const stickingSections: Array<DrumStickingInput | undefined> = [];
+  const rowSections: ParsedDrumRowInput[][] = [];
+  const stickingSections: Array<ParsedDrumStickingInput | undefined> = [];
   const repeatSections: Array<Array<MeasureRepeatInput | undefined>> = [];
   const subtitleSections: Array<string | undefined> = [];
-  let currentRows: DrumRowInput[] = [];
-  let currentSticking: DrumStickingInput | undefined;
+  let currentRows: ParsedDrumRowInput[] = [];
+  let currentSticking: ParsedDrumStickingInput | undefined;
   let currentRepeats: Array<MeasureRepeatInput | undefined> = [];
   let currentSubtitle: string | undefined;
   const barHistory: BarSnapshot[] = [];
@@ -278,7 +289,7 @@ function parseDrumBlockInternal(source: string, collectWarnings: boolean): Parse
 
     if (sticking) {
       warnForUnsupportedStickingCharacters(line, lineNumber, warn);
-      currentSticking = sticking;
+      currentSticking = { ...sticking, lineNumber };
       return;
     }
 
@@ -286,7 +297,7 @@ function parseDrumBlockInternal(source: string, collectWarnings: boolean): Parse
 
     if (row) {
       warnForUnsupportedPatternCharacters(line, row.label, lineNumber, warn);
-      currentRows.push(row);
+      currentRows.push({ ...row, lineNumber });
     } else {
       warnForUnparsedPipeLine(line, lineNumber, warn);
       metadata.push(line);
@@ -294,6 +305,7 @@ function parseDrumBlockInternal(source: string, collectWarnings: boolean): Parse
   });
 
   pushCurrentBar();
+  warnForRowLengthMismatches(rowSections, stickingSections, timeSignature, gridResolution, warn);
 
   const block = finalizeDrumBlock(
     { tempo, timeSignature, repeatCount, showCursor, showHighlight, legendMode, gridResolution, metadata },
@@ -542,6 +554,83 @@ function isUnsupportedStickingChar(char: string): boolean {
   return !isRest(char) && !["R", "r", "L", "l", "B", "b"].includes(char);
 }
 
+function warnForRowLengthMismatches(
+  rowSections: ParsedDrumRowInput[][],
+  stickingSections: Array<ParsedDrumStickingInput | undefined>,
+  timeSignature: string,
+  gridResolution: GridResolution,
+  warn: (line: number, code: ParseWarningCode, message: string, column?: number) => void
+): void {
+  const expectedSlots = getSlotsPerBar(timeSignature, gridResolution);
+  const nearFullThreshold = Math.floor(expectedSlots * 0.75);
+
+  rowSections.forEach((rows, systemIndex) => {
+    const sticking = stickingSections[systemIndex];
+    const entries: Array<{ label: string; patterns: string[]; lineNumber: number; kind: "row" | "sticking"; generatedSegments?: ReadonlySet<number> }> = [
+      ...rows.map((row) => ({
+        label: row.label,
+        patterns: row.patterns,
+        lineNumber: row.lineNumber,
+        kind: "row" as const,
+        generatedSegments: row.generatedSegments
+      })),
+      ...(sticking
+        ? [
+            {
+              label: sticking.label,
+              patterns: sticking.patterns,
+              lineNumber: sticking.lineNumber,
+              kind: "sticking" as const,
+              generatedSegments: sticking.generatedSegments
+            }
+          ]
+        : [])
+    ];
+    const segmentCount = Math.max(0, ...entries.map((entry) => entry.patterns.length));
+
+    for (let segmentIndex = 0; segmentIndex < segmentCount; segmentIndex++) {
+      const presentEntries = entries
+        .map((entry) => {
+          const pattern = entry.patterns[segmentIndex];
+
+          if (pattern === undefined || entry.generatedSegments?.has(segmentIndex)) {
+            return null;
+          }
+
+          return {
+            ...entry,
+            pattern,
+            length: pattern.length
+          };
+        })
+        .filter((entry): entry is { label: string; patterns: string[]; lineNumber: number; kind: "row" | "sticking"; generatedSegments?: ReadonlySet<number>; pattern: string; length: number } => entry !== null);
+      const hasExpectedLengthEntry = presentEntries.some((entry) => entry.length === expectedSlots);
+
+      presentEntries.forEach((entry) => {
+        if (entry.length === expectedSlots) {
+          return;
+        }
+
+        if (entry.length < nearFullThreshold && !hasExpectedLengthEntry) {
+          return;
+        }
+
+        const effect =
+          entry.length > expectedSlots
+            ? "Extra slots extend the bar and can change playback feel."
+            : "Missing slots are treated as rests when another row sets the bar length.";
+        const label = entry.kind === "sticking" ? "Sticking row" : `${entry.label} row`;
+
+        warn(
+          entry.lineNumber,
+          "row-length-mismatch",
+          `${label} bar ${segmentIndex + 1} has ${entry.length} slots; Time ${timeSignature} + Grid ${gridResolution} expects ${expectedSlots}. ${effect}`
+        );
+      });
+    }
+  });
+}
+
 function buildSystems(
   rowSections: DrumRowInput[][],
   repeatSections: Array<Array<MeasureRepeatInput | undefined>>,
@@ -581,12 +670,12 @@ function buildSystems(
 }
 
 function appendMeasureRepeat(
-  currentRows: DrumRowInput[],
-  currentSticking: DrumStickingInput | undefined,
+  currentRows: ParsedDrumRowInput[],
+  currentSticking: ParsedDrumStickingInput | undefined,
   currentRepeats: Array<MeasureRepeatInput | undefined>,
   barHistory: BarSnapshot[],
   measureRepeat: MeasureRepeatInput
-): DrumStickingInput | undefined | null {
+): ParsedDrumStickingInput | undefined | null {
   syncRepeatMarkers(currentRows, currentSticking, currentRepeats);
 
   const previousBars = [...barHistory, ...snapshotBars(currentRows, currentSticking)];
@@ -610,10 +699,10 @@ function appendMeasureRepeat(
 }
 
 function appendSnapshotBar(
-  currentRows: DrumRowInput[],
-  currentSticking: DrumStickingInput | undefined,
+  currentRows: ParsedDrumRowInput[],
+  currentSticking: ParsedDrumStickingInput | undefined,
   snapshot: BarSnapshot
-): DrumStickingInput | undefined {
+): ParsedDrumStickingInput | undefined {
   const targetBarIndex = getSegmentCount(currentRows, currentSticking);
   const widths = getBarWidths(currentRows, currentSticking);
 
@@ -624,30 +713,43 @@ function appendSnapshotBar(
       row = {
         label: snapshotRow.label,
         patterns: [],
-        instrument: snapshotRow.instrument
+        instrument: snapshotRow.instrument,
+        lineNumber: 0
       };
       currentRows.push(row);
     }
 
     while (row.patterns.length < targetBarIndex) {
       row.patterns.push("-".repeat(widths[row.patterns.length] ?? snapshotRow.pattern.length));
+      markGeneratedSegment(row, row.patterns.length - 1);
     }
 
     row.patterns.push(snapshotRow.pattern);
+    markGeneratedSegment(row, row.patterns.length - 1);
   });
 
   if (snapshot.stickingPattern !== undefined) {
-    const nextSticking = currentSticking ?? { label: "ST", patterns: [] };
+    const nextSticking = currentSticking ?? { label: "ST", patterns: [], lineNumber: 0 };
 
     while (nextSticking.patterns.length < targetBarIndex) {
       nextSticking.patterns.push("-".repeat(widths[nextSticking.patterns.length] ?? snapshot.width));
+      markGeneratedSegment(nextSticking, nextSticking.patterns.length - 1);
     }
 
     nextSticking.patterns.push(snapshot.stickingPattern);
+    markGeneratedSegment(nextSticking, nextSticking.patterns.length - 1);
     return nextSticking;
   }
 
   return currentSticking;
+}
+
+function markGeneratedSegment(target: DrumRowInput | DrumStickingInput, segmentIndex: number): void {
+  const candidate = target as (DrumRowInput | DrumStickingInput) & { generatedSegments?: Set<number> };
+  const generatedSegments = candidate.generatedSegments ?? new Set<number>();
+
+  generatedSegments.add(segmentIndex);
+  candidate.generatedSegments = generatedSegments;
 }
 
 function syncRepeatMarkers(

@@ -34,6 +34,7 @@ export type ParseWarningCode =
   | "repeat-without-previous-bar"
   | "invalid-setting"
   | "clamped-setting"
+  | "row-length-mismatch"
   | "unsupported-pattern-character"
   | "unsupported-sticking-character"
   | "removed-setting";

@@ -8,6 +8,9 @@ See [docs/notation-format.md](docs/notation-format.md) for the full notation for
 
 ## Beta Notes
 
+- `0.9.4` adds low-noise row-length warnings for likely accidental bar-length
+  mismatches, such as a 17-slot row in 4/4 Grid 16. Short shorthand examples
+  like `HH | x---` remain warning-free.
 - `0.9.3` adds advisory parser warnings in Obsidian and the playground for
   ignored rows, fallback settings, unsupported characters, and removed settings.
   Warnings do not block rendering, playback, or visual editing.

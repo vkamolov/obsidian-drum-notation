@@ -34,6 +34,10 @@ Parser warnings are advisory. Obsidian and the playground may show warnings for
 ignored rows, fallback settings, unsupported pattern characters, repeat notation
 without a previous bar, or removed settings such as `Engraving:`, but the parser
 still produces the same best-effort model and keeps rendering non-blocking.
+Row-length mismatch warnings use a low-noise rule: near-full bars such as 15 or
+17 slots in `Time: 4/4` + `Grid: 16`, or rows mixed with a full 16-slot row, are
+flagged because they can silently change playback feel. Short shorthand sketches
+such as `HH | x---` remain valid and warning-free.
 
 A minimal block:
 

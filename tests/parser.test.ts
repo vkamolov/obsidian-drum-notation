@@ -358,6 +358,125 @@ HH | x---`);
 
     expect(parsed.warnings).toEqual([]);
   });
+
+  it("warns for a 17-slot row in 4/4 Grid 16", () => {
+    const source = `Time: 4/4
+Grid: 16
+SD | ooooooooooooooooo`;
+    const parsed = parseDrumBlockWithWarnings(source);
+
+    expect(parsed.block).toEqual(parseDrumBlock(source));
+    expect(parsed.warnings).toEqual([
+      expect.objectContaining({
+        code: "row-length-mismatch",
+        line: 3,
+        message: "SD row bar 1 has 17 slots; Time 4/4 + Grid 16 expects 16. Extra slots extend the bar and can change playback feel."
+      })
+    ]);
+  });
+
+  it("warns for a short row when another row in the same bar has the expected length", () => {
+    const parsed = parseDrumBlockWithWarnings(`HH | x-x-x-x-x-x-x-x-
+BD | o-------o------`);
+
+    expect(parsed.warnings).toEqual([
+      expect.objectContaining({
+        code: "row-length-mismatch",
+        line: 2,
+        message: "BD row bar 1 has 15 slots; Time 4/4 + Grid 16 expects 16. Missing slots are treated as rests when another row sets the bar length."
+      })
+    ]);
+  });
+
+  it("warns for near-full Grid 32 row-length mismatches", () => {
+    const parsed = parseDrumBlockWithWarnings(`Grid: 32
+SD | ooooooooooooooooooooooooooooooo
+BD | ooooooooooooooooooooooooooooooooo`);
+
+    expect(parsed.warnings).toEqual([
+      expect.objectContaining({
+        code: "row-length-mismatch",
+        line: 2,
+        message: expect.stringContaining("has 31 slots; Time 4/4 + Grid 32 expects 32")
+      }),
+      expect.objectContaining({
+        code: "row-length-mismatch",
+        line: 3,
+        message: expect.stringContaining("has 33 slots; Time 4/4 + Grid 32 expects 32")
+      })
+    ]);
+  });
+
+  it("uses Time and Grid to calculate expected row lengths", () => {
+    const parsedSixEight = parseDrumBlockWithWarnings(`Time: 6/8
+Grid: 16
+HH | xxxxxxxxxxxxx`);
+    const parsedTwelveEight = parseDrumBlockWithWarnings(`Time: 12/8
+Grid: 16
+HH | xxxxxxxxxxxxxxxxxxxxxxxxx`);
+
+    expect(parsedSixEight.warnings).toEqual([
+      expect.objectContaining({
+        code: "row-length-mismatch",
+        line: 3,
+        message: expect.stringContaining("has 13 slots; Time 6/8 + Grid 16 expects 12")
+      })
+    ]);
+    expect(parsedTwelveEight.warnings).toEqual([
+      expect.objectContaining({
+        code: "row-length-mismatch",
+        line: 3,
+        message: expect.stringContaining("has 25 slots; Time 12/8 + Grid 16 expects 24")
+      })
+    ]);
+  });
+
+  it("warns for sticking row length mismatches", () => {
+    const parsed = parseDrumBlockWithWarnings(`ST | R-L-R-L-R-L-R-L-R
+HH | x-x-x-x-x-x-x-x-`);
+
+    expect(parsed.warnings).toEqual([
+      expect.objectContaining({
+        code: "row-length-mismatch",
+        line: 1,
+        message: expect.stringContaining("Sticking row bar 1 has 17 slots; Time 4/4 + Grid 16 expects 16")
+      })
+    ]);
+  });
+
+  it("reports the inline bar number for row-length mismatches", () => {
+    const parsed = parseDrumBlockWithWarnings(`HH | x-x-x-x-x-x-x-x- | x-x-x-x-x-x-x-x-
+SD | ----o-------o--- | ----o-------o----`);
+
+    expect(parsed.warnings).toEqual([
+      expect.objectContaining({
+        code: "row-length-mismatch",
+        line: 2,
+        message: expect.stringContaining("SD row bar 2 has 17 slots")
+      })
+    ]);
+  });
+
+  it("does not warn for short shorthand bars", () => {
+    const parsedSingle = parseDrumBlockWithWarnings("HH | x---");
+    const parsedMatchedRows = parseDrumBlockWithWarnings(`HH | x---
+SD | --o-`);
+
+    expect(parsedSingle.warnings).toEqual([]);
+    expect(parsedMatchedRows.warnings).toEqual([]);
+  });
+
+  it("does not duplicate row-length warnings for generated repeat bars", () => {
+    const parsed = parseDrumBlockWithWarnings(`HH | xxxxxxxxxxxxxxxxx
+%x3`);
+
+    expect(parsed.warnings).toEqual([
+      expect.objectContaining({
+        code: "row-length-mismatch",
+        line: 1
+      })
+    ]);
+  });
 });
 
 describe("getBarRange", () => {
