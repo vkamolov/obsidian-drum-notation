@@ -19,6 +19,35 @@ MT | ------------o-o-
 SD | o-o-o-o---------
 BD | o-------o-------`,
 
+  "Syncopated funk": `Title: Syncopated funk
+Tempo: 96
+Time: 4/4
+Count: 1 e & a 2 e & a 3 e & a 4 e & a
+Subtitle: Groove
+HH | x-x-x-x-x-x-x-x-
+SD | ----o-------o---
+BD | o--o------o-----
+Bar
+Subtitle: Break: dotted kicks and off-beat snares
+SD | ----------o-o---
+BD | o--o--o---------`,
+
+  "6/8 ballad": `Title: 6/8 ballad
+Tempo: 66
+Time: 6/8
+Count: 1 2 3 4 5 6
+HH | x-x-x-x-x-x- | x-x-x-x-x-x-
+SD | ------o----- | ------o-----
+BD | o----------- | o---o-------`,
+
+  "12/8 blues shuffle": `Title: 12/8 blues shuffle
+Tempo: 90
+Time: 12/8
+Count: 1 & a 2 & a 3 & a 4 & a
+RD | x---x-x---x-x---x-x---x-
+SD | ------o-----------o-----
+BD | o-----------o-----------`,
+
   "Sticking lane": `Title: Sticking lane
 Tempo: 100
 Time: 4/4
@@ -92,9 +121,22 @@ CR | x--------------- | c---------------
 CB | ---------------- | ----------------`,
 
   "32nd-note fill": `Title: 32nd-note fill
+Tempo: 90
+Time: 4/4
 Grid: 32
-SD | o-o-oo-oo-o-oo-oo-o-oo-oo-o-oo-o
-BD | o-------------------------------`,
+Subtitle: Groove
+HH | x---x---x---x---x---x---x---x---
+SD | --------o---------------o-------
+BD | o---------------o---o-----------
+Bar
+Subtitle: Fill: 32nd bursts down the toms
+CR | ----------------------------x---
+SD | o-o-o-o-oooo--------------------
+HT | ------------oooo----------------
+MT | ----------------oooo------------
+LT | --------------------oooo--------
+FT | ------------------------oooo----
+BD | o---------------------------o---`,
 
   "Full kit legend": `Title: Full kit
 Legend: all
