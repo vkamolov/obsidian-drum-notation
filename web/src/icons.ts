@@ -3,7 +3,7 @@
 // app stays dependency-free while looking the same as the plugin toolbar.
 
 const SVG_NS = "http://www.w3.org/2000/svg";
-const activeDocument: Document = globalThis["document"];
+const activeDocument: Document = window.document;
 
 type IconShape = {
   tag: "circle" | "line" | "path" | "polygon" | "rect";

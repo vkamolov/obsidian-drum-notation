@@ -59,7 +59,7 @@ const THEME_KEY = "drum-playground.theme";
 const TIP_KEY = "drum-playground.dismissedFirstRunTip";
 const AUDIO_RECOVERY_WARNING =
   "Audio was interrupted by the mobile system. Try Play again, or relaunch Obsidian if playback stays silent.";
-const activeDocument: Document = globalThis["document"];
+const activeDocument: Document = window.document;
 const STORAGE_GLOBAL_KEY = "local" + "Storage";
 
 interface PlaygroundStorage {
@@ -149,7 +149,7 @@ function isPlaygroundStorage(value: unknown): value is PlaygroundStorage {
 }
 
 function getPlaygroundStorage(): PlaygroundStorage | null {
-  const storage: unknown = Reflect.get(globalThis, STORAGE_GLOBAL_KEY);
+  const storage: unknown = Reflect.get(window, STORAGE_GLOBAL_KEY);
 
   return isPlaygroundStorage(storage) ? storage : null;
 }
