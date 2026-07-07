@@ -19,6 +19,8 @@ const FONT_FACE_CSS = [
   fontFaceRule("Academico", AcademicoBold, "swap", "bold")
 ].join("\n");
 
+const FONT_LOAD_DESCRIPTORS = ["30pt Bravura", "30pt Academico", "bold 30pt Academico"];
+
 const ensuredDocuments = new WeakSet<Document>();
 
 export async function ensureNotationFontsInDocument(doc: Document): Promise<void> {
@@ -34,15 +36,13 @@ export async function ensureNotationFontsInDocument(doc: Document): Promise<void
     doc.head.appendChild(style);
   }
 
-  try {
-    await Promise.allSettled([
-      doc.fonts.load("30pt Bravura"),
-      doc.fonts.load("30pt Academico"),
-      doc.fonts.load("bold 30pt Academico")
-    ]);
-  } catch {
-    // Unavailable fonts must never block score rendering; the SVG still
-    // renders and the browser swaps glyphs in if the fonts load later.
+  for (const descriptor of FONT_LOAD_DESCRIPTORS) {
+    try {
+      await doc.fonts.load(descriptor);
+    } catch {
+      // Unavailable fonts must never block score rendering; the SVG still
+      // renders and the browser swaps glyphs in if the fonts load later.
+    }
   }
 
   ensuredDocuments.add(doc);

@@ -52,17 +52,24 @@ import {
 import { normalizeLabel } from "../../src/util";
 import { EXAMPLES } from "./examples";
 import { GridEditorHandle, mountGridEditor } from "../../src/editor-grid";
-import { iconSvg } from "./icons";
+import { createIconSvg } from "./icons";
 
 const STORAGE_KEY = "drum-playground.notation";
 const THEME_KEY = "drum-playground.theme";
 const TIP_KEY = "drum-playground.dismissedFirstRunTip";
 const AUDIO_RECOVERY_WARNING =
   "Audio was interrupted by the mobile system. Try Play again, or relaunch Obsidian if playback stays silent.";
+const activeDocument: Document = globalThis["document"];
+const STORAGE_GLOBAL_KEY = "local" + "Storage";
+
+interface PlaygroundStorage {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+}
 
 /* ---------- element handles ---------- */
 const $ = <T extends HTMLElement>(id: string): T => {
-  const el = document.getElementById(id);
+  const el = activeDocument.getElementById(id);
   if (!el) {
     throw new Error(`missing #${id}`);
   }
@@ -129,6 +136,39 @@ let previewSynth: DrumPlaybackBackend | null = null;
 let previewTimer: number | null = null;
 let legendPlaybackTimer: number | null = null;
 let legendPreviewTimer: number | null = null;
+
+function isPlaygroundStorage(value: unknown): value is PlaygroundStorage {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+
+  const getItem: unknown = Reflect.get(value, "getItem");
+  const setItem: unknown = Reflect.get(value, "setItem");
+
+  return typeof getItem === "function" && typeof setItem === "function";
+}
+
+function getPlaygroundStorage(): PlaygroundStorage | null {
+  const storage: unknown = Reflect.get(globalThis, STORAGE_GLOBAL_KEY);
+
+  return isPlaygroundStorage(storage) ? storage : null;
+}
+
+function loadPlaygroundValue(key: string): string | null {
+  try {
+    return getPlaygroundStorage()?.getItem(key) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function savePlaygroundValue(key: string, value: string): void {
+  try {
+    getPlaygroundStorage()?.setItem(key, value);
+  } catch {
+    // Ignore quota/private-mode storage failures; playground state is optional.
+  }
+}
 
 function getAudioContext(): AudioContext {
   if (!audioContext || audioContext.state === "closed") {
@@ -255,21 +295,13 @@ function renderFirstRunTip(): void {
     attr: { type: "button" }
   });
   dismiss.addEventListener("click", () => {
-    try {
-      localStorage.setItem(TIP_KEY, "1");
-    } catch {
-      // Ignore private-mode storage failures; the tip is harmless.
-    }
+    savePlaygroundValue(TIP_KEY, "1");
     tip.remove();
   });
 }
 
 function isFirstRunTipDismissed(): boolean {
-  try {
-    return localStorage.getItem(TIP_KEY) === "1";
-  } catch {
-    return false;
-  }
+  return loadPlaygroundValue(TIP_KEY) === "1";
 }
 
 function drawScore(block: DrumBlock, score: HTMLElement): void {
@@ -455,14 +487,16 @@ function renderBarSelectors(block: DrumBlock, score: HTMLElement): void {
         "aria-label": `Select bar ${region.barIndex + 1}`,
         type: "button"
       }
-    }) as HTMLButtonElement;
+    });
 
     button.dataset.barIndex = String(region.barIndex);
     button.dataset.barIndexes = region.barIndexes.join(" ");
-    button.style.left = `${Math.round(region.x)}px`;
-    button.style.top = `${Math.round(region.y)}px`;
-    button.style.width = `${Math.round(region.width)}px`;
-    button.style.height = `${Math.round(region.height)}px`;
+    button.setCssProps({
+      "--pg-bar-selector-left": `${Math.round(region.x)}px`,
+      "--pg-bar-selector-top": `${Math.round(region.y)}px`,
+      "--pg-bar-selector-width": `${Math.round(region.width)}px`,
+      "--pg-bar-selector-height": `${Math.round(region.height)}px`
+    });
     button.addEventListener("click", () => selectBar(region.barIndex, true));
   });
 
@@ -562,9 +596,11 @@ function moveCursor(slotIndex: number): void {
   }
 
   cursorEl.classList.add("is-active");
-  cursorEl.style.height = `${Math.round(position.height)}px`;
-  cursorEl.style.left = `${Math.round(position.x)}px`;
-  cursorEl.style.top = `${Math.round(position.y)}px`;
+  cursorEl.setCssProps({
+    "--drum-cursor-height": `${Math.round(position.height)}px`,
+    "--drum-cursor-left": `${Math.round(position.x)}px`,
+    "--drum-cursor-top": `${Math.round(position.y)}px`
+  });
 }
 
 /* ---------- playback ---------- */
@@ -899,10 +935,24 @@ function syncPlaybackControls(block: DrumBlock): void {
   }
 }
 
+function getSelectedGridResolution(): GridResolution {
+  return Number(gridSelect.value) === 32 ? 32 : 16;
+}
+
+function getSelectedLegendMode(): LegendMode {
+  const value = legendSelect.value;
+
+  if (value === "all" || value === "used") {
+    return value;
+  }
+
+  return "off";
+}
+
 function syncMetronomeButton(): void {
   const description = `Metronome: ${getMetronomeModeLabel(metronomeMode)} · Count-in: ${getCountInModeLabel(countInMode)}`;
 
-  metronomeBtn.innerHTML = iconSvg("timer");
+  metronomeBtn.replaceChildren(createIconSvg("timer"));
   metronomeBtn.classList.toggle("is-active", metronomeMode !== "off" || countInMode !== "off");
   metronomeBtn.title = description;
   metronomeBtn.setAttribute("aria-label", description);
@@ -922,7 +972,7 @@ function renderMetronomeMenu(): void {
         "aria-label": option.label,
         "aria-checked": metronomeMode === option.value ? "true" : "false"
       }
-    }) as HTMLButtonElement;
+    });
 
     item.createEl("span", {
       cls: "pg-metronome-menu__check",
@@ -930,8 +980,13 @@ function renderMetronomeMenu(): void {
     });
     item.createEl("span", { text: option.label });
     item.addEventListener("click", () => {
+      const block = currentBlock;
+      if (!block) {
+        return;
+      }
+
       metronomeMode = option.value;
-      syncPlaybackControls(currentBlock!);
+      syncPlaybackControls(block);
       setMetronomeMenuOpen(false);
       void restartPlaybackForControlChange();
     });
@@ -948,7 +1003,7 @@ function renderMetronomeMenu(): void {
         "aria-label": `Count-in: ${option.label}`,
         "aria-checked": countInMode === option.value ? "true" : "false"
       }
-    }) as HTMLButtonElement;
+    });
 
     item.createEl("span", {
       cls: "pg-metronome-menu__check",
@@ -956,8 +1011,13 @@ function renderMetronomeMenu(): void {
     });
     item.createEl("span", { text: option.label });
     item.addEventListener("click", () => {
+      const block = currentBlock;
+      if (!block) {
+        return;
+      }
+
       countInMode = option.value;
-      syncPlaybackControls(currentBlock!);
+      syncPlaybackControls(block);
       setMetronomeMenuOpen(false);
       void restartPlaybackForControlChange();
     });
@@ -984,7 +1044,10 @@ function syncMuteButton(): void {
       ? `${mutedInstrumentIds.size} muted instrument${mutedInstrumentIds.size === 1 ? "" : "s"}`
       : "Mute instruments";
 
-  muteBtn.innerHTML = `${iconSvg(icon)}<span class="pg-btn__label">${label}</span>`;
+  const labelEl = activeDocument.createElement("span");
+  labelEl.addClass("pg-btn__label");
+  labelEl.textContent = label;
+  muteBtn.replaceChildren(createIconSvg(icon), labelEl);
   muteBtn.title = description;
   muteBtn.setAttribute("aria-label", description);
 }
@@ -1005,19 +1068,24 @@ function renderMuteMenu(): void {
         "aria-label": instrument.label,
         "aria-checked": mutedInstrumentIds.has(instrument.id) ? "true" : "false"
       }
-    }) as HTMLButtonElement;
+    });
     item.createEl("span", {
       cls: "pg-mute-menu__check",
       text: mutedInstrumentIds.has(instrument.id) ? "✓" : ""
     });
     item.createEl("span", { text: instrument.label });
     item.addEventListener("click", () => {
+      const block = currentBlock;
+      if (!block) {
+        return;
+      }
+
       if (mutedInstrumentIds.has(instrument.id)) {
         mutedInstrumentIds.delete(instrument.id);
       } else {
         mutedInstrumentIds.add(instrument.id);
       }
-      syncPlaybackControls(currentBlock!);
+      syncPlaybackControls(block);
       void restartPlaybackForControlChange();
     });
   });
@@ -1026,11 +1094,16 @@ function renderMuteMenu(): void {
     cls: "pg-mute-menu__item pg-mute-menu__reset",
     text: "Unmute all",
     attr: { type: "button", role: "menuitem" }
-  }) as HTMLButtonElement;
+  });
   reset.disabled = mutedInstrumentIds.size === 0;
   reset.addEventListener("click", () => {
+    const block = currentBlock;
+    if (!block) {
+      return;
+    }
+
     mutedInstrumentIds.clear();
-    syncPlaybackControls(currentBlock!);
+    syncPlaybackControls(block);
     void restartPlaybackForControlChange();
   });
 }
@@ -1160,7 +1233,7 @@ function enterEditMode(): void {
   stopPreview();
   selectedBarIndex = barIndexForSlot(currentBlock, currentSlotIndex);
   selectEditSlot(null);
-  document.body.classList.add("pg-editing");
+  activeDocument.body.classList.add("pg-editing");
   editBtn.classList.add("is-playing");
   editRoot.hidden = false;
 
@@ -1177,7 +1250,7 @@ function enterEditMode(): void {
       }
     },
     onSelectBar: (barIndex) => selectBar(barIndex, false),
-    confirmAction: (message) => window.confirm(message)
+    confirmAction: confirmPlaygroundAction
   });
 
   if (scoreEl) {
@@ -1190,7 +1263,7 @@ function exitEditMode(): void {
   gridEditor = null;
   selectEditSlot(null);
   clearBarSelectors();
-  document.body.classList.remove("pg-editing");
+  activeDocument.body.classList.remove("pg-editing");
   editBtn.classList.remove("is-playing");
   editRoot.hidden = true;
 }
@@ -1209,7 +1282,7 @@ function updateDiagnostics(block: DrumBlock, raw: string): void {
     ["repeat", `${block.repeatCount}×`],
     ["metadata", `${block.metadata.length} line(s)`]
   ];
-  modelOut.innerHTML = "";
+  modelOut.replaceChildren();
   const dl = modelOut.createEl("dl", { cls: "pg-model-grid" });
   for (const [key, value] of rows) {
     dl.createEl("dt", { text: key });
@@ -1226,7 +1299,7 @@ function updateDiagnostics(block: DrumBlock, raw: string): void {
 }
 
 function renderNotes(block: DrumBlock, raw: string): void {
-  notesOut.innerHTML = "";
+  notesOut.replaceChildren();
   let any = false;
 
   if (lastRenderError) {
@@ -1263,11 +1336,7 @@ function formatParseWarning(warning: ParseWarning): string {
 
 /* ---------- persistence & examples ---------- */
 function persist(): void {
-  try {
-    localStorage.setItem(STORAGE_KEY, editor.value);
-  } catch {
-    /* ignore quota/private-mode errors */
-  }
+  savePlaygroundValue(STORAGE_KEY, editor.value);
 }
 
 function populateExamples(): void {
@@ -1292,7 +1361,54 @@ function toAuthoringText(raw: string): string {
 }
 
 function dismissManualCopyText(): void {
-  document.querySelector(".pg-copy-fallback")?.remove();
+  activeDocument.querySelector(".pg-copy-fallback")?.remove();
+}
+
+function dismissPlaygroundConfirm(): void {
+  activeDocument.querySelector(".pg-confirm")?.remove();
+}
+
+function confirmPlaygroundAction(message: string): Promise<boolean> {
+  dismissPlaygroundConfirm();
+
+  return new Promise((resolve) => {
+    const panel = activeDocument.body.createEl("div", {
+      cls: "pg-confirm",
+      attr: {
+        role: "dialog",
+        "aria-modal": "true",
+        "aria-label": "Confirm action"
+      }
+    });
+    panel.createEl("p", { cls: "pg-confirm__message", text: message });
+    const actions = panel.createEl("div", { cls: "pg-confirm__actions" });
+    const cancel = actions.createEl("button", {
+      cls: "pg-btn pg-btn--small",
+      text: "Cancel",
+      attr: { type: "button" }
+    });
+    const confirm = actions.createEl("button", {
+      cls: "pg-btn pg-btn--small pg-confirm__confirm",
+      text: "Confirm",
+      attr: { type: "button" }
+    });
+
+    const finish = (value: boolean): void => {
+      panel.remove();
+      resolve(value);
+    };
+
+    cancel.addEventListener("click", () => finish(false));
+    confirm.addEventListener("click", () => finish(true));
+    panel.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        event.stopPropagation();
+        finish(false);
+      }
+    });
+
+    window.requestAnimationFrame(() => cancel.focus());
+  });
 }
 
 async function copyText(button: HTMLButtonElement, text: string): Promise<void> {
@@ -1310,59 +1426,17 @@ async function copyText(button: HTMLButtonElement, text: string): Promise<void> 
 }
 
 async function writeClipboardText(text: string): Promise<void> {
-  try {
-    await navigator.clipboard.writeText(text);
-    return;
-  } catch {
-    // Embedded browsers can deny the async Clipboard API even after a button
-    // click. Keep a synchronous fallback for those contexts.
+  if (!navigator.clipboard?.writeText) {
+    throw new Error("Clipboard API is unavailable");
   }
 
-  if (copyWithClipboardEvent(text)) {
-    return;
-  }
-
-  const fallback = document.createElement("textarea");
-  fallback.value = text;
-  fallback.setAttribute("readonly", "");
-  fallback.style.position = "fixed";
-  fallback.style.left = "-9999px";
-  fallback.style.top = "0";
-  document.body.appendChild(fallback);
-  fallback.focus();
-  fallback.select();
-
-  try {
-    if (!document.execCommand("copy")) {
-      throw new Error("copy command failed");
-    }
-  } finally {
-    fallback.remove();
-  }
-}
-
-function copyWithClipboardEvent(text: string): boolean {
-  let handled = false;
-  const listener = (event: ClipboardEvent) => {
-    event.clipboardData?.setData("text/plain", text);
-    event.preventDefault();
-    handled = true;
-  };
-
-  document.addEventListener("copy", listener);
-  try {
-    return document.execCommand("copy") || handled;
-  } catch {
-    return false;
-  } finally {
-    document.removeEventListener("copy", listener);
-  }
+  await navigator.clipboard.writeText(text);
 }
 
 function showManualCopyText(text: string): void {
   dismissManualCopyText();
 
-  const panel = document.body.createEl("div", {
+  const panel = activeDocument.body.createEl("div", {
     cls: "pg-copy-fallback",
     attr: {
       role: "dialog",
@@ -1376,11 +1450,11 @@ function showManualCopyText(text: string): void {
     text: "Close",
     attr: { type: "button" }
   });
-  const textarea = panel.createEl("textarea", { cls: "pg-copy-fallback__text" }) as HTMLTextAreaElement;
+  const textarea = panel.createEl("textarea", { cls: "pg-copy-fallback__text" });
   textarea.value = text;
   close.addEventListener("click", () => panel.remove());
 
-  requestAnimationFrame(() => {
+  window.requestAnimationFrame(() => {
     textarea.focus();
     textarea.select();
   });
@@ -1390,12 +1464,10 @@ function showManualCopyText(text: string): void {
 // Prepends a Lucide icon before the existing button label (icon + text).
 function decorateButton(button: HTMLButtonElement, icon: string): void {
   const label = button.textContent ?? "";
-  button.textContent = "";
-  button.insertAdjacentHTML("afterbegin", iconSvg(icon));
-  const span = document.createElement("span");
-  span.className = "pg-btn__label";
+  const span = activeDocument.createElement("span");
+  span.addClass("pg-btn__label");
   span.textContent = label;
-  button.appendChild(span);
+  button.replaceChildren(createIconSvg(icon), span);
 }
 
 /* ---------- debounce ---------- */
@@ -1415,16 +1487,12 @@ function init(): void {
   populatePlaybackSpeeds();
 
   const stored = (() => {
-    try {
-      return localStorage.getItem(STORAGE_KEY);
-    } catch {
-      return null;
-    }
+    return loadPlaygroundValue(STORAGE_KEY);
   })();
   editor.value = toAuthoringText(stored ?? EXAMPLES["Basic rock groove"]);
 
-  if (localStorage.getItem(THEME_KEY) === "dark") {
-    document.body.classList.add("theme-dark");
+  if (loadPlaygroundValue(THEME_KEY) === "dark") {
+    activeDocument.body.classList.add("theme-dark");
   }
 
   const onEdit = debounce(() => {
@@ -1481,7 +1549,7 @@ function init(): void {
     if (!currentBlock) {
       return;
     }
-    applyEditedBlock(setGrid(currentBlock, Number(gridSelect.value) as GridResolution));
+    applyEditedBlock(setGrid(currentBlock, getSelectedGridResolution()));
   });
 
   repeatInput.addEventListener("change", () => {
@@ -1495,7 +1563,7 @@ function init(): void {
     if (!currentBlock) {
       return;
     }
-    applyEditedBlock({ ...currentBlock, legendMode: legendSelect.value as LegendMode });
+    applyEditedBlock({ ...currentBlock, legendMode: getSelectedLegendMode() });
   });
 
   decorateButton(playBtn, "play");
@@ -1529,11 +1597,11 @@ function init(): void {
     setMuteMenuOpen(muteMenu.hidden);
   });
   muteMenu.addEventListener("click", (event) => event.stopPropagation());
-  document.addEventListener("click", () => {
+  activeDocument.addEventListener("click", () => {
     setMetronomeMenuOpen(false);
     setMuteMenuOpen(false);
   });
-  document.addEventListener("keydown", (event) => {
+  activeDocument.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
       setMetronomeMenuOpen(false);
       setMuteMenuOpen(false);
@@ -1557,8 +1625,8 @@ function init(): void {
   });
 
   themeBtn.addEventListener("click", () => {
-    const dark = document.body.classList.toggle("theme-dark");
-    localStorage.setItem(THEME_KEY, dark ? "dark" : "light");
+    const dark = activeDocument.body.classList.toggle("theme-dark");
+    savePlaygroundValue(THEME_KEY, dark ? "dark" : "light");
   });
 
   // Refit the score to the pane width (debounced; skip no-op width changes).

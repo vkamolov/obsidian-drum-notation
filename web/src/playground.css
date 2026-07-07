@@ -629,6 +629,41 @@ body {
   border-radius: 6px;
 }
 
+.pg-confirm {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  width: min(22rem, calc(100vw - 2rem));
+  padding: 0.8rem;
+  color: var(--pg-text);
+  background: var(--pg-panel);
+  border: 1px solid var(--pg-border);
+  border-radius: 8px;
+  box-shadow: 0 14px 35px rgba(15, 23, 42, 0.22);
+}
+
+.pg-confirm__message {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.pg-confirm__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.pg-confirm__confirm {
+  color: #fff;
+  background: var(--pg-accent);
+  border-color: color-mix(in srgb, var(--pg-accent) 85%, #000 15%);
+}
+
 /* ---- responsive: stack on narrow screens ---- */
 @media (max-width: 760px) {
   .pg-topbar {

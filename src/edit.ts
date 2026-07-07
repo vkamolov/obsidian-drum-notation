@@ -505,9 +505,18 @@ function toSystemView(system: DrumSystem): SystemView {
     }
   }
 
+  const rows: RowView[] = [];
+  order.forEach((id) => {
+    const row = byId.get(id);
+
+    if (row) {
+      rows.push(row);
+    }
+  });
+
   return {
     bars,
-    rows: order.map((id) => byId.get(id)!),
+    rows,
     ...(system.subtitle ? { subtitle: system.subtitle } : {})
   };
 }
@@ -742,11 +751,18 @@ function getStickingChar(hand: StickingHand): "R" | "L" | "B" {
 }
 
 function setChar(pattern: string, index: number, char: string): string {
-  const padded = pattern.length > index ? pattern : pattern.padEnd(index + 1, "-");
-  const chars = Array.from(padded);
-  chars[index] = char;
+  const length = Math.max(pattern.length, index + 1);
+  let result = "";
 
-  return chars.join("");
+  for (let charIndex = 0; charIndex < length; charIndex++) {
+    if (charIndex === index) {
+      result += char;
+    } else {
+      result += pattern[charIndex] ?? "-";
+    }
+  }
+
+  return result;
 }
 
 function patternHasHits(pattern: string): boolean {

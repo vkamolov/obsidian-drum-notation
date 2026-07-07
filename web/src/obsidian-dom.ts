@@ -31,7 +31,7 @@ function createElement<K extends keyof HTMLElementTagNameMap>(
   tag: K,
   info?: DomElementInfo | string
 ): HTMLElementTagNameMap[K] {
-  const el = document.createElement(tag);
+  const el = parent.ownerDocument.createElement(tag);
   const options: DomElementInfo = typeof info === "string" ? { text: info } : info ?? {};
 
   applyClasses(el, options.cls);
@@ -107,6 +107,12 @@ if (!proto.__drumDomShim) {
   proto.toggleClass = function (this: HTMLElement, cls: string, force?: boolean) {
     this.classList.toggle(cls, force);
   };
+
+  proto.setCssProps = function (this: HTMLElement, props: Record<string, string>) {
+    for (const [name, value] of Object.entries(props)) {
+      this.style.setProperty(name, value);
+    }
+  };
 }
 
 // Mirror Obsidian's type augmentation so engrave.ts (and the app) typecheck
@@ -122,6 +128,7 @@ declare global {
     addClass(...classes: string[]): void;
     removeClass(...classes: string[]): void;
     toggleClass(cls: string, force?: boolean): void;
+    setCssProps(props: Record<string, string>): void;
   }
 }
 

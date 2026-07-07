@@ -101,6 +101,29 @@ interface GraceSlurAnchor {
 
 const graceSlurAnchors = new WeakMap<StaveNote, GraceSlurAnchor[]>();
 
+function normalizeResponsiveScoreSvg(surface: HTMLElement, width: number, height: number): void {
+  const svg = surface.querySelector<SVGSVGElement>("svg");
+
+  surface.style.removeProperty("width");
+  surface.style.removeProperty("height");
+  surface.setCssProps({
+    "--drum-system-w": String(width),
+    "--drum-system-h": String(height)
+  });
+
+  if (!svg) {
+    return;
+  }
+
+  if (!svg.hasAttribute("viewBox")) {
+    svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  }
+  svg.setAttribute("preserveAspectRatio", "xMinYMin meet");
+  svg.removeAttribute("width");
+  svg.removeAttribute("height");
+  svg.removeAttribute("style");
+}
+
 export function renderVexflowScore(block: DrumBlock, container: HTMLElement): ScoreRenderResult {
   container.empty();
 
@@ -111,8 +134,7 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
   const cursorPositions: Array<ScoreRenderResult["cursorPositions"][number]> = [];
   const barRegions: ScoreRenderResult["barRegions"] = [];
 
-  container.style.width = "100%";
-  container.style.minHeight = `${Math.max(height, block.systems.length * height)}px`;
+  container.setCssProps({ "--drum-score-min-height": `${Math.max(height, block.systems.length * height)}px` });
 
   let previousBarAnchors: Array<{ note: Tickable; cursorPosition: CursorPosition } | undefined> = [];
 
@@ -128,7 +150,6 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
     }
 
     const scoreSurface = system.createEl("div", { cls: "drum-notation__system-score" });
-    scoreSurface.style.height = `${height}px`;
 
     const renderer = new Renderer(scoreSurface, Renderer.Backends.SVG);
 
@@ -137,10 +158,7 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
     const context = renderer.getContext();
     context.scale(layout.renderScale, layout.renderScale);
 
-    // scale() keeps the svg viewBox in sync, which lets the print stylesheet
-    // shrink systems to the page width. Keep the score left-aligned instead
-    // of centered when that scaling happens.
-    scoreSurface.querySelector<SVGSVGElement>("svg")?.setAttribute("preserveAspectRatio", "xMinYMin meet");
+    normalizeResponsiveScoreSvg(scoreSurface, cssWidth, height);
 
     context.setFillStyle("currentColor");
     context.setStrokeStyle("currentColor");
@@ -305,6 +323,7 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
     pendingHitTargets.forEach(({ note, slot }) => {
       drawNoteHitTargets(system, note, slot, layout);
     });
+    normalizeResponsiveScoreSvg(scoreSurface, cssWidth, height);
   });
 
   return { cursorPositions, barRegions };
@@ -406,7 +425,7 @@ export function renderInstrumentLegend(block: DrumBlock, root: HTMLElement): voi
     });
 
     item.dataset.instrumentId = instrument.id;
-    swatch.style.backgroundColor = instrument.color;
+    swatch.setCssProps({ "--drum-legend-color": instrument.color });
     item.createEl("span", {
       cls: "drum-notation__legend-label",
       text: instrument.label
@@ -612,7 +631,7 @@ function drawNoteHitTargets(system: HTMLElement, note: StaveNote | undefined, sl
 
   note.noteHeads.forEach((noteHead) => {
     const box = noteHead.getBoundingBox();
-    const target = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+    const target = svg.ownerDocument.createElementNS("http://www.w3.org/2000/svg", "rect");
     const padding = layout.noteHitTargetPadding;
 
     target.classList.add("drum-notation__hit-target");
@@ -639,8 +658,8 @@ function colorSvgShape(element: SVGElement, color: string): void {
   const shapes = [element, ...Array.from(element.querySelectorAll<SVGElement>("path, text, line, polygon, polyline, ellipse, circle"))];
 
   shapes.forEach((shape) => {
-    shape.style.fill = color;
-    shape.style.stroke = color;
+    shape.setAttribute("fill", color);
+    shape.setAttribute("stroke", color);
   });
 }
 
@@ -650,8 +669,10 @@ function restoreNonNoteheadInk(group: SVGGElement): void {
       ".vf-stem, .vf-stem *, .vf-flag, .vf-flag *, .vf-modifiers, .vf-modifiers *, .vf-gracenote, .vf-gracenote *, .vf-parenthesis, .vf-parenthesis *"
     )
     .forEach((shape) => {
-      shape.style.fill = "currentColor";
-      shape.style.stroke = "currentColor";
+      shape.style.removeProperty("fill");
+      shape.style.removeProperty("stroke");
+      shape.setAttribute("fill", "currentColor");
+      shape.setAttribute("stroke", "currentColor");
     });
 }
 
@@ -700,7 +721,7 @@ function drawHatOpennessMarks(system: HTMLElement, notes: StaveNote[], noteSlots
     }
 
     const stemTopY = note.getStemExtents().topY;
-    const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    const circle = svg.ownerDocument.createElementNS("http://www.w3.org/2000/svg", "circle");
     const x = note.getStemX();
     const y = stemTopY - layout.openHatGap - layout.openHatRadius;
 
@@ -714,7 +735,7 @@ function drawHatOpennessMarks(system: HTMLElement, notes: StaveNote[], noteSlots
     svg.appendChild(circle);
 
     if (hasHalfOpenHat) {
-      const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      const line = svg.ownerDocument.createElementNS("http://www.w3.org/2000/svg", "line");
 
       line.classList.add("drum-notation__half-open-hat-line");
       line.setAttribute("x1", String(x));
@@ -753,7 +774,7 @@ function drawFootSplashMarks(system: HTMLElement, notes: StaveNote[], noteSlots:
 
     const box = notehead.getBoundingBox();
     const radius = Math.max(box.getW(), box.getH()) / 2 + layout.footSplashCirclePadding;
-    const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    const circle = svg.ownerDocument.createElementNS("http://www.w3.org/2000/svg", "circle");
 
     circle.classList.add("drum-notation__foot-splash");
     circle.setAttribute("cx", String(box.getX() + box.getW() / 2));
@@ -789,7 +810,7 @@ function drawAccentMarks(system: HTMLElement, notes: StaveNote[], noteSlots: Dru
     const x = note.getStemX() - layout.accentWidth * 0.45;
     const y = stemTopY - layout.accentGap;
     const halfHeight = layout.accentHeight / 2;
-    const accent = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+    const accent = svg.ownerDocument.createElementNS("http://www.w3.org/2000/svg", "polyline");
 
     accent.classList.add("drum-notation__accent");
     accent.setAttribute("points", `${x},${y - halfHeight} ${x + layout.accentWidth},${y} ${x},${y + halfHeight}`);
@@ -830,7 +851,7 @@ function drawChokeMarks(system: HTMLElement, notes: StaveNote[], noteSlots: Drum
       const centerX = box.getX() + box.getW() / 2;
       const centerY = box.getY() - layout.chokeGap;
       const halfSize = layout.chokePlusSize / 2;
-      const plus = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      const plus = svg.ownerDocument.createElementNS("http://www.w3.org/2000/svg", "g");
       const segments: Array<[number, number, number, number]> = [
         [centerX - halfSize, centerY, centerX + halfSize, centerY],
         [centerX, centerY - halfSize, centerX, centerY + halfSize]
@@ -839,7 +860,7 @@ function drawChokeMarks(system: HTMLElement, notes: StaveNote[], noteSlots: Drum
       plus.classList.add("drum-notation__choke");
       plus.setAttribute("pointer-events", "none");
       segments.forEach(([x1, y1, x2, y2]) => {
-        const segment = document.createElementNS("http://www.w3.org/2000/svg", "line");
+        const segment = svg.ownerDocument.createElementNS("http://www.w3.org/2000/svg", "line");
 
         segment.setAttribute("x1", String(x1));
         segment.setAttribute("y1", String(y1));
@@ -881,7 +902,7 @@ function drawDiddleMarks(system: HTMLElement, notes: StaveNote[], noteSlots: Dru
 
     const stemMiddleY = getStemMarkMiddleY(note, layout.diddleHeight, layout.diddleThickness, layout.diddleNoteheadClearance);
     const stemX = note.getStemX();
-    const diddle = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+    const diddle = svg.ownerDocument.createElementNS("http://www.w3.org/2000/svg", "polygon");
     const leftX = stemX - layout.diddleWidth / 2;
     const rightX = stemX + layout.diddleWidth / 2;
     const leftY = stemMiddleY + layout.diddleHeight / 2;
@@ -931,7 +952,7 @@ function drawBuzzRollMarks(
 
     const stemMiddleY = getStemMarkMiddleY(note, layout.diddleHeight, layout.diddleThickness, layout.diddleNoteheadClearance);
     const stemX = note.getStemX();
-    const buzz = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    const buzz = svg.ownerDocument.createElementNS("http://www.w3.org/2000/svg", "g");
     const leftX = stemX - layout.buzzWidth / 2;
     const rightX = stemX + layout.buzzWidth / 2;
     const buzzCenterY = stemMiddleY;
@@ -947,7 +968,7 @@ function drawBuzzRollMarks(
     buzz.setAttribute("data-drum-anchor-y", String(stemMiddleY));
     buzz.setAttribute("data-drum-center-y", String(buzzCenterY));
     segments.forEach(([x1, y1, x2, y2]) => {
-      const segment = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      const segment = svg.ownerDocument.createElementNS("http://www.w3.org/2000/svg", "line");
 
       segment.setAttribute("x1", String(x1));
       segment.setAttribute("y1", String(y1));
@@ -998,7 +1019,7 @@ function drawGraceNoteSlurs(system: HTMLElement, notes: StaveNote[], layout: Not
       const cpX = (startX + endX) / 2;
       const topY = baseY + layout.graceSlurCp1;
       const bottomY = baseY + layout.graceSlurCp2;
-      const slur = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      const slur = svg.ownerDocument.createElementNS("http://www.w3.org/2000/svg", "path");
 
       slur.classList.add("drum-notation__grace-slur");
       slur.setAttribute("d", `M ${startX} ${baseY} Q ${cpX} ${topY} ${endX} ${baseY} Q ${cpX} ${bottomY} ${startX} ${baseY} Z`);
@@ -1008,7 +1029,7 @@ function drawGraceNoteSlurs(system: HTMLElement, notes: StaveNote[], layout: Not
 
       if (color) {
         slur.setAttribute("data-drum-color", color);
-        slur.style.fill = color;
+        slur.setAttribute("fill", color);
       }
 
       svg.appendChild(slur);
@@ -1067,7 +1088,7 @@ function drawStickingMarks(
     }
 
     const x = getStickingAnchorX(note);
-    const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    const label = svg.ownerDocument.createElementNS("http://www.w3.org/2000/svg", "text");
 
     label.classList.add("drum-notation__sticking");
     label.setAttribute("x", String(x));
@@ -1245,7 +1266,7 @@ function drawMeasureRepeatCount(
     return;
   }
 
-  const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+  const label = svg.ownerDocument.createElementNS("http://www.w3.org/2000/svg", "text");
 
   label.classList.add("drum-notation__measure-repeat-count");
   label.textContent = `x${count}`;

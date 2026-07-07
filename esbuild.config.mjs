@@ -1,5 +1,5 @@
-import builtins from "builtin-modules";
 import esbuild from "esbuild";
+import { builtinModules } from "node:module";
 
 const production = process.argv[2] === "production";
 const licenseBanner = `/*!
@@ -59,7 +59,7 @@ const context = await esbuild.context({
     "@lezer/common",
     "@lezer/highlight",
     "@lezer/lr",
-    ...builtins
+    ...builtinModules
   ],
   format: "cjs",
   target: "es2018",

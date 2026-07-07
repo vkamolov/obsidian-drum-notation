@@ -1,15 +1,15 @@
-.markdown-reading-view .el-p:has(+ .el-pre .drum-notation-host) > p:last-child,
-.markdown-preview-view .el-p:has(+ .el-pre .drum-notation-host) > p:last-child {
+.markdown-reading-view .el-p.drum-notation-before-code-block > p:last-child,
+.markdown-preview-view .el-p.drum-notation-before-code-block > p:last-child {
   margin-bottom: 0;
 }
 
-.markdown-reading-view .el-pre:has(.drum-notation-host),
-.markdown-preview-view .el-pre:has(.drum-notation-host) {
+.markdown-reading-view .el-pre.drum-notation-code-block,
+.markdown-preview-view .el-pre.drum-notation-code-block {
   margin-top: 0;
 }
 
-.markdown-reading-view .el-pre:has(.drum-notation-host) + .el-pre:has(.drum-notation-host),
-.markdown-preview-view .el-pre:has(.drum-notation-host) + .el-pre:has(.drum-notation-host) {
+.markdown-reading-view .el-pre.drum-notation-code-block + .el-pre.drum-notation-code-block,
+.markdown-preview-view .el-pre.drum-notation-code-block + .el-pre.drum-notation-code-block {
   margin-top: var(--p-spacing, 1rem);
 }
 
@@ -18,7 +18,7 @@
    background. Reading view has none of that, so switching modes shifted the
    block vertically. Strip the embed chrome around our host so the block keeps
    the same vertical footprint in both modes. */
-.markdown-source-view.mod-cm6 .cm-embed-block.cm-preview-code-block:has(.drum-notation-host) {
+.markdown-source-view.mod-cm6 .cm-embed-block.cm-preview-code-block.drum-notation-preview-code-block {
   margin: var(--p-spacing, 1rem) 0;
   padding: 0;
   border: 0;
@@ -181,11 +181,11 @@
   height: 1.7rem;
   min-width: auto;
   padding: 0;
-  border: 1px solid transparent !important;
+  border: 1px solid transparent;
   border-radius: 5px;
-  color: var(--drum-ink-symbol) !important;
-  background: transparent !important;
-  box-shadow: none !important;
+  color: var(--drum-ink-symbol);
+  background: transparent;
+  box-shadow: none;
   line-height: 1;
   cursor: pointer;
 }
@@ -201,21 +201,21 @@
 
 .drum-notation__button:hover,
 .drum-notation__button:focus-visible {
-  border-color: transparent !important;
-  color: var(--interactive-accent) !important;
-  background: var(--background-modifier-hover) !important;
-  box-shadow: none !important;
+  border-color: transparent;
+  color: var(--interactive-accent);
+  background: var(--background-modifier-hover);
+  box-shadow: none;
 }
 
 .drum-notation__button.is-playing {
-  color: var(--interactive-accent) !important;
-  background: var(--background-modifier-hover) !important;
-  box-shadow: inset 0 0 0 1px var(--interactive-accent) !important;
+  color: var(--interactive-accent);
+  background: var(--background-modifier-hover);
+  box-shadow: inset 0 0 0 1px var(--interactive-accent);
 }
 
 .drum-notation__button.is-active {
-  color: var(--interactive-accent) !important;
-  background: var(--background-modifier-hover) !important;
+  color: var(--interactive-accent);
+  background: var(--background-modifier-hover);
 }
 
 .drum-notation__button:disabled {
@@ -242,15 +242,29 @@
   position: relative;
   box-sizing: border-box;
   width: 100%;
+  min-height: var(--drum-score-min-height, 0);
   padding: 0.35rem;
   background: transparent;
+}
+
+.drum-notation__score-buffer {
+  position: absolute;
+  left: var(--drum-score-buffer-left, 0);
+  top: var(--drum-score-buffer-top, 0);
+  width: var(--drum-score-buffer-width, 100%);
+  min-height: var(--drum-score-buffer-min-height, 0);
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .drum-notation__score svg {
   display: block;
   width: 100%;
   max-width: 100%;
+  aspect-ratio: var(--drum-system-w, 1) / var(--drum-system-h, 1);
+  height: auto;
   color: var(--drum-ink-line);
+  overflow: visible;
 }
 
 .drum-notation__score svg text {
@@ -319,7 +333,7 @@
 
 .theme-dark .drum-notation__button,
 .drum-notation.theme-dark .drum-notation__button {
-  color: var(--drum-dark-ink) !important;
+  color: var(--drum-dark-ink);
 }
 
 .theme-dark .drum-notation__score svg,
@@ -419,6 +433,7 @@ body.is-mobile .drum-notation__speed {
   flex: 0 0 auto;
   width: 0.75rem;
   height: 0.75rem;
+  background: var(--drum-legend-color, var(--drum-ink-symbol));
   border: 1px solid color-mix(in srgb, var(--background-primary) 40%, var(--drum-border));
   border-radius: 999px;
   box-shadow: inset 0 0 0 1px color-mix(in srgb, white 28%, transparent);
@@ -477,10 +492,11 @@ body.is-mobile .drum-notation__speed {
 
 .drum-notation__cursor {
   position: absolute;
-  top: 0;
-  left: 0;
+  top: var(--drum-cursor-top, 0);
+  left: var(--drum-cursor-left, 0);
   z-index: 2;
   width: 2px;
+  height: var(--drum-cursor-height, 0);
   pointer-events: none;
   opacity: 0;
   background: var(--drum-accent);
@@ -499,7 +515,7 @@ body.is-mobile .drum-notation__speed {
 }
 
 .drum-notation__measure-repeat-count.is-active {
-  fill: var(--drum-accent) !important;
+  fill: var(--drum-accent);
 }
 
 .drum-notation__hit-target {
@@ -518,8 +534,8 @@ body.is-mobile .drum-notation__speed {
 
 .drum-notation__interactive-note.is-playing path,
 .drum-notation__interactive-note.is-playing text {
-  stroke: var(--drum-accent) !important;
-  fill: var(--drum-accent) !important;
+  stroke: var(--drum-accent);
+  fill: var(--drum-accent);
 }
 
 .drum-notation__edit-root {
@@ -536,8 +552,8 @@ body.is-mobile .drum-notation__speed {
 .drum-notation.is-editing .drum-notation__interactive-note.is-edit-selected text,
 .pg-editing #pg-preview .drum-notation__interactive-note.is-edit-selected path,
 .pg-editing #pg-preview .drum-notation__interactive-note.is-edit-selected text {
-  stroke: var(--pg-accent) !important;
-  fill: var(--pg-accent) !important;
+  stroke: var(--pg-accent);
+  fill: var(--pg-accent);
 }
 
 .pg-bar-selectors {
@@ -550,27 +566,31 @@ body.is-mobile .drum-notation__speed {
 .pg-bar-selector {
   appearance: none;
   position: absolute;
+  left: var(--pg-bar-selector-left, 0);
+  top: var(--pg-bar-selector-top, 0);
+  width: var(--pg-bar-selector-width, 0);
+  height: var(--pg-bar-selector-height, 0);
   padding: 0;
   margin: 0;
   min-width: 0;
   min-height: 0;
   color: inherit;
-  background: transparent !important;
-  background-image: none !important;
-  border: 0 !important;
+  background: transparent;
+  background-image: none;
+  border: 0;
   border-radius: 4px;
-  box-shadow: none !important;
+  box-shadow: none;
   cursor: pointer;
   font: inherit;
   line-height: 1;
   pointer-events: auto;
-  text-shadow: none !important;
+  text-shadow: none;
 }
 
 .pg-bar-selector:hover,
 .pg-bar-selector.is-selected {
-  background: color-mix(in srgb, var(--pg-accent) 8%, transparent) !important;
-  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--pg-accent) 78%, transparent) !important;
+  background: color-mix(in srgb, var(--pg-accent) 8%, transparent);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--pg-accent) 78%, transparent);
 }
 
 .pg-note {
@@ -627,9 +647,9 @@ body.is-mobile .drum-notation__speed {
   min-width: 0;
   min-height: 0;
   margin: 0;
-  background-image: none !important;
-  box-shadow: none !important;
-  text-shadow: none !important;
+  background-image: none;
+  box-shadow: none;
+  text-shadow: none;
 }
 
 .pg-grid-editor__bar {
@@ -664,11 +684,11 @@ body.is-mobile .drum-notation__speed {
   padding: 0 1.35rem 0 0.55rem;
   line-height: 1;
   color: var(--pg-text);
-  background-color: var(--pg-editor-control-bg) !important;
-  background-image: none !important;
+  background-color: var(--pg-editor-control-bg);
+  background-image: none;
   border-color: var(--pg-border);
   border-radius: 5px;
-  box-shadow: none !important;
+  box-shadow: none;
   outline: none;
 }
 
@@ -679,7 +699,7 @@ body.is-mobile .drum-notation__speed {
 #pg-edit-root .pg-grid-editor__palette:focus,
 #pg-edit-root .pg-grid-editor__palette:focus-visible {
   border-color: var(--pg-accent);
-  box-shadow: none !important;
+  box-shadow: none;
   outline: none;
 }
 
@@ -719,7 +739,7 @@ body.is-mobile .drum-notation__speed {
   font-size: 0.8rem;
   line-height: 1;
   color: var(--pg-text);
-  background: var(--pg-bg) !important;
+  background: var(--pg-bg);
   border: 1px solid var(--pg-border);
   border-radius: 6px;
   cursor: pointer;
@@ -743,7 +763,7 @@ body.is-mobile .drum-notation__speed {
 
 .pg-btn.is-playing {
   color: #fff;
-  background: var(--pg-accent) !important;
+  background: var(--pg-accent);
   border-color: var(--pg-accent);
 }
 
@@ -764,7 +784,7 @@ body.is-mobile .drum-notation__speed {
   padding: 0 0.55rem;
   font-size: 0.76rem;
   color: var(--pg-text);
-  background: var(--pg-editor-control-bg) !important;
+  background: var(--pg-editor-control-bg);
   border-radius: 5px;
 }
 
@@ -874,7 +894,7 @@ body.is-mobile .drum-notation__speed {
 
 .pg-grid-editor__tool.is-active {
   color: #fff;
-  background: var(--pg-accent) !important;
+  background: var(--pg-accent);
   border-color: var(--pg-accent);
 }
 
@@ -946,7 +966,7 @@ body.is-mobile .drum-notation__speed {
 
 .pg-grid-editor__bar-chip.is-active {
   color: #fff;
-  background: var(--pg-accent) !important;
+  background: var(--pg-accent);
   border-color: var(--pg-accent);
 }
 
@@ -1111,13 +1131,13 @@ body.is-mobile .drum-notation__speed {
 .pg-grid__label--button:focus-visible,
 .pg-grid__label--button.is-selected {
   color: var(--pg-text);
-  background: color-mix(in srgb, var(--pg-accent) 12%, var(--pg-bg)) !important;
+  background: color-mix(in srgb, var(--pg-accent) 12%, var(--pg-bg));
 }
 
 .pg-grid__label--button:focus-visible,
 .pg-grid__label--button.is-selected {
   outline: none;
-  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--pg-accent) 72%, transparent) !important;
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--pg-accent) 72%, transparent);
 }
 
 .pg-grid__ruler-cells,
@@ -1172,7 +1192,7 @@ body.is-mobile .drum-notation__speed {
   outline: none;
   box-shadow:
     inset 0 0 0 2px color-mix(in srgb, var(--pg-panel) 80%, white),
-    inset 0 0 0 4px var(--pg-accent) !important;
+    inset 0 0 0 4px var(--pg-accent);
 }
 
 .pg-grid__ruler-cell.is-beat-start,
@@ -1186,41 +1206,41 @@ body.is-mobile .drum-notation__speed {
 }
 
 .pg-grid__cell.is-hit {
-  color: #fff !important;
+  color: #fff;
 }
 
 .pg-grid__cell.is-sticking {
-  color: #fff !important;
+  color: #fff;
   font-weight: 700;
 }
 
 .pg-grid__cell.is-sticking.is-right {
-  background: #0f766e !important;
+  background: #0f766e;
   border-color: #0f766e;
 }
 
 .pg-grid__cell.is-sticking.is-left {
-  background: #475569 !important;
+  background: #475569;
   border-color: #475569;
 }
 
 .pg-grid__cell.is-sticking.is-both {
-  background: #7c3aed !important;
+  background: #7c3aed;
   border-color: #7c3aed;
 }
 
 .pg-grid__cell.is-hit.is-normal {
-  background: #2563eb !important;
+  background: #2563eb;
   border-color: #2563eb;
 }
 
 .pg-grid__cell.is-hit.is-accent {
-  background: #dc2626 !important;
+  background: #dc2626;
   border-color: #dc2626;
 }
 
 .pg-grid__cell.is-hit.is-ghost {
-  background: #6b7280 !important;
+  background: #6b7280;
   border-color: #6b7280;
 }
 
@@ -1229,7 +1249,7 @@ body.is-mobile .drum-notation__speed {
 .pg-grid__cell.is-hit.is-diddle,
 .pg-grid__cell.is-hit.is-buzz,
 .pg-grid__cell.is-hit.is-choke {
-  background: #7c3aed !important;
+  background: #7c3aed;
   border-color: #7c3aed;
 }
 
@@ -1366,7 +1386,7 @@ body.is-mobile .drum-notation__speed {
   .drum-notation__cursor,
   .drum-notation__empty-action,
   .pg-bar-selectors {
-    display: none !important;
+    display: none;
   }
 
   .drum-notation__score-viewport {
@@ -1378,26 +1398,24 @@ body.is-mobile .drum-notation__speed {
 
   /* Rendered systems carry fixed pixel sizes from the screen layout, which
      can be wider than the printable page. The viewBox set by the engraver
-     lets them scale down proportionally to the page width. !important is
-     required to beat VexFlow's inline width/height styles. */
+     lets them scale down proportionally to the page width. */
   .drum-notation__score {
-    min-height: 0 !important;
+    min-height: 0;
   }
 
   .drum-notation__system-score {
-    width: 100% !important;
-    height: auto !important;
+    width: 100%;
   }
 
   .drum-notation__system-score svg {
-    width: 100% !important;
-    height: auto !important;
+    width: 100%;
+    aspect-ratio: var(--drum-system-w, 1) / var(--drum-system-h, 1);
+    height: auto;
   }
 
   .drum-notation__toolbar,
   .drum-notation__system,
   .drum-notation__legend {
-    break-inside: avoid;
     page-break-inside: avoid;
   }
 

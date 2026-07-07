@@ -204,16 +204,58 @@ function formatMeasureRepeat(count: number): string {
 }
 
 function serializeNormalBars(bars: DrumBar[]): string[] {
-  const rows = [toStickingRow(bars), ...toSystemRows(bars)].filter((row): row is SystemRow => row !== null);
-  const labelWidth = Math.max(0, ...rows.map((row) => row.label.length));
+  const rows: SystemRow[] = [];
+  const stickingRow = toStickingRow(bars);
 
-  return rows.map((row) => `${row.label.padEnd(labelWidth)} | ${row.patterns.join(" | ")}`);
+  if (stickingRow) {
+    rows.push(stickingRow);
+  }
+
+  for (const row of toSystemRows(bars)) {
+    rows.push(row);
+  }
+
+  let labelWidth = 0;
+  for (const row of rows) {
+    labelWidth = Math.max(labelWidth, row.label.length);
+  }
+
+  const lines: string[] = [];
+  for (const row of rows) {
+    lines.push(`${padRight(row.label, labelWidth)} | ${joinPatterns(row.patterns)}`);
+  }
+
+  return lines;
 }
 
 interface SystemRow {
   label: string;
   instrument?: DrumInstrument;
   patterns: string[];
+}
+
+function padRight(value: string, width: number): string {
+  let padded = value;
+
+  while (padded.length < width) {
+    padded += " ";
+  }
+
+  return padded;
+}
+
+function joinPatterns(patterns: string[]): string {
+  let result = "";
+
+  for (let index = 0; index < patterns.length; index++) {
+    if (index > 0) {
+      result += " | ";
+    }
+
+    result += patterns[index];
+  }
+
+  return result;
 }
 
 function toStickingRow(bars: DrumBar[]): SystemRow | null {

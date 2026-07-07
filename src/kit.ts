@@ -193,12 +193,21 @@ export const DRUM_KIT: DrumInstrument[] = [
   }
 ];
 
-export const INSTRUMENTS_BY_ALIAS = new Map<string, DrumInstrument>(
-  DRUM_KIT.flatMap((instrument) => [
-    [normalizeLabel(instrument.label), instrument] as [string, DrumInstrument],
-    ...instrument.aliases.map((alias): [string, DrumInstrument] => [normalizeLabel(alias), instrument])
-  ])
-);
+function buildInstrumentAliasEntries(): Array<[string, DrumInstrument]> {
+  const entries: Array<[string, DrumInstrument]> = [];
+
+  for (const instrument of DRUM_KIT) {
+    entries.push([normalizeLabel(instrument.label), instrument]);
+
+    for (const alias of instrument.aliases) {
+      entries.push([normalizeLabel(alias), instrument]);
+    }
+  }
+
+  return entries;
+}
+
+export const INSTRUMENTS_BY_ALIAS = new Map<string, DrumInstrument>(buildInstrumentAliasEntries());
 
 const DEFAULT_ARTICULATIONS: DrumArticulation[] = ["normal", "accent"];
 const CYMBAL_ARTICULATIONS: DrumArticulation[] = ["normal", "accent", "choke"];

@@ -26,7 +26,7 @@ import {
 } from "./edit";
 import { DRUM_KIT, getAllowedArticulations, getArticulationForKey, getHitChar, isArticulationAllowed } from "./kit";
 import { getSlotsPerBeat } from "./music";
-import { DrumArticulation, DrumBlock, DrumInstrument, StickingHand } from "./types";
+import { DrumArticulation, DrumBar, DrumBlock, DrumHit, DrumInstrument, DrumSystem, StickingHand } from "./types";
 
 export interface GridEditorHandle {
   destroy(): void;
@@ -140,6 +140,11 @@ export interface InstrumentRowSelectedCell {
 
 export interface StickingSelectedCell {
   kind: "sticking";
+  slotIndex: number;
+}
+
+interface SelectedInstrumentHit {
+  hit: DrumHit;
   slotIndex: number;
 }
 
@@ -291,9 +296,9 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     render();
   };
 
-  const selectedBar = () => working.bars[selectedBarIndex];
+  const selectedBar = (): DrumBar | undefined => working.bars[selectedBarIndex];
 
-  const selectedSystem = () => {
+  const selectedSystem = (): DrumSystem | undefined => {
     let current = 0;
 
     for (const system of working.systems) {
@@ -321,7 +326,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
       return (
         selectedCell.barIndex === selectedBarIndex &&
         !bar.measureRepeat &&
-        displayedInstruments().some((instrument) => instrument.id === selectedInstrumentId)
+        hasDisplayedInstrument(selectedInstrumentId)
       );
     }
 
@@ -335,21 +340,42 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
 
     const instrumentId = selectedCell.instrumentId;
 
-    return displayedInstruments().find((instrument) => instrument.id === instrumentId);
+    for (const instrument of displayedInstruments()) {
+      if (instrument.id === instrumentId) {
+        return instrument;
+      }
+    }
+
+    return undefined;
   };
 
-  const hitsForInstrumentInSelectedBar = (instrument: DrumInstrument) => {
+  const hasDisplayedInstrument = (instrumentId: string): boolean => {
+    for (const instrument of displayedInstruments()) {
+      if (instrument.id === instrumentId) {
+        return true;
+      }
+    }
+
+    return false;
+  };
+
+  const hitsForInstrumentInSelectedBar = (instrument: DrumInstrument): SelectedInstrumentHit[] => {
+    const selectedHits: SelectedInstrumentHit[] = [];
     const bar = selectedBar();
 
     if (!bar) {
-      return [];
+      return selectedHits;
     }
 
-    return bar.slots.flatMap((slot) => {
+    for (const slot of bar.slots) {
       const hit = findHit(working, slot.index, instrument.id);
 
-      return hit ? [{ hit, slotIndex: slot.index }] : [];
-    });
+      if (hit) {
+        selectedHits.push({ hit, slotIndex: slot.index });
+      }
+    }
+
+    return selectedHits;
   };
 
   const isExtraOnlyInstrument = (instrumentId: string): boolean =>
@@ -392,14 +418,15 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
         return;
       }
 
-      const selectedHits = hitsForInstrumentInSelectedBar(instrument);
-      if (selectedHits.length === 0) {
+      const selectedHits: SelectedInstrumentHit[] = hitsForInstrumentInSelectedBar(instrument);
+      const firstSelectedHit = selectedHits[0];
+      if (!firstSelectedHit) {
         return;
       }
 
       applyChange(
         applyArticulationToInstrumentInBar(working, selectedBarIndex, instrument, articulation),
-        selectedHits[0].slotIndex
+        firstSelectedHit.slotIndex
       );
       return;
     }
@@ -428,13 +455,14 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
         return;
       }
 
-      const selectedHits = hitsForInstrumentInSelectedBar(instrument);
-      if (selectedHits.length === 0) {
+      const selectedHits: SelectedInstrumentHit[] = hitsForInstrumentInSelectedBar(instrument);
+      const firstSelectedHit = selectedHits[0];
+      if (!firstSelectedHit) {
         removeExtraInstrument(instrument.id);
         return;
       }
 
-      applyChange(clearInstrumentInBar(working, selectedBarIndex, instrument), selectedHits[0].slotIndex);
+      applyChange(clearInstrumentInBar(working, selectedBarIndex, instrument), firstSelectedHit.slotIndex);
       return;
     }
 
@@ -496,7 +524,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
 
   const consumeDoubleTap = (tap: GestureTapInput): boolean => {
     const time = now();
-    const nextTap = { ...tap, time } as GestureTap;
+    const nextTap: GestureTap = { ...tap, time };
     const isDoubleTap =
       tap.hadValue &&
       lastGestureTap !== null &&
@@ -729,7 +757,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
   }
 
   const onKeyDown = (event: KeyboardEvent) => {
-    const target = event.target as HTMLElement | null;
+    const target = event.target instanceof HTMLElement ? event.target : null;
 
     if (!target || !options.container.contains(target)) {
       return;
@@ -835,7 +863,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     const bar = root.createEl("div", { cls: "pg-grid-editor__bar" });
 
     const paletteWrap = bar.createEl("span", { cls: "pg-grid-editor__palette-wrap" });
-    const palette = paletteWrap.createEl("select", { cls: "pg-grid-editor__palette" }) as HTMLSelectElement;
+    const palette = paletteWrap.createEl("select", { cls: "pg-grid-editor__palette" });
     palette.createEl("option", { text: "+ add instrument", value: "" });
     palette.disabled = !!selectedBar()?.measureRepeat;
     for (const instrument of DRUM_KIT) {
@@ -855,11 +883,11 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     const spacer = bar.createEl("span", { cls: "pg-grid-editor__spacer" });
     spacer.textContent = "Live edit";
 
-    const undoButton = bar.createEl("button", { cls: "pg-btn", text: "Undo" }) as HTMLButtonElement;
+    const undoButton = bar.createEl("button", { cls: "pg-btn", text: "Undo" });
     undoButton.disabled = undoStack.length === 0;
     undoButton.addEventListener("click", undo);
 
-    const redoButton = bar.createEl("button", { cls: "pg-btn", text: "Redo" }) as HTMLButtonElement;
+    const redoButton = bar.createEl("button", { cls: "pg-btn", text: "Redo" });
     redoButton.disabled = redoStack.length === 0;
     redoButton.addEventListener("click", redo);
   };
@@ -871,7 +899,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
       const button = pager.createEl("button", {
         cls: `pg-grid-editor__bar-chip ${index === selectedBarIndex ? "is-active" : ""} ${bar.measureRepeat ? "is-repeat" : ""}`,
         text: bar.measureRepeat ? `Bar ${index + 1} %` : `Bar ${index + 1}`
-      }) as HTMLButtonElement;
+      });
 
       button.type = "button";
       button.setAttr("aria-pressed", index === selectedBarIndex ? "true" : "false");
@@ -942,7 +970,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
       cls: "pg-grid-editor__hint-dismiss",
       text: "Dismiss",
       attr: { type: "button", "aria-label": "Dismiss visual editor tip" }
-    }) as HTMLButtonElement;
+    });
 
     dismiss.addEventListener("click", (event) => {
       event.stopPropagation();
@@ -959,15 +987,12 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     }
 
     const isRowSelection = selectedCell.kind === "instrument-row";
-    const selectedHits = isRowSelection ? hitsForInstrumentInSelectedBar(instrument) : [];
+    const selectedHits: SelectedInstrumentHit[] = isRowSelection ? hitsForInstrumentInSelectedBar(instrument) : [];
     const slotIndex = selectedCell.kind === "instrument" ? selectedCell.slotIndex : undefined;
     const hit = slotIndex === undefined ? undefined : findHit(working, slotIndex, instrument.id);
     const shortLabel = (instrument.aliases[0] ?? instrument.id).toUpperCase();
-    const sharedRowArticulation =
-      selectedHits.length > 0 && selectedHits.every((entry) => entry.hit.articulation === selectedHits[0].hit.articulation)
-        ? selectedHits[0].hit.articulation
-        : undefined;
-    const selectedHitCount = isRowSelection ? selectedHits.length : hit ? 1 : 0;
+    const sharedRowArticulation = getSharedSelectedArticulation(selectedHits);
+    const selectedHitCount: number = isRowSelection ? selectedHits.length : hit ? 1 : 0;
     const deleteRemovesExtraRow = isRowSelection && selectedHitCount === 0 && isExtraOnlyInstrument(instrument.id);
     const label = tools.createEl("span", {
       cls: "pg-grid-editor__selection",
@@ -983,12 +1008,12 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
         cls: `pg-grid-editor__tool ${
           (isRowSelection ? sharedRowArticulation : hit?.articulation) === articulation ? "is-active" : ""
         }`
-      }) as HTMLButtonElement;
+      });
 
       button.dataset.articulation = articulation;
       button.title = ARTICULATION_LABELS[articulation];
       button.setAttr("aria-label", ARTICULATION_LABELS[articulation]);
-      button.appendChild(createArticulationIcon(articulation));
+      button.appendChild(createArticulationIcon(tools.ownerDocument, articulation));
       button.disabled = isRowSelection && selectedHitCount === 0;
       button.addEventListener("click", () => applyArticulationToSelection(articulation));
     });
@@ -1000,11 +1025,11 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
 
     const deleteButton = tools.createEl("button", {
       cls: "pg-grid-editor__tool pg-grid-editor__tool--delete"
-    }) as HTMLButtonElement;
+    });
 
     deleteButton.title = isRowSelection ? `Clear ${shortLabel} in this bar` : "Delete note";
     deleteButton.setAttr("aria-label", isRowSelection ? `Clear ${shortLabel} in this bar` : "Delete note");
-    deleteButton.appendChild(createDeleteIcon());
+    deleteButton.appendChild(createDeleteIcon(tools.ownerDocument));
     deleteButton.disabled = isRowSelection ? selectedHitCount === 0 && !deleteRemovesExtraRow : !hit;
     deleteButton.addEventListener("click", clearSelectionHit);
     return true;
@@ -1034,7 +1059,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
       const button = tools.createEl("button", {
         cls: `pg-grid-editor__tool pg-grid-editor__tool--sticking ${sticking === hand ? "is-active" : ""}`,
         text
-      }) as HTMLButtonElement;
+      });
 
       button.title = title;
       button.setAttr("aria-label", title);
@@ -1048,11 +1073,11 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
 
     const clearButton = tools.createEl("button", {
       cls: "pg-grid-editor__tool pg-grid-editor__tool--delete"
-    }) as HTMLButtonElement;
+    });
 
     clearButton.title = "Clear sticking";
     clearButton.setAttr("aria-label", "Clear sticking");
-    clearButton.appendChild(createDeleteIcon());
+    clearButton.appendChild(createDeleteIcon(tools.ownerDocument));
     clearButton.disabled = !sticking;
     clearButton.addEventListener("click", clearSelectionSticking);
     return true;
@@ -1120,7 +1145,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
       const rowLabel = rowEl.createEl("button", {
         cls: `pg-grid__label pg-grid__label--button ${isRowSelected ? "is-selected" : ""}`,
         text: instrumentLabel
-      }) as HTMLButtonElement;
+      });
 
       rowLabel.type = "button";
       rowLabel.title = `Select ${instrumentLabel} notes in bar ${selectedBarIndex + 1}`;
@@ -1136,7 +1161,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
 
       for (const slot of bar.slots) {
         const hit = findHit(working, slot.index, instrument.id);
-        const cell = cells.createEl("button", { cls: "pg-grid__cell" }) as HTMLButtonElement;
+        const cell = cells.createEl("button", { cls: "pg-grid__cell" });
         const gestureKey = instrumentGestureKey(slot.index, instrument.id);
         const isSingleCellSelected =
           selectedCell?.kind === "instrument" && selectedCell.slotIndex === slot.index && selectedCell.instrumentId === instrument.id;
@@ -1243,7 +1268,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
 
     for (const slot of bar.slots) {
       const sticking = findSticking(working, slot.index);
-      const cell = cells.createEl("button", { cls: "pg-grid__cell pg-grid__cell--sticking" }) as HTMLButtonElement;
+      const cell = cells.createEl("button", { cls: "pg-grid__cell pg-grid__cell--sticking" });
       const gestureKey = stickingGestureKey(slot.index);
       const isSelected = selectedCell?.kind === "sticking" && selectedCell.slotIndex === slot.index;
       const slotIndexInBar = localIndex.get(slot.index) ?? 0;
@@ -1439,9 +1464,10 @@ function restoreEditorScroll(container: HTMLElement, snapshot: EditorScrollSnaps
 
 function captureScrollableAncestors(container: HTMLElement): AncestorScrollSnapshot[] {
   const ancestors: AncestorScrollSnapshot[] = [];
+  const body = container.ownerDocument.body;
   let element = container.parentElement;
 
-  while (element && element !== document.body) {
+  while (element && element !== body) {
     if (element.scrollHeight > element.clientHeight || element.scrollWidth > element.clientWidth) {
       ancestors.push({
         element,
@@ -1586,8 +1612,8 @@ function clampBarIndex(block: DrumBlock, barIndex: number): number {
   return Math.min(block.bars.length - 1, Math.max(0, Math.round(barIndex)));
 }
 
-function createArticulationIcon(articulation: DrumArticulation): SVGSVGElement {
-  const svg = createSvg("svg", {
+function createArticulationIcon(doc: Document, articulation: DrumArticulation): SVGSVGElement {
+  const svg = createSvg(doc, "svg", {
     class: "pg-grid-editor__tool-icon",
     viewBox: "0 0 36 36",
     "aria-hidden": "true",
@@ -1716,20 +1742,20 @@ function createBarAction(
 ): HTMLButtonElement {
   const button = parent.createEl("button", {
     cls: `pg-grid-editor__bar-action ${extraClass}`.trim()
-  }) as HTMLButtonElement;
+  });
 
   button.type = "button";
   button.title = title;
   button.setAttr("aria-label", title);
-  button.appendChild(createBarActionIcon(icon));
+  button.appendChild(createBarActionIcon(parent.ownerDocument, icon));
   button.createEl("span", { cls: "pg-grid-editor__bar-action-label", text: label });
   button.addEventListener("click", onClick);
 
   return button;
 }
 
-function createBarActionIcon(icon: BarActionIcon): SVGSVGElement {
-  const svg = createSvg("svg", {
+function createBarActionIcon(doc: Document, icon: BarActionIcon): SVGSVGElement {
+  const svg = createSvg(doc, "svg", {
     class: "pg-grid-editor__bar-action-icon",
     viewBox: "0 0 24 24",
     "aria-hidden": "true",
@@ -1788,8 +1814,8 @@ function createBarActionIcon(icon: BarActionIcon): SVGSVGElement {
   return svg;
 }
 
-function createDeleteIcon(): SVGSVGElement {
-  const svg = createSvg("svg", {
+function createDeleteIcon(doc: Document): SVGSVGElement {
+  const svg = createSvg(doc, "svg", {
     class: "pg-grid-editor__tool-icon",
     viewBox: "0 0 36 36",
     "aria-hidden": "true",
@@ -1872,20 +1898,39 @@ function appendSvg<K extends keyof SVGElementTagNameMap>(
   name: K,
   attrs: Record<string, string>
 ): SVGElementTagNameMap[K] {
-  const element = createSvg(name, attrs);
+  const element = createSvg(parent.ownerDocument, name, attrs);
 
-  parent.appendChild(element);
+  parent.append(element);
 
   return element;
 }
 
 function createSvg<K extends keyof SVGElementTagNameMap>(
+  doc: Document,
   name: K,
   attrs: Record<string, string>
 ): SVGElementTagNameMap[K] {
-  const element = document.createElementNS(SVG_NS, name);
+  const element = doc.createElementNS(SVG_NS, name);
 
-  Object.entries(attrs).forEach(([key, value]) => element.setAttribute(key, value));
+  for (const key of Object.keys(attrs)) {
+    element.setAttribute(key, attrs[key]);
+  }
 
   return element;
+}
+
+function getSharedSelectedArticulation(selectedHits: SelectedInstrumentHit[]): DrumArticulation | undefined {
+  if (selectedHits.length === 0) {
+    return undefined;
+  }
+
+  const articulation = selectedHits[0].hit.articulation;
+
+  for (const entry of selectedHits) {
+    if (entry.hit.articulation !== articulation) {
+      return undefined;
+    }
+  }
+
+  return articulation;
 }

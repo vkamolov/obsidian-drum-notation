@@ -8,6 +8,7 @@ import {
   DEFAULT_SHOW_HIGHLIGHT,
   DEFAULT_TEMPO,
   DEFAULT_TIME_SIGNATURE,
+  DrumBar,
   DrumBlock,
   DrumBlockHeader,
   DrumHit,
@@ -46,6 +47,14 @@ interface ParsedDrumRowInput extends DrumRowInput {
 
 interface ParsedDrumStickingInput extends DrumStickingInput {
   lineNumber: number;
+  generatedSegments?: ReadonlySet<number>;
+}
+
+interface RowLengthWarningEntry {
+  label: string;
+  patterns: string[];
+  lineNumber: number;
+  kind: "row" | "sticking";
   generatedSegments?: ReadonlySet<number>;
 }
 
@@ -330,15 +339,24 @@ export function finalizeDrumBlock(
   subtitleSections: Array<string | undefined> = []
 ): DrumBlock {
   const systems = buildSystems(rowSections, repeatSections, stickingSections, subtitleSections);
-  const bars = systems.flatMap((system) => system.bars);
-  const rows = bars.flatMap((bar) => bar.rows);
+  const bars: DrumBar[] = [];
+  const rows: DrumRow[] = [];
+  const slots: DrumSlot[] = [];
+
+  for (const system of systems) {
+    for (const bar of system.bars) {
+      bars.push(bar);
+      rows.push(...bar.rows);
+      slots.push(...bar.slots);
+    }
+  }
 
   return {
     ...header,
     systems,
     bars,
     rows,
-    slots: bars.flatMap((bar) => bar.slots)
+    slots
   };
 }
 
@@ -566,26 +584,24 @@ function warnForRowLengthMismatches(
 
   rowSections.forEach((rows, systemIndex) => {
     const sticking = stickingSections[systemIndex];
-    const entries: Array<{ label: string; patterns: string[]; lineNumber: number; kind: "row" | "sticking"; generatedSegments?: ReadonlySet<number> }> = [
-      ...rows.map((row) => ({
-        label: row.label,
-        patterns: row.patterns,
-        lineNumber: row.lineNumber,
-        kind: "row" as const,
-        generatedSegments: row.generatedSegments
-      })),
-      ...(sticking
-        ? [
-            {
-              label: sticking.label,
-              patterns: sticking.patterns,
-              lineNumber: sticking.lineNumber,
-              kind: "sticking" as const,
-              generatedSegments: sticking.generatedSegments
-            }
-          ]
-        : [])
-    ];
+    const entries: RowLengthWarningEntry[] = rows.map((row): RowLengthWarningEntry => ({
+      label: row.label,
+      patterns: row.patterns,
+      lineNumber: row.lineNumber,
+      kind: "row",
+      generatedSegments: row.generatedSegments
+    }));
+
+    if (sticking) {
+      entries.push({
+        label: sticking.label,
+        patterns: sticking.patterns,
+        lineNumber: sticking.lineNumber,
+        kind: "sticking",
+        generatedSegments: sticking.generatedSegments
+      });
+    }
+
     const segmentCount = Math.max(0, ...entries.map((entry) => entry.patterns.length));
 
     for (let segmentIndex = 0; segmentIndex < segmentCount; segmentIndex++) {

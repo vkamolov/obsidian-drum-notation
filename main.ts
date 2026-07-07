@@ -92,6 +92,31 @@ const DEFAULT_SETTINGS: DrumNotationSettings = {
   dismissedFirstRunTip: false
 };
 
+function isSettingsRecord(value: unknown): value is Partial<DrumNotationSettings> {
+  return typeof value === "object" && value !== null;
+}
+
+function loadSavedSettings(value: unknown): Partial<DrumNotationSettings> {
+  if (!isSettingsRecord(value)) {
+    return {};
+  }
+
+  return {
+    ...(typeof value.enableVisualEditMode === "boolean" ? { enableVisualEditMode: value.enableVisualEditMode } : {}),
+    ...(typeof value.dismissedFirstRunTip === "boolean" ? { dismissedFirstRunTip: value.dismissedFirstRunTip } : {})
+  };
+}
+
+function getSetupTimeDenominator(value: string): DrumSetupTimeDenominator {
+  const denominator = Number(value);
+
+  if (denominator === 2 || denominator === 4 || denominator === 8 || denominator === 16 || denominator === 32) {
+    return denominator;
+  }
+
+  return DEFAULT_DRUM_SETUP_VALUES.timeDenominator;
+}
+
 interface RenderState {
   cursorPositions: Array<CursorPosition | undefined>;
   barRegions: ScoreBarRegion[];
@@ -148,7 +173,7 @@ export default class DrumNotationPlugin extends Plugin {
     });
 
     this.addCommand({
-      id: "create-drum-notation",
+      id: "insert-notation-block",
       name: "Insert notation block",
       editorCallback: (editor: Editor) => {
         new DrumSetupModal(this.app, {
@@ -177,9 +202,10 @@ export default class DrumNotationPlugin extends Plugin {
   }
 
   async loadSettings(): Promise<void> {
+    const savedData = (await this.loadData()) as unknown;
     this.settings = {
       ...DEFAULT_SETTINGS,
-      ...(await this.loadData())
+      ...loadSavedSettings(savedData)
     };
   }
 
@@ -187,9 +213,9 @@ export default class DrumNotationPlugin extends Plugin {
     await this.saveData(this.settings);
   }
 
-  private renderDrumNotation(source: string, el: HTMLElement, ctx: MarkdownPostProcessorContext): void {
-    const parsed = parseDrumBlockWithWarnings(source);
-    let block = parsed.block;
+	private renderDrumNotation(source: string, el: HTMLElement, ctx: MarkdownPostProcessorContext): void {
+		const parsed = parseDrumBlockWithWarnings(source);
+		let block = parsed.block;
     let parseWarnings = parsed.warnings;
     let sourceBody = source;
     const initialSection = ctx.getSectionInfo(el);
@@ -203,13 +229,14 @@ export default class DrumNotationPlugin extends Plugin {
 
     el.empty();
     el.addClass("drum-notation-host");
+    this.markDrumNotationWrappers(el);
 
     const root = el.createEl("div", { cls: "drum-notation" });
     const toolbar = root.createEl("div", { cls: "drum-notation__toolbar" });
     const title = toolbar.createEl("div", { cls: "drum-notation__title" });
     const controls = toolbar.createEl("div", { cls: "drum-notation__controls" });
     const makeIconButton = (icon: string, tooltip: string): HTMLButtonElement => {
-      const button = controls.createEl("button", { cls: "drum-notation__button clickable-icon" }) as HTMLButtonElement;
+      const button = controls.createEl("button", { cls: "drum-notation__button clickable-icon" });
       setIcon(button, icon);
       setTooltip(button, tooltip, { placement: "top" });
       button.setAttribute("aria-label", tooltip);
@@ -222,7 +249,7 @@ export default class DrumNotationPlugin extends Plugin {
     const speedSelect = controls.createEl("select", {
       cls: "drum-notation__speed",
       attr: { "aria-label": "Playback speed" }
-    }) as HTMLSelectElement;
+    });
     populatePlaybackSpeedOptions(speedSelect);
     const metronomeButton = makeIconButton("timer", "Metronome: Off");
     metronomeButton.setAttribute("aria-haspopup", "menu");
@@ -282,7 +309,7 @@ export default class DrumNotationPlugin extends Plugin {
 
       if (this.settings.dismissedFirstRunTip) {
         return;
-      }
+	}
 
       tipEl.createEl("span", {
         text: "Tip: Use the playback controls here, and switch to Reading view to edit notation visually with the pencil button. Live Preview visual editing is planned."
@@ -487,13 +514,12 @@ export default class DrumNotationPlugin extends Plugin {
       const target = notationViewport.createEl("div", { cls: "drum-notation__score" });
 
       target.addClass("drum-notation__score-buffer");
-      target.style.position = "absolute";
-      target.style.visibility = "hidden";
-      target.style.pointerEvents = "none";
-      target.style.left = `${notation.offsetLeft}px`;
-      target.style.top = `${notation.offsetTop}px`;
-      target.style.width = `${notation.clientWidth || notationViewport.clientWidth}px`;
-      target.style.minHeight = notation.style.minHeight;
+      target.setCssProps({
+        "--drum-score-buffer-left": `${notation.offsetLeft}px`,
+        "--drum-score-buffer-top": `${notation.offsetTop}px`,
+        "--drum-score-buffer-width": `${notation.clientWidth || notationViewport.clientWidth}px`,
+        "--drum-score-buffer-min-height": notation.style.getPropertyValue("--drum-score-min-height")
+      });
 
       return target;
     };
@@ -503,8 +529,9 @@ export default class DrumNotationPlugin extends Plugin {
         return;
       }
 
-      notation.style.width = target.style.width;
-      notation.style.minHeight = target.style.minHeight;
+      notation.setCssProps({
+        "--drum-score-min-height": target.style.getPropertyValue("--drum-score-min-height")
+      });
       notation.replaceChildren(...Array.from(target.childNodes));
       target.remove();
     };
@@ -572,14 +599,16 @@ export default class DrumNotationPlugin extends Plugin {
             "aria-label": `Select bar ${region.barIndex + 1}`,
             type: "button"
           }
-        }) as HTMLButtonElement;
+        });
 
         button.dataset.barIndex = String(region.barIndex);
         button.dataset.barIndexes = region.barIndexes.join(" ");
-        button.style.left = `${Math.round(region.x)}px`;
-        button.style.top = `${Math.round(region.y)}px`;
-        button.style.width = `${Math.round(region.width)}px`;
-        button.style.height = `${Math.round(region.height)}px`;
+        button.setCssProps({
+          "--pg-bar-selector-left": `${Math.round(region.x)}px`,
+          "--pg-bar-selector-top": `${Math.round(region.y)}px`,
+          "--pg-bar-selector-width": `${Math.round(region.width)}px`,
+          "--pg-bar-selector-height": `${Math.round(region.height)}px`
+        });
         button.addEventListener("click", () => selectBar(region.barIndex, true));
       });
 
@@ -605,7 +634,7 @@ export default class DrumNotationPlugin extends Plugin {
             cls: "drum-notation__empty-action mod-cta",
             text: "Create first bar",
             attr: { type: "button" }
-          }) as HTMLButtonElement;
+          });
           action.disabled = !createAvailability.ok;
           action.title = !createAvailability.ok ? createAvailability.reason : "Create first bar";
           action.addEventListener("click", openCreateFirstBarModal);
@@ -1427,6 +1456,22 @@ export default class DrumNotationPlugin extends Plugin {
         }, 0);
       }
     }
+	  }
+
+  private markDrumNotationWrappers(el: HTMLElement): void {
+    const codeBlockWrapper = el.closest(".el-pre");
+    if (codeBlockWrapper instanceof HTMLElement) {
+      codeBlockWrapper.addClass("drum-notation-code-block");
+      const previous = codeBlockWrapper.previousElementSibling;
+      if (previous instanceof HTMLElement && previous.matches(".el-p")) {
+        previous.addClass("drum-notation-before-code-block");
+      }
+    }
+
+    const livePreviewWrapper = el.closest(".cm-embed-block.cm-preview-code-block");
+    if (livePreviewWrapper instanceof HTMLElement) {
+      livePreviewWrapper.addClass("drum-notation-preview-code-block");
+    }
   }
 
   private getEditAvailability(
@@ -1701,9 +1746,11 @@ function makePlaybackVisuals(
     }
 
     state.cursor.addClass("is-active");
-    state.cursor.style.height = `${Math.round(cursorPosition.height)}px`;
-    state.cursor.style.left = `${Math.round(cursorPosition.x)}px`;
-    state.cursor.style.top = `${Math.round(cursorPosition.y)}px`;
+    state.cursor.setCssProps({
+      "--drum-cursor-height": `${Math.round(cursorPosition.height)}px`,
+      "--drum-cursor-left": `${Math.round(cursorPosition.x)}px`,
+      "--drum-cursor-top": `${Math.round(cursorPosition.y)}px`
+    });
   };
 
   return { clearCursor, moveCursor };
@@ -1933,14 +1980,14 @@ class DrumSetupModal extends Modal {
       cls: "mod-cta",
       text: isFirstBar ? "Create bar" : "Create notation",
       attr: { type: "button" }
-    }) as HTMLButtonElement;
+    });
     const formControls = [titleInput, tempoInput, numeratorInput, denominatorInput, gridInput];
 
     const readValues = (): DrumSetupValues => ({
       title: titleInput.value,
       tempo: Number(tempoInput.value),
       timeNumerator: Number(numeratorInput.value),
-      timeDenominator: Number(denominatorInput.value) as DrumSetupTimeDenominator,
+      timeDenominator: getSetupTimeDenominator(denominatorInput.value),
       grid: Number(gridInput.value) === 32 ? 32 : 16
     });
 
