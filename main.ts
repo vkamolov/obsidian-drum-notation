@@ -1469,6 +1469,10 @@ export default class DrumNotationPlugin extends Plugin {
     ctx: MarkdownPostProcessorContext,
     section: ReturnType<MarkdownPostProcessorContext["getSectionInfo"]>
   ): EditAvailability {
+    if (el.closest(".internal-embed, .markdown-embed")) {
+      return { ok: false, reason: "This block is embedded from another note. Open that note to edit." };
+    }
+
     if (!this.isReadingViewRender(el, ctx.sourcePath)) {
       return { ok: false, reason: "Visual editing is available in Reading view. Live Preview editing is planned." };
     }

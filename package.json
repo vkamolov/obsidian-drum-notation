@@ -1,6 +1,6 @@
 {
   "name": "obsidian-drum-notation",
-  "version": "0.9.5",
+  "version": "0.9.6",
   "description": "Render and play drum kit notation blocks in Obsidian notes.",
   "main": "main.js",
   "scripts": {

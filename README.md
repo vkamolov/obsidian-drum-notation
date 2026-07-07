@@ -8,6 +8,8 @@ See [docs/notation-format.md](docs/notation-format.md) for the full notation for
 
 ## Beta Notes
 
+- `0.9.6` documents setlist-style embeds and makes embedded drums blocks
+  explicitly read-only for visual editing; open the source note to edit.
 - `0.9.5` adds a one-bar count-in option in the metronome menu, a small
   first-session usage tip, and more reliable music-font loading for Obsidian
   PDF export and pop-out windows.
@@ -70,8 +72,40 @@ Visual edit mode is intentionally limited in v1:
 
 - It is available in reading view only. Live Preview/source-mode visual editing is planned, but remains read-only for now to avoid conflicts with Obsidian's active editor buffer.
 - It edits only top-level `drums` fences. Blocks nested inside callouts, lists, or indented Markdown are rendered and playable, but visual editing is disabled.
+- Embedded drums blocks are rendered and playable, but visual editing and first-bar creation are disabled. Open the source note to edit the groove.
 - The first visual edit serializes the whole block in the plugin's canonical authoring form. This keeps the model safe and deterministic, but it may normalize spacing, labels, header order, and equivalent hit characters.
 - One-bar repeat bars are selectable and can be marked/unmarked with the grid controls, but the repeated bar body itself remains read-only.
+
+## Embedding Grooves In Other Notes
+
+Obsidian embeds are useful for building setlists, lesson notes, and practice
+dashboards from a groove library. Put each reusable groove under its own heading
+in the source note, then embed that heading wherever you need it:
+
+````md
+## Chorus
+
+```drums
+Title: Chorus groove
+Tempo: 112
+HH | x-x-x-x-x-x-x-x-
+SD | ----o-------o---
+BD | o-------o-o-----
+```
+````
+
+```md
+# Setlist
+
+![[Groove Library#Chorus]]
+![[Groove Library#Bridge Fill]]
+```
+
+Embedded drums blocks render with the normal score, playback controls,
+metronome/count-in, mute menu, legend, and parser warnings. Visual editing is
+intentionally read-only in embeds so the plugin does not write through an
+embedded section of another file. Open the source note, such as
+`Groove Library`, to edit the notation visually.
 
 ## Settings
 
