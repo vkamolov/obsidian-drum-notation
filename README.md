@@ -6,8 +6,10 @@ Render drum kit patterns as graphical SVG percussion staff notation in Obsidian,
 
 See [docs/notation-format.md](docs/notation-format.md) for the full notation format reference.
 
-## Beta Notes
+## Release Notes
 
+- `1.0.0` is the first stable public release for Obsidian Community plugin
+  submission.
 - `0.9.7` polishes visual grid editing with a gesture hint, musical count
   labels in the selection strip, clearer grid-cell accessibility labels, and
   an extended 25–150% playback-speed range for tempo training.
@@ -520,12 +522,12 @@ To test in Obsidian, copy or symlink this folder into:
 
 Then enable **Drum Notation** in Obsidian's community plugins settings.
 
-## Installation And Beta Testing
+## Installation
 
 After Community directory approval, install **Drum Notation** from Obsidian's
 Community plugins browser.
 
-Before approval, beta testers can install GitHub releases with
+Until Community directory approval, install the GitHub release with
 [BRAT](https://github.com/TfTHacker/obsidian42-brat), or install manually:
 
 1. Download `main.js`, `manifest.json`, and `styles.css` from a release.
