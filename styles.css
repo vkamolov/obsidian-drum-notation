@@ -805,6 +805,37 @@ body.is-mobile .drum-notation__speed {
   white-space: nowrap;
 }
 
+.pg-grid-editor__hint {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.55rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--pg-accent) 24%, var(--pg-border));
+  border-radius: 6px;
+  color: var(--pg-muted);
+  background: color-mix(in srgb, var(--pg-tool-strip-bg) 92%, var(--pg-accent));
+  font-size: 0.78rem;
+}
+
+.pg-grid-editor__hint-dismiss {
+  flex: 0 0 auto;
+  padding: 0.08rem 0.38rem;
+  border: 1px solid var(--pg-border);
+  border-radius: 999px;
+  color: var(--pg-muted);
+  background: var(--pg-editor-control-bg);
+  font: inherit;
+  font-size: 0.7rem;
+  cursor: pointer;
+}
+
+.pg-grid-editor__hint-dismiss:hover,
+.pg-grid-editor__hint-dismiss:focus-visible {
+  color: var(--pg-text);
+  border-color: var(--pg-accent);
+}
+
 .pg-grid-editor__tool {
   display: inline-flex;
   flex: 0 0 2.35rem;

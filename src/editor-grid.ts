@@ -82,6 +82,7 @@ const GESTURE_LONG_PRESS_MS = 575;
 const GESTURE_LONG_PRESS_MOVE_PX = 10;
 const GESTURE_SUPPRESS_CLICK_MS = 900;
 const STICKING_CYCLE: StickingHand[] = ["right", "left", "both"];
+const GRID_GESTURE_HINT_TEXT = "Tip: long-press deletes · double-tap cycles";
 
 type BarActionIcon = "add" | "copy" | "copy-next" | "new-line" | "repeat" | "unrepeat" | "delete";
 type GestureTap =
@@ -148,6 +149,47 @@ export interface HistoryEntry {
   barIndex: number;
 }
 
+export function formatGridSelectionCountLabel(slotIndexInBar: number, slotsPerBeat: number): string {
+  const beat = Math.floor(slotIndexInBar / slotsPerBeat) + 1;
+  const offset = slotIndexInBar % slotsPerBeat;
+
+  if (offset === 0) {
+    return String(beat);
+  }
+
+  const suffix = countSuffix(offset, slotsPerBeat);
+
+  return suffix ? `${beat}${suffix}` : `${beat}.${offset + 1}`;
+}
+
+export function formatGridCountSpeechLabel(slotIndexInBar: number, slotsPerBeat: number): string {
+  const beat = Math.floor(slotIndexInBar / slotsPerBeat) + 1;
+  const offset = slotIndexInBar % slotsPerBeat;
+
+  if (offset === 0) {
+    return `beat ${beat}`;
+  }
+
+  const suffix = countSuffix(offset, slotsPerBeat);
+
+  return suffix ? `beat ${beat} ${suffix}` : `beat ${beat}, subdivision ${offset + 1}`;
+}
+
+export function formatInstrumentCellAriaLabel(
+  instrumentLabel: string,
+  countSpeechLabel: string,
+  articulation?: DrumArticulation
+): string {
+  return `${instrumentLabel}, ${countSpeechLabel}, ${articulation ? ARTICULATION_LABELS[articulation].toLowerCase() : "empty"}`;
+}
+
+export function formatStickingCellAriaLabel(
+  countSpeechLabel: string,
+  sticking?: StickingHand
+): string {
+  return `Sticking, ${countSpeechLabel}, ${sticking ? getStickingAriaLabel(sticking).toLowerCase() : "empty"}`;
+}
+
 export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
   let working = options.block;
   const initialSession = options.initialSessionState;
@@ -159,6 +201,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
   let activeLongPressGesture: ActiveLongPressGesture | null = null;
   let longPressTimer: number | null = null;
   let suppressedGestureClick: SuppressedGestureClick | null = null;
+  let gestureHintDismissed = false;
   // Instruments shown as rows: those already in the block, plus any the user
   // adds from the palette (kept visible even before they have a hit).
   const extraInstruments: DrumInstrument[] = (initialSession?.extraInstrumentIds ?? [])
@@ -777,6 +820,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
       return;
     }
 
+    renderGestureHint(root);
     renderGrid(root);
     if (restoreFocus) {
       focusEditor(root);
@@ -887,6 +931,26 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     });
   };
 
+  const renderGestureHint = (root: HTMLElement) => {
+    if (gestureHintDismissed) {
+      return;
+    }
+
+    const hint = root.createEl("div", { cls: "pg-grid-editor__hint" });
+    hint.createEl("span", { text: GRID_GESTURE_HINT_TEXT });
+    const dismiss = hint.createEl("button", {
+      cls: "pg-grid-editor__hint-dismiss",
+      text: "Dismiss",
+      attr: { type: "button", "aria-label": "Dismiss visual editor tip" }
+    }) as HTMLButtonElement;
+
+    dismiss.addEventListener("click", (event) => {
+      event.stopPropagation();
+      gestureHintDismissed = true;
+      render(true);
+    });
+  };
+
   const renderArticulationTools = (tools: HTMLElement): boolean => {
     const instrument = selectedInstrument();
 
@@ -909,7 +973,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
       cls: "pg-grid-editor__selection",
       text: isRowSelection
         ? `${shortLabel} · ${selectedHitCount === 1 ? "1 note" : selectedHitCount === 0 ? "no notes" : `${selectedHitCount} notes`}`
-        : `${shortLabel} ${(slotIndex ?? 0) + 1}`
+        : `${shortLabel} · ${slotIndex === undefined ? "" : countLabelForSlot(slotIndex)}`
     });
 
     label.setAttr("aria-live", "polite");
@@ -957,7 +1021,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     tools.addClass("pg-grid-editor__tools--sticking");
     const label = tools.createEl("span", {
       cls: "pg-grid-editor__selection",
-      text: `ST ${slotIndex + 1}`
+      text: `ST · ${countLabelForSlot(slotIndex)}`
     });
 
     label.setAttr("aria-live", "polite");
@@ -1077,8 +1141,17 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
         const isSingleCellSelected =
           selectedCell?.kind === "instrument" && selectedCell.slotIndex === slot.index && selectedCell.instrumentId === instrument.id;
         const isSelected = isSingleCellSelected || (isRowSelected && !!hit);
+        const slotIndexInBar = localIndex.get(slot.index) ?? 0;
 
         addBoundaryClasses(cell, slot.index, slotsPerBeat, barStartSlots, localIndex);
+        cell.setAttr(
+          "aria-label",
+          formatInstrumentCellAriaLabel(
+            instrument.label,
+            formatGridCountSpeechLabel(slotIndexInBar, slotsPerBeat),
+            hit?.articulation
+          )
+        );
 
         if (hit) {
           cell.classList.add("is-hit", ARTICULATION_CLASS[hit.articulation]);
@@ -1173,8 +1246,13 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
       const cell = cells.createEl("button", { cls: "pg-grid__cell pg-grid__cell--sticking" }) as HTMLButtonElement;
       const gestureKey = stickingGestureKey(slot.index);
       const isSelected = selectedCell?.kind === "sticking" && selectedCell.slotIndex === slot.index;
+      const slotIndexInBar = localIndex.get(slot.index) ?? 0;
 
       addBoundaryClasses(cell, slot.index, slotsPerBeat, barStartSlots, localIndex);
+      cell.setAttr(
+        "aria-label",
+        formatStickingCellAriaLabel(formatGridCountSpeechLabel(slotIndexInBar, slotsPerBeat), sticking)
+      );
 
       if (sticking) {
         cell.classList.add("is-sticking", getStickingClass(sticking));
@@ -1238,6 +1316,25 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
         render(true);
       });
     }
+  };
+
+  const countLabelForSlot = (slotIndex: number): string => {
+    const bar = selectedBar();
+
+    if (!bar) {
+      return String(slotIndex + 1);
+    }
+
+    const slotIndexInBar = bar.slots.findIndex((slot) => slot.index === slotIndex);
+
+    if (slotIndexInBar < 0) {
+      return String(slotIndex + 1);
+    }
+
+    return formatGridSelectionCountLabel(
+      slotIndexInBar,
+      getSlotsPerBeat(working.timeSignature, working.gridResolution)
+    );
   };
 
   const renderRuler = (
@@ -1414,6 +1511,18 @@ function getStickingLabel(hand: StickingHand): string {
   return "R";
 }
 
+function getStickingAriaLabel(hand: StickingHand): string {
+  if (hand === "left") {
+    return "Left hand";
+  }
+
+  if (hand === "both") {
+    return "Both hands";
+  }
+
+  return "Right hand";
+}
+
 function getStickingClass(hand: StickingHand): string {
   if (hand === "left") {
     return "is-left";
@@ -1448,6 +1557,10 @@ function countLabel(slotIndexInBar: number, slotsPerBeat: number): string {
     return String(beat);
   }
 
+  return countSuffix(offset, slotsPerBeat);
+}
+
+function countSuffix(offset: number, slotsPerBeat: number): string {
   if (slotsPerBeat === 4) {
     return ["", "e", "&", "a"][offset] ?? "";
   }

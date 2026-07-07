@@ -1,8 +1,9 @@
 import { CountInMode, DrumBlock, DrumHit, DrumInstrument, MetronomeMode } from "./types";
 
 export const MIN_PLAYBACK_SPEED_PERCENT = 25;
-export const MAX_PLAYBACK_SPEED_PERCENT = 100;
-export const PLAYBACK_SPEED_STEP_PERCENT = 25;
+export const MAX_PLAYBACK_SPEED_PERCENT = 150;
+export const PLAYBACK_SPEED_STEP_PERCENT = 5;
+export const PLAYBACK_SPEED_UI_STEP_PERCENT = 10;
 export const DEFAULT_PLAYBACK_SPEED_PERCENT = 100;
 export const DEFAULT_METRONOME_MODE: MetronomeMode = "off";
 export const DEFAULT_COUNT_IN_MODE: CountInMode = "off";

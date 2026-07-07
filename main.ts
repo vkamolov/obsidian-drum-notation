@@ -46,7 +46,8 @@ import {
   MAX_PLAYBACK_SPEED_PERCENT,
   METRONOME_MODE_OPTIONS,
   MIN_PLAYBACK_SPEED_PERCENT,
-  PLAYBACK_SPEED_STEP_PERCENT,
+  normalizePlaybackSpeedPercent,
+  PLAYBACK_SPEED_UI_STEP_PERCENT,
   recoverAudioContext
 } from "./src/playback";
 import { DrumPlayer } from "./src/player";
@@ -222,13 +223,7 @@ export default class DrumNotationPlugin extends Plugin {
       cls: "drum-notation__speed",
       attr: { "aria-label": "Playback speed" }
     }) as HTMLSelectElement;
-    for (
-      let speed = MAX_PLAYBACK_SPEED_PERCENT;
-      speed >= MIN_PLAYBACK_SPEED_PERCENT;
-      speed -= PLAYBACK_SPEED_STEP_PERCENT
-    ) {
-      speedSelect.createEl("option", { text: `${speed}%`, value: String(speed) });
-    }
+    populatePlaybackSpeedOptions(speedSelect);
     const metronomeButton = makeIconButton("timer", "Metronome: Off");
     metronomeButton.setAttribute("aria-haspopup", "menu");
     const muteButton = makeIconButton("volume-2", "Mute instruments");
@@ -353,7 +348,7 @@ export default class DrumNotationPlugin extends Plugin {
       loopButton.disabled = !hasRows;
       loopAllButton.disabled = !hasRows;
       speedSelect.disabled = !hasRows;
-      speedSelect.value = String(playbackSpeedPercent);
+      playbackSpeedPercent = syncSpeedSelectValue(speedSelect, playbackSpeedPercent);
       const effectiveTempo = getEffectivePlaybackTempo(block.tempo, playbackSpeedPercent);
       const speedDescription = `Playback speed ${playbackSpeedPercent}% · ${formatTempo(effectiveTempo)} BPM`;
       speedSelect.title = speedDescription;
@@ -1740,6 +1735,51 @@ function clampSlotToRange(slotIndex: number, startSlot: number, endSlot: number)
 
 function formatTempo(tempo: number): string {
   return Number.isInteger(tempo) ? String(tempo) : tempo.toFixed(1);
+}
+
+const PLAYBACK_SPEED_TEMP_OPTION_ATTR = "data-drum-speed-temporary";
+
+function populatePlaybackSpeedOptions(select: HTMLSelectElement): void {
+  for (const speed of getPlaybackSpeedOptionValues()) {
+    select.createEl("option", { text: `${speed}%`, value: String(speed) });
+  }
+}
+
+function getPlaybackSpeedOptionValues(): number[] {
+  const speeds: number[] = [];
+
+  for (
+    let speed = MAX_PLAYBACK_SPEED_PERCENT;
+    speed >= MIN_PLAYBACK_SPEED_PERCENT;
+    speed -= PLAYBACK_SPEED_UI_STEP_PERCENT
+  ) {
+    speeds.push(speed);
+  }
+
+  if (!speeds.includes(MIN_PLAYBACK_SPEED_PERCENT)) {
+    speeds.push(MIN_PLAYBACK_SPEED_PERCENT);
+  }
+
+  return speeds;
+}
+
+function syncSpeedSelectValue(select: HTMLSelectElement, speedPercent: number): number {
+  const normalized = normalizePlaybackSpeedPercent(speedPercent);
+
+  select.querySelectorAll(`option[${PLAYBACK_SPEED_TEMP_OPTION_ATTR}="true"]`).forEach((option) => option.remove());
+
+  const hasOption = Array.from(select.options).some((option) => Number(option.value) === normalized);
+
+  if (!hasOption) {
+    const option = select.createEl("option", { text: `${normalized}%`, value: String(normalized) });
+    option.setAttribute(PLAYBACK_SPEED_TEMP_OPTION_ATTR, "true");
+    const insertBefore = Array.from(select.options).find((candidate) => Number(candidate.value) < normalized) ?? null;
+    select.insertBefore(option, insertBefore);
+  }
+
+  select.value = String(normalized);
+
+  return normalized;
 }
 
 function barIndexForSlot(block: DrumBlock, slotIndex: number): number {

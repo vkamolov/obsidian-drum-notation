@@ -135,17 +135,42 @@ SD | z---`);
 
     await player.play();
 
+    expect(normalizePlaybackSpeedPercent(10)).toBe(25);
     expect(normalizePlaybackSpeedPercent(24)).toBe(25);
-    expect(normalizePlaybackSpeedPercent(37)).toBe(25);
-    expect(normalizePlaybackSpeedPercent(62)).toBe(50);
-    expect(normalizePlaybackSpeedPercent(88)).toBe(100);
+    expect(normalizePlaybackSpeedPercent(37)).toBe(35);
+    expect(normalizePlaybackSpeedPercent(47)).toBe(45);
+    expect(normalizePlaybackSpeedPercent(62)).toBe(60);
+    expect(normalizePlaybackSpeedPercent(88)).toBe(90);
     expect(normalizePlaybackSpeedPercent(100)).toBe(100);
-    expect(normalizePlaybackSpeedPercent(151)).toBe(100);
+    expect(normalizePlaybackSpeedPercent(153)).toBe(150);
+    expect(normalizePlaybackSpeedPercent(Number.NaN)).toBe(100);
     expect(getEffectivePlaybackTempo(100, 50)).toBe(50);
-    expect(backend.scheduled[0].slotDuration).toBeCloseTo(getSecondsPerSlot(block, 50));
+    expect(getEffectivePlaybackTempo(100, 150)).toBe(150);
+    expect(backend.scheduled[0].slotDuration).toBeCloseTo(getSecondsPerSlot(block, 60));
     expect(backend.scheduled[0].noteDuration).toBeCloseTo(
-      getSlotVisualDurationSeconds(block, block.slots[0], 50)
+      getSlotVisualDurationSeconds(block, block.slots[0], 60)
     );
+  });
+
+  it("schedules transport playback at 150 percent speed", async () => {
+    const block = parseDrumBlock(`Tempo: 100
+HH | x---`);
+    const backend = new FakePlaybackBackend();
+    const player = new DrumPlayer(
+      {} as AudioContext,
+      block,
+      vi.fn(),
+      vi.fn(),
+      { speedPercent: 150 },
+      (() => backend) as DrumPlaybackBackendFactory
+    );
+
+    await player.play();
+
+    const expectedSlotDuration = 60 / (100 * 1.5) / 4;
+
+    expect(backend.scheduled[0].slotDuration).toBeCloseTo(expectedSlotDuration);
+    expect(backend.scheduled[0].slotDuration).toBeCloseTo(getSecondsPerSlot(block, 150));
   });
 
   it("schedules buzz rolls for the corrected Grid 16 visual span", async () => {
@@ -261,6 +286,25 @@ HH | x---------------`);
     await player.play();
 
     expect(backend.scheduled[4].time).toBeCloseTo(10.08 + 16 * getSecondsPerSlot(block, 50));
+  });
+
+  it("scales count-in timing at 150 percent speed", async () => {
+    const block = parseDrumBlock(`Tempo: 100
+HH | x---------------`);
+    const backend = new FakePlaybackBackend();
+    const player = new DrumPlayer(
+      {} as AudioContext,
+      block,
+      vi.fn(),
+      vi.fn(),
+      { countInMode: "1-bar", speedPercent: 150 },
+      (() => backend) as DrumPlaybackBackendFactory
+    );
+
+    await player.play();
+
+    expect(backend.scheduled[1].time).toBeCloseTo(10.08 + 4 * getSecondsPerSlot(block, 150));
+    expect(backend.scheduled[4].time).toBeCloseTo(10.08 + 16 * getSecondsPerSlot(block, 150));
   });
 
   it("stops callbacks when cancelled during count-in", async () => {

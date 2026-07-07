@@ -8,6 +8,9 @@ See [docs/notation-format.md](docs/notation-format.md) for the full notation for
 
 ## Beta Notes
 
+- `0.9.7` polishes visual grid editing with a gesture hint, musical count
+  labels in the selection strip, clearer grid-cell accessibility labels, and
+  an extended 25–150% playback-speed range for tempo training.
 - `0.9.6` documents setlist-style embeds and makes embedded drums blocks
   explicitly read-only for visual editing; open the source note to edit.
 - `0.9.5` adds a one-bar count-in option in the metronome menu, a small
@@ -56,7 +59,7 @@ BD | o-------o-o-----
 ```
 ````
 
-In reading view, the plugin renders the block as page-width percussion staff notation and adds **Play**, **Stop**, **Loop Bar**, **Loop All**, playback-speed, metronome/count-in, instrument-mute, and **Edit** controls. For training, playback speed offers 25%, 50%, 75%, and 100% of the written tempo. The metronome menu offers **Off**, **With drums**, and **Metronome only**, plus an optional **1 bar** count-in before Play, Loop Bar, or Loop All starts. The first metronome/count-in pulse of each bar is accented. Compound meters use grouped pulses, such as two clicks per bar in 6/8 and four in 12/8. The mute menu lists only instruments used in the current notation and mutes each canonical voice independently.
+In reading view, the plugin renders the block as page-width percussion staff notation and adds **Play**, **Stop**, **Loop Bar**, **Loop All**, playback-speed, metronome/count-in, instrument-mute, and **Edit** controls. For training, playback speed supports 25–150% of the written tempo; the toolbar offers compact 10% steps, including above-100% tempos for push-tempo practice. The metronome menu offers **Off**, **With drums**, and **Metronome only**, plus an optional **1 bar** count-in before Play, Loop Bar, or Loop All starts. The first metronome/count-in pulse of each bar is accented. Compound meters use grouped pulses, such as two clicks per bar in 6/8 and four in 12/8. The mute menu lists only instruments used in the current notation and mutes each canonical voice independently.
 
 Speed, metronome, count-in, and mute choices are playback-only: they do not change the fenced notation text. Obsidian resets them when the rendered block is recreated; the playground keeps them for the current page session. Changing speed, metronome, or mute controls during playback restarts from the current slot while preserving the active Play/Loop mode and does not replay the count-in. Instrument mutes do not silence the metronome or count-in. Muting affects transport playback only, so clicking a rendered note or previewing an editor cell remains audible.
 

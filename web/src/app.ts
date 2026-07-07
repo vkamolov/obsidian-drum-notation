@@ -29,7 +29,8 @@ import {
   MAX_PLAYBACK_SPEED_PERCENT,
   METRONOME_MODE_OPTIONS,
   MIN_PLAYBACK_SPEED_PERCENT,
-  PLAYBACK_SPEED_STEP_PERCENT,
+  normalizePlaybackSpeedPercent,
+  PLAYBACK_SPEED_UI_STEP_PERCENT,
   recoverAudioContext
 } from "../../src/playback";
 import { DrumPlayer } from "../../src/player";
@@ -835,17 +836,52 @@ function clampSlotToRange(slotIndex: number, startSlot: number, endSlot: number)
 }
 
 function populatePlaybackSpeeds(): void {
-  for (
-    let speed = MAX_PLAYBACK_SPEED_PERCENT;
-    speed >= MIN_PLAYBACK_SPEED_PERCENT;
-    speed -= PLAYBACK_SPEED_STEP_PERCENT
-  ) {
+  for (const speed of getPlaybackSpeedOptionValues()) {
     speedSelect.createEl("option", { text: `${speed}%`, value: String(speed) });
   }
 }
 
+const PLAYBACK_SPEED_TEMP_OPTION_ATTR = "data-drum-speed-temporary";
+
+function getPlaybackSpeedOptionValues(): number[] {
+  const speeds: number[] = [];
+
+  for (
+    let speed = MAX_PLAYBACK_SPEED_PERCENT;
+    speed >= MIN_PLAYBACK_SPEED_PERCENT;
+    speed -= PLAYBACK_SPEED_UI_STEP_PERCENT
+  ) {
+    speeds.push(speed);
+  }
+
+  if (!speeds.includes(MIN_PLAYBACK_SPEED_PERCENT)) {
+    speeds.push(MIN_PLAYBACK_SPEED_PERCENT);
+  }
+
+  return speeds;
+}
+
+function syncSpeedSelectValue(select: HTMLSelectElement, speedPercent: number): number {
+  const normalized = normalizePlaybackSpeedPercent(speedPercent);
+
+  select.querySelectorAll(`option[${PLAYBACK_SPEED_TEMP_OPTION_ATTR}="true"]`).forEach((option) => option.remove());
+
+  const hasOption = Array.from(select.options).some((option) => Number(option.value) === normalized);
+
+  if (!hasOption) {
+    const option = select.createEl("option", { text: `${normalized}%`, value: String(normalized) });
+    option.setAttribute(PLAYBACK_SPEED_TEMP_OPTION_ATTR, "true");
+    const insertBefore = Array.from(select.options).find((candidate) => Number(candidate.value) < normalized) ?? null;
+    select.insertBefore(option, insertBefore);
+  }
+
+  select.value = String(normalized);
+
+  return normalized;
+}
+
 function syncPlaybackControls(block: DrumBlock): void {
-  speedSelect.value = String(playbackSpeedPercent);
+  playbackSpeedPercent = syncSpeedSelectValue(speedSelect, playbackSpeedPercent);
   const effectiveTempo = getEffectivePlaybackTempo(block.tempo, playbackSpeedPercent);
   const speedDescription = `Playback speed ${playbackSpeedPercent}% · ${formatTempo(effectiveTempo)} BPM`;
 
