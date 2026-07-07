@@ -1,13 +1,10 @@
 name: Deploy web playground to Pages
 
-# Dormant until the repo is public and Pages is enabled:
-#   Settings → Pages → Build and deployment → Source: GitHub Actions
-# Until then run it manually (Actions tab → Run workflow). Once Pages is live,
-# uncomment the push trigger below to auto-deploy on every push to main.
+# Pages is deployed automatically from main and can also be run manually.
 on:
   workflow_dispatch:
-  # push:
-  #   branches: [main]
+  push:
+    branches: [main]
 
 permissions:
   contents: read
