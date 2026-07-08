@@ -236,7 +236,7 @@ export default class DrumNotationPlugin extends Plugin {
     const title = toolbar.createEl("div", { cls: "drum-notation__title" });
     const controls = toolbar.createEl("div", { cls: "drum-notation__controls" });
     const makeIconButton = (icon: string, tooltip: string): HTMLButtonElement => {
-      const button = controls.createEl("button", { cls: "drum-notation__button clickable-icon" });
+      const button = controls.createEl("button", { cls: "drum-notation__button" });
       setIcon(button, icon);
       setTooltip(button, tooltip, { placement: "top" });
       button.setAttribute("aria-label", tooltip);

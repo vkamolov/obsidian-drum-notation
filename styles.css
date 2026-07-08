@@ -40,6 +40,9 @@
   --drum-text: var(--text-normal);
   --drum-muted: var(--text-muted);
   --drum-accent: var(--interactive-accent);
+  --drum-control-color: var(--text-normal);
+  --drum-control-muted: color-mix(in srgb, var(--text-normal) 62%, transparent);
+  --drum-control-hover-bg: color-mix(in srgb, var(--interactive-accent) 14%, transparent);
   --drum-dark-ink: var(--text-normal, rgb(199, 208, 242));
   --drum-notation-ink: rgb(77, 79, 102);
   --drum-ink-line: var(--drum-notation-ink);
@@ -172,7 +175,12 @@
   opacity: 0.55;
 }
 
-.drum-notation__button {
+.drum-notation .drum-notation__button {
+  --icon-color: var(--drum-control-color);
+  --icon-color-hover: var(--drum-accent);
+  --icon-color-active: var(--drum-accent);
+  --icon-color-focused: var(--drum-accent);
+
   appearance: none;
   display: inline-flex;
   align-items: center;
@@ -183,43 +191,56 @@
   padding: 0;
   border: 1px solid transparent;
   border-radius: 5px;
-  color: var(--drum-ink-symbol);
+  color: var(--drum-control-color);
   background: transparent;
   box-shadow: none;
   line-height: 1;
   cursor: pointer;
 }
 
-.drum-notation__button[hidden] {
+.drum-notation .drum-notation__button[hidden] {
   display: none;
 }
 
-.drum-notation__button svg {
+.drum-notation .drum-notation__button svg {
   width: 1.05rem;
   height: 1.05rem;
+  color: currentColor;
+  stroke: currentColor;
+  opacity: 1;
 }
 
-.drum-notation__button:hover,
-.drum-notation__button:focus-visible {
+.drum-notation .drum-notation__button svg * {
+  stroke: currentColor;
+}
+
+.drum-notation .drum-notation__button:hover,
+.drum-notation .drum-notation__button:focus-visible {
   border-color: transparent;
-  color: var(--interactive-accent);
-  background: var(--background-modifier-hover);
+  color: var(--drum-accent);
+  background: var(--drum-control-hover-bg);
   box-shadow: none;
 }
 
-.drum-notation__button.is-playing {
-  color: var(--interactive-accent);
-  background: var(--background-modifier-hover);
-  box-shadow: inset 0 0 0 1px var(--interactive-accent);
+.drum-notation .drum-notation__button.is-playing {
+  color: var(--drum-accent);
+  background: var(--drum-control-hover-bg);
+  box-shadow: inset 0 0 0 1px var(--drum-accent);
 }
 
-.drum-notation__button.is-active {
-  color: var(--interactive-accent);
-  background: var(--background-modifier-hover);
+.drum-notation .drum-notation__button.is-active {
+  color: var(--drum-accent);
+  background: var(--drum-control-hover-bg);
 }
 
-.drum-notation__button:disabled {
-  opacity: 0.55;
+.drum-notation .drum-notation__button:disabled {
+  --icon-color: var(--drum-control-muted);
+  --icon-color-hover: var(--drum-control-muted);
+  --icon-color-active: var(--drum-control-muted);
+  --icon-color-focused: var(--drum-control-muted);
+
+  color: var(--drum-control-muted);
+  opacity: 0.7;
 }
 
 .drum-notation__control-divider {
@@ -563,7 +584,8 @@ body.is-mobile .drum-notation__speed {
   pointer-events: none;
 }
 
-.pg-bar-selector {
+.drum-notation .pg-bar-selector,
+#pg-preview .pg-bar-selector {
   appearance: none;
   position: absolute;
   left: var(--pg-bar-selector-left, 0);
@@ -587,8 +609,10 @@ body.is-mobile .drum-notation__speed {
   text-shadow: none;
 }
 
-.pg-bar-selector:hover,
-.pg-bar-selector.is-selected {
+.drum-notation .pg-bar-selector:hover,
+.drum-notation .pg-bar-selector.is-selected,
+#pg-preview .pg-bar-selector:hover,
+#pg-preview .pg-bar-selector.is-selected {
   background: color-mix(in srgb, var(--pg-accent) 8%, transparent);
   box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--pg-accent) 78%, transparent);
 }
