@@ -78,19 +78,15 @@ the committed manifest and release asset manifest must agree exactly.
 
 ## Web playground (GitHub Pages)
 
-Deployment is wired in `.github/workflows/pages.yml` and is manual-only until
-the repository is public and Pages is enabled.
+The playground is live at
+[vkamolov.github.io/obsidian-drum-notation](https://vkamolov.github.io/obsidian-drum-notation/).
+GitHub Pages uses **GitHub Actions** as its source. The workflow in
+`.github/workflows/pages.yml` deploys automatically after pushes to `main` and
+also supports manual `workflow_dispatch` runs.
 
-To go live:
-
-1. Make the repository public.
-2. Enable Pages with source **GitHub Actions**:
-   Settings → Pages → Build and deployment → Source.
-3. Run the "Deploy web playground to Pages" workflow manually.
-4. Verify the playground at the project Pages URL.
-5. Set the repository homepage to the verified Pages URL.
-6. After the first successful manual deployment, optionally enable deployment
-   from pushes to `main`.
+After changes reach `main`, confirm the Pages workflow succeeds and smoke-test
+the deployed playground for missing assets, console errors, layout regressions,
+and stale content.
 
 The site builds from `web/` via `npm run web:build`; `vite.config.ts` uses
 `base: "./"` so assets resolve under the project subpath.

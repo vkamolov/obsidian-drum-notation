@@ -7,7 +7,7 @@ build or output.
 
 ## Commits
 
-On `main` (repo: `github.com/vkamolov/obsidian-drum-notation`, private):
+On `main` (repo: `github.com/vkamolov/obsidian-drum-notation`, public):
 
 | Commit | Title |
 |--------|-------|
@@ -190,8 +190,11 @@ Console should be free of errors/warnings.
   cross-notehead row) round-trips to a *semantically* equal model but a
   different `row.pattern` string — by design (see `notation-format.md` §8).
 
-## Explicitly NOT done
+## GitHub Pages deployment
 
-- **GitHub Pages deploy** — deferred until the repo is public and Pages is
-  enabled. A manual `workflow_dispatch` Pages workflow exists; keep it manual
-  until the first successful deployment is verified.
+The playground is live at
+[vkamolov.github.io/obsidian-drum-notation](https://vkamolov.github.io/obsidian-drum-notation/).
+
+GitHub Pages is enabled with **GitHub Actions** as its source. The Pages
+workflow deploys automatically after pushes to `main` and can also be started
+manually with `workflow_dispatch` when a redeployment is needed.
