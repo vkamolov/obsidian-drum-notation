@@ -129,9 +129,11 @@ the **first** import in `app.ts`. `engrave.ts` itself was **not** changed.
   Instrument palette adds rows.
   Edits live-apply to the editor text and notation preview immediately; Undo/Redo
   replaces the old Save/Cancel flow. The selected-bar editor also exposes compact
-  bar actions for adding, duplicating, adding on a new line/system, toggling
-  one-bar repeat notation, and deleting bars. First interactive consumer of
-  `src/edit.ts`.
+  bar actions for adding on the current or a new line, copying and pasting bar
+  content, toggling one-bar repeat notation, and deleting bars. The typed bar
+  clipboard is shared across editors for the current page session and rejects
+  incompatible Time/Grid or bar-length combinations. First interactive consumer
+  of `src/edit.ts`.
 
 ## Verification steps
 
@@ -158,9 +160,11 @@ In the browser at `localhost:5173`:
    matching rendered note while showing snare-valid tools such as flam, drag,
    diddle, and buzz. Horizontally scroll the grid → instrument labels remain
    pinned while count markers and cells scroll. Use the bar action buttons to
-   add, duplicate, add-on-new-line, mark/unmark one-bar repeats, and delete bars;
-   added empty bars use the current Time/Grid slot count while duplicated bars
-   preserve the selected bar exactly. The selected bar follows the changed bar.
+   add on the current or a new line, copy/paste compatible bar content,
+   mark/unmark one-bar repeats, and delete bars. Added empty bars use the current
+   Time/Grid slot count. Paste replaces the selected bar and asks before
+   overwriting existing musical content. The selected bar follows the changed
+   bar.
    If playback is running, visual edits and debounced text-code edits restart the
    active play/loop mode against the updated notation so new hits are heard
    without a manual stop/start. Click **Undo** → the previous text/preview

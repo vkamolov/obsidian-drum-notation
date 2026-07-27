@@ -24,6 +24,7 @@ import {
   setLegendInstrumentHighlight,
   updateMeasureRepeatProgress
 } from "./src/engrave";
+import { DrumBarClipboardStore } from "./src/bar-clipboard";
 import { GridEditorHandle, GridEditorSessionState, mountGridEditor } from "./src/editor-grid";
 import {
   getRenderedDrumsBlockEditStatus,
@@ -158,6 +159,7 @@ export default class DrumNotationPlugin extends Plugin {
   private activePreviewLegendReset: (() => void) | null = null;
   private audioContext: AudioContext | null = null;
   private readonly editRestoreSessions = new Map<string, RestoredEditSession>();
+  private readonly barClipboard = new DrumBarClipboardStore();
 
   async onload(): Promise<void> {
     await this.loadSettings();
@@ -1225,7 +1227,17 @@ export default class DrumNotationPlugin extends Plugin {
           }
         },
         onSelectBar: (barIndex) => selectBar(barIndex, false),
-        confirmAction: (message) => confirmWithModal(this.app, message)
+        confirmAction: (message) => confirmWithModal(this.app, message),
+        notifyAction: (message) => new Notice(message),
+        barClipboard: this.barClipboard,
+        writeClipboardText: async (text) => {
+          const clipboard = editRoot.ownerDocument.defaultView?.navigator.clipboard;
+          if (!clipboard?.writeText) {
+            throw new Error("Clipboard API is unavailable");
+          }
+
+          await clipboard.writeText(text);
+        }
       });
 
       renderBarSelectors();

@@ -10,20 +10,22 @@
 import {
   applyArticulation,
   applyArticulationToInstrumentInBar,
+  barHasMeaningfulContent,
+  captureBarClipboardPayload,
   clearBarRepeat,
   clearHit,
   clearInstrumentInBar,
   clearSticking,
   deleteBar,
-  duplicateBar,
-  duplicateBarToNextSystem,
   findHit,
   findSticking,
   insertBarAfter,
+  pasteBarClipboardPayload,
   setBarRepeat,
   setHit,
   setSticking
 } from "./edit";
+import { DrumBarClipboardStore, serializeDrumBarClipboardText } from "./bar-clipboard";
 import { DRUM_KIT, getAllowedArticulations, getArticulationForKey, getHitChar, isArticulationAllowed } from "./kit";
 import { getSlotsPerBeat } from "./music";
 import { DrumArticulation, DrumBar, DrumBlock, DrumHit, DrumInstrument, DrumSystem, StickingHand } from "./types";
@@ -52,6 +54,9 @@ export interface GridEditorOptions {
   onPreview: (block: DrumBlock, slotIndex: number) => void;
   onSelectBar?: (barIndex: number) => void;
   confirmAction?: (message: string) => boolean | Promise<boolean>;
+  notifyAction?: (message: string) => void;
+  barClipboard: DrumBarClipboardStore;
+  writeClipboardText?: (text: string) => Promise<void>;
 }
 
 const ARTICULATION_CLASS: Record<DrumArticulation, string> = {
@@ -84,7 +89,7 @@ const GESTURE_SUPPRESS_CLICK_MS = 900;
 const STICKING_CYCLE: StickingHand[] = ["right", "left", "both"];
 const GRID_GESTURE_HINT_TEXT = "Tip: long-press deletes · double-tap cycles";
 
-type BarActionIcon = "add" | "copy" | "copy-next" | "new-line" | "repeat" | "unrepeat" | "delete";
+type BarActionIcon = "add" | "copy" | "paste" | "new-line" | "repeat" | "unrepeat" | "delete";
 type GestureTap =
   | {
       kind: "instrument";
@@ -213,6 +218,8 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     .map((id) => DRUM_KIT.find((instrument) => instrument.id === id))
     .filter((instrument): instrument is DrumInstrument => !!instrument);
   const confirmAction = options.confirmAction ?? (() => false);
+  const notifyAction = options.notifyAction ?? (() => undefined);
+  let pasteButton: HTMLButtonElement | null = null;
 
   const getSessionState = (): GridEditorSessionState => ({
     selectedBarIndex,
@@ -666,12 +673,46 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     applyChange(insertBarAfter(working, selectedBarIndex), undefined, selectedBarIndex + 1);
   };
 
-  const duplicateSelectedBar = () => {
-    applyChange(duplicateBar(working, selectedBarIndex), undefined, selectedBarIndex + 1);
+  const copySelectedBar = () => {
+    const payload = captureBarClipboardPayload(working, selectedBarIndex);
+
+    if (!payload) {
+      return;
+    }
+
+    options.barClipboard.set(payload);
+    if (options.writeClipboardText) {
+      void options.writeClipboardText(serializeDrumBarClipboardText(payload)).catch(() => undefined);
+    }
   };
 
-  const duplicateSelectedBarToNextSystem = () => {
-    applyChange(duplicateBarToNextSystem(working, selectedBarIndex), undefined, barIndexForNextSystemCopy());
+  const pasteSelectedBar = async () => {
+    const payload = options.barClipboard.get();
+    if (!payload) {
+      return;
+    }
+
+    const result = pasteBarClipboardPayload(working, selectedBarIndex, payload);
+    if (!result.ok) {
+      notifyAction(
+        result.reason === "incompatible"
+          ? "Copied bar cannot be pasted here. The source and target Time, Grid, and bar length must match."
+          : "The copied bar is no longer available."
+      );
+      return;
+    }
+
+    if (
+      barHasMeaningfulContent(working, selectedBarIndex) &&
+      !(await confirmAction(
+        `Replace bar ${selectedBarIndex + 1} with the copied bar? Existing notes, sticking, or repeat notation will be overwritten.`
+      ))
+    ) {
+      return;
+    }
+
+    selectedCell = null;
+    applyChange(result.block, undefined, selectedBarIndex);
   };
 
   const addBarOnNewSystem = () => {
@@ -725,24 +766,6 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
 
       if (selectedBarIndex >= current && selectedBarIndex < next) {
         return next;
-      }
-
-      current = next;
-    }
-
-    return selectedBarIndex + 1;
-  };
-
-  const barIndexForNextSystemCopy = (): number => {
-    let current = 0;
-
-    for (let systemIndex = 0; systemIndex < working.systems.length; systemIndex++) {
-      const system = working.systems[systemIndex];
-      const next = current + system.bars.length;
-
-      if (selectedBarIndex >= current && selectedBarIndex < next) {
-        const nextSystem = working.systems[systemIndex + 1];
-        return nextSystem ? next + nextSystem.bars.length : next;
       }
 
       current = next;
@@ -915,9 +938,14 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
 
     const actions = root.createEl("div", { cls: "pg-grid-editor__bar-actions" });
     createBarAction(actions, "Add", "add", "Add bar after", addBarAfterSelection);
-    createBarAction(actions, "Copy", "copy", "Duplicate bar", duplicateSelectedBar);
-    createBarAction(actions, "Copy ↓", "copy-next", "Copy bar to next line", duplicateSelectedBarToNextSystem);
     createBarAction(actions, "New line", "new-line", "Add bar on new line", addBarOnNewSystem);
+    createBarActionSeparator(actions);
+    createBarAction(actions, "Copy", "copy", "Copy selected bar", copySelectedBar);
+    pasteButton = createBarAction(actions, "Paste", "paste", "Paste copied bar", () => {
+      void pasteSelectedBar();
+    });
+    pasteButton.disabled = options.barClipboard.get() === null;
+    createBarActionSeparator(actions);
 
     const isRepeat = !!selectedBar()?.measureRepeat;
     const repeatButton = createBarAction(
@@ -931,10 +959,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     );
     repeatButton.disabled = selectedBarIndex === 0 && !selectedBar()?.measureRepeat;
 
-    actions.createEl("span", {
-      cls: "pg-grid-editor__bar-action-separator",
-      attr: { "aria-hidden": "true" }
-    });
+    createBarActionSeparator(actions);
 
     createBarAction(actions, "Delete", "delete", "Delete bar", () => {
       void deleteSelectedBar();
@@ -1387,6 +1412,11 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
   };
 
   render();
+  const unsubscribeClipboard = options.barClipboard.subscribe((payload) => {
+    if (pasteButton) {
+      pasteButton.disabled = payload === null;
+    }
+  });
 
   return {
     getSessionState() {
@@ -1400,6 +1430,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     },
     destroy() {
       clearLongPressTimer();
+      unsubscribeClipboard();
       options.container.removeEventListener("keydown", onKeyDown);
       options.container.removeEventListener("contextmenu", onGridContextMenu, true);
       if (previousTabIndex === null) {
@@ -1754,6 +1785,13 @@ function createBarAction(
   return button;
 }
 
+function createBarActionSeparator(parent: HTMLElement): void {
+  parent.createEl("span", {
+    cls: "pg-grid-editor__bar-action-separator",
+    attr: { "aria-hidden": "true" }
+  });
+}
+
 function createBarActionIcon(doc: Document, icon: BarActionIcon): SVGSVGElement {
   const svg = createSvg(doc, "svg", {
     class: "pg-grid-editor__bar-action-icon",
@@ -1774,13 +1812,13 @@ function createBarActionIcon(doc: Document, icon: BarActionIcon): SVGSVGElement 
       appendSvg(svg, "path", { d: "M12 5 V19 M5 12 H19", ...lineAttrs });
       break;
     case "copy":
-      appendSvg(svg, "rect", { x: "8", y: "8", width: "10", height: "10", rx: "1.5", ...lineAttrs });
-      appendSvg(svg, "path", { d: "M6 15 H5 C4.4 15 4 14.6 4 14 V5 C4 4.4 4.4 4 5 4 H14 C14.6 4 15 4.4 15 5 V6", ...lineAttrs });
+      appendSvg(svg, "path", { d: "M9 5 H6 C5.4 5 5 5.4 5 6 V19 C5 19.6 5.4 20 6 20 H16 C16.6 20 17 19.6 17 19 V17", ...lineAttrs });
+      appendSvg(svg, "rect", { x: "9", y: "3", width: "10", height: "13", rx: "1.5", ...lineAttrs });
       break;
-    case "copy-next":
-      appendSvg(svg, "rect", { x: "5", y: "4", width: "9", height: "9", rx: "1.5", ...lineAttrs });
-      appendSvg(svg, "path", { d: "M10 13 H15 C15.6 13 16 13.4 16 14 V19", ...lineAttrs });
-      appendSvg(svg, "path", { d: "M12.5 16.5 L16 20 L19.5 16.5", ...lineAttrs });
+    case "paste":
+      appendSvg(svg, "path", { d: "M9 5 H7 C6.4 5 6 5.4 6 6 V20 C6 20.6 6.4 21 7 21 H17 C17.6 21 18 20.6 18 20 V6 C18 5.4 17.6 5 17 5 H15", ...lineAttrs });
+      appendSvg(svg, "rect", { x: "9", y: "3", width: "6", height: "4", rx: "1", ...lineAttrs });
+      appendSvg(svg, "path", { d: "M12 10 V17 M9 14 L12 17 L15 14", ...lineAttrs });
       break;
     case "new-line":
       appendSvg(svg, "path", { d: "M5 6 H19 M5 11 H13 M13 11 V19", ...lineAttrs });

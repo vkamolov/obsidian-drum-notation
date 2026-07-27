@@ -1,8 +1,9 @@
-import { getHitChar, normalizePattern } from "./kit";
+import { DRUM_KIT, getHitChar, normalizePattern } from "./kit";
 import { getSlotsPerBar } from "./music";
 import { finalizeDrumBlock } from "./parser";
 import {
   DrumArticulation,
+  DrumBarClipboardPayload,
   DrumBlock,
   DrumBlockHeader,
   DrumHit,
@@ -225,6 +226,111 @@ interface SystemView {
 }
 
 export type BarPlacement = "same-system" | "new-system";
+
+export type PasteBarClipboardResult =
+  | {
+      ok: true;
+      block: DrumBlock;
+    }
+  | {
+      ok: false;
+      reason: "missing-target" | "incompatible" | "invalid-payload";
+    };
+
+export function captureBarClipboardPayload(block: DrumBlock, barIndex: number): DrumBarClipboardPayload | null {
+  const views = block.systems.map(toSystemView);
+  const location = locateBar(views, barIndex);
+
+  if (!location) {
+    return null;
+  }
+
+  const view = views[location.system];
+  const bar = view.bars[location.bar];
+  const snapshot = snapshotBar(view, location.bar);
+  const stickingPattern =
+    snapshot.stickingPattern && /[RLB]/.test(snapshot.stickingPattern) ? snapshot.stickingPattern : undefined;
+
+  return {
+    kind: "drum-notation-bar",
+    version: 1,
+    timeSignature: block.timeSignature,
+    gridResolution: block.gridResolution,
+    width: bar.width,
+    rows: snapshot.rows
+      .filter((row) => patternHasHits(row.pattern))
+      .map((row) => ({
+        instrumentId: row.instrument.id,
+        label: row.label,
+        pattern: normalizePattern(row.instrument, row.pattern)
+      })),
+    ...(stickingPattern ? { stickingPattern: normalizeStickingPattern(stickingPattern) } : {})
+  };
+}
+
+export function barHasMeaningfulContent(block: DrumBlock, barIndex: number): boolean {
+  const bar = block.bars[barIndex];
+
+  return !!bar && (bar.measureRepeat !== undefined || bar.slots.some((slot) => slot.hits.length > 0 || !!slot.sticking));
+}
+
+export function pasteBarClipboardPayload(
+  block: DrumBlock,
+  barIndex: number,
+  payload: DrumBarClipboardPayload
+): PasteBarClipboardResult {
+  const views = block.systems.map(toSystemView);
+  const location = locateBar(views, barIndex);
+
+  if (!location) {
+    return { ok: false, reason: "missing-target" };
+  }
+
+  const view = views[location.system];
+  const targetBar = view.bars[location.bar];
+
+  if (
+    payload.kind !== "drum-notation-bar" ||
+    payload.version !== 1 ||
+    payload.timeSignature !== block.timeSignature ||
+    payload.gridResolution !== block.gridResolution ||
+    payload.width !== targetBar.width
+  ) {
+    return { ok: false, reason: "incompatible" };
+  }
+
+  const rows: RowSnapshot[] = [];
+  for (const payloadRow of payload.rows) {
+    const instrument = DRUM_KIT.find((candidate) => candidate.id === payloadRow.instrumentId);
+
+    if (!instrument || Array.from(payloadRow.pattern).length !== payload.width) {
+      return { ok: false, reason: "invalid-payload" };
+    }
+
+    rows.push({
+      instrument,
+      label: payloadRow.label,
+      pattern: normalizePattern(instrument, payloadRow.pattern)
+    });
+  }
+
+  if (payload.stickingPattern !== undefined && Array.from(payload.stickingPattern).length !== payload.width) {
+    return { ok: false, reason: "invalid-payload" };
+  }
+
+  delete targetBar.measureRepeat;
+  delete targetBar.measureRepeatCount;
+  replaceBarWithSnapshot(view, location.bar, {
+    rows,
+    ...(payload.stickingPattern && /[RLB]/i.test(payload.stickingPattern)
+      ? { stickingPattern: normalizeStickingPattern(payload.stickingPattern) }
+      : {})
+  });
+  view.rows.forEach((row) => trimEmptyInstrumentRowSegments(view, row));
+  view.rows = view.rows.filter((row) => row.patterns.length > 0);
+
+  return { ok: true, block: rebuildBlock(block, views) };
+}
 
 function withHitChar(
   block: DrumBlock,

@@ -14,6 +14,7 @@ import {
   setLegendInstrumentHighlight,
   updateMeasureRepeatProgress
 } from "../../src/engrave";
+import { DrumBarClipboardStore } from "../../src/bar-clipboard";
 import { getBarRange, getSecondsPerSlot, getSlotVisualDurationSeconds } from "../../src/music";
 import { getTitle, parseDrumBlock, parseDrumBlockWithWarnings } from "../../src/parser";
 import {
@@ -128,6 +129,15 @@ const mutedInstrumentIds = new Set<string>();
 let gridEditor: GridEditorHandle | null = null;
 let isApplyingGridEdit = false;
 let audioRecoveryWarning: string | null = null;
+let gridEditorMessage: string | null = null;
+const barClipboard = new DrumBarClipboardStore();
+
+barClipboard.subscribe(() => {
+  gridEditorMessage = null;
+  if (currentBlock) {
+    renderNotes(currentBlock, editor.value);
+  }
+});
 
 /* ---------- audio (lazy, created on first user gesture) ---------- */
 let audioContext: AudioContext | null = null;
@@ -1183,6 +1193,7 @@ function applyEditedBlock(next: DrumBlock): void {
 function applyGridEditedBlock(next: DrumBlock, changedSlotIndex?: number, nextSelectedBarIndex?: number): void {
   const restartPlayback = capturePlaybackRestart();
   dismissManualCopyText();
+  gridEditorMessage = null;
 
   if (nextSelectedBarIndex !== undefined) {
     selectedBarIndex = clampBarIndex(next, nextSelectedBarIndex);
@@ -1250,7 +1261,15 @@ function enterEditMode(): void {
       }
     },
     onSelectBar: (barIndex) => selectBar(barIndex, false),
-    confirmAction: confirmPlaygroundAction
+    confirmAction: confirmPlaygroundAction,
+    notifyAction: (message) => {
+      gridEditorMessage = message;
+      if (currentBlock) {
+        renderNotes(currentBlock, editor.value);
+      }
+    },
+    barClipboard,
+    writeClipboardText
   });
 
   if (scoreEl) {
@@ -1309,6 +1328,11 @@ function renderNotes(block: DrumBlock, raw: string): void {
 
   if (audioRecoveryWarning) {
     notesOut.createEl("p", { cls: "pg-note pg-note--warn", text: audioRecoveryWarning });
+    any = true;
+  }
+
+  if (gridEditorMessage) {
+    notesOut.createEl("p", { cls: "pg-note pg-note--warn", text: gridEditorMessage });
     any = true;
   }
 

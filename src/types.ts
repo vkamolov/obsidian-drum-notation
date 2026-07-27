@@ -73,6 +73,22 @@ export interface DrumBar {
   measureRepeatCount?: number;
 }
 
+export interface DrumBarClipboardPayload {
+  kind: "drum-notation-bar";
+  version: 1;
+  timeSignature: string;
+  gridResolution: GridResolution;
+  width: number;
+  rows: DrumBarClipboardRow[];
+  stickingPattern?: string;
+}
+
+export interface DrumBarClipboardRow {
+  instrumentId: string;
+  label: string;
+  pattern: string;
+}
+
 export interface PlaybackOptions {
   startSlot?: number;
   endSlot?: number;
