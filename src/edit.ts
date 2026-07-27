@@ -438,6 +438,43 @@ export function insertBarAfter(block: DrumBlock, barIndex: number, placement: Ba
   return rebuildBlock(block, views);
 }
 
+export function splitSystemAfterBar(block: DrumBlock, barIndex: number): DrumBlock {
+  const views = block.systems.map(toSystemView);
+  const location = locateBar(views, barIndex);
+
+  if (!location) {
+    return block;
+  }
+
+  const sourceView = views[location.system];
+  const splitIndex = location.bar + 1;
+
+  if (splitIndex >= sourceView.bars.length) {
+    return insertBarAfter(block, barIndex, "new-system");
+  }
+
+  const nextView: SystemView = {
+    bars: sourceView.bars.splice(splitIndex),
+    rows: []
+  };
+
+  sourceView.rows.forEach((row) => {
+    const movedPatterns = row.patterns.splice(splitIndex);
+
+    if (movedPatterns.length > 0) {
+      nextView.rows.push({
+        instrument: row.instrument,
+        label: row.label,
+        patterns: movedPatterns
+      });
+    }
+  });
+  sourceView.rows = sourceView.rows.filter((row) => row.patterns.length > 0);
+  views.splice(location.system + 1, 0, nextView);
+
+  return rebuildBlock(block, views);
+}
+
 export function duplicateBar(block: DrumBlock, barIndex: number, placement: BarPlacement = "same-system"): DrumBlock {
   const views = block.systems.map(toSystemView);
   const location = locateBar(views, barIndex);

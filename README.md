@@ -73,13 +73,25 @@ Add `Cursor: on` if you want a blinking cursor to follow playback. Click a rende
 
 Visual edit mode is opt-in because it writes changes back to your notes. Enable **Drum Notation → Enable visual edit mode** in the plugin settings first. Then, in Obsidian reading view, press **Edit** to open a selected-bar grid below the rendered score. Click or tap a rendered bar to choose which bar the grid edits. Empty cells add a normal hit; filled cells select the hit and show the articulation tool strip. Edits apply immediately to the rendered notation and are saved back into the fenced `drums` block when you close visual edit mode or when Obsidian unloads the rendered block.
 
-The bar actions add empty bars on the current or a new line, copy the selected
-bar, paste copied content over another selected bar, toggle one-bar repeats,
-and delete bars. Copy/Paste uses a notation-only clipboard shared by visual
-editors for the current Obsidian session. Pasting over notes, sticking, or
-repeat notation asks for confirmation, and bars with different Time/Grid
-settings or bar lengths cannot be pasted together. Copy also mirrors a readable
-one-bar `drums` snippet to the system clipboard when the platform permits it.
+The bar toolbar is arranged as **Add · Duplicate · New line · Repeat |
+Copy · Paste | Delete**:
+
+- **Add** inserts an empty bar after the selected bar on the same line.
+- **Duplicate** inserts an editable copy of the selected bar immediately after
+  it.
+- **New line** splits the current line after the selected bar, moving later bars
+  to a new untitled line. If the selected bar is already last, it creates an
+  empty next line.
+- **Repeat/Unrepeat** toggles one-bar repeat notation.
+- **Copy** stores the selected bar without changing the notation. **Paste**
+  replaces the selected bar with that copied content.
+- **Delete** removes the selected bar.
+
+Copy/Paste uses a notation-only clipboard shared by visual editors for the
+current Obsidian session. Pasting over notes, sticking, or repeat notation asks
+for confirmation, and bars with different Time/Grid settings or bar lengths
+cannot be pasted together. Copy also mirrors a readable one-bar `drums` snippet
+to the system clipboard when the platform permits it.
 
 Visual edit mode is intentionally limited in v1:
 

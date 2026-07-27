@@ -19,6 +19,7 @@ import {
   removeHit,
   setGrid,
   setBarRepeat,
+  splitSystemAfterBar,
   setHit,
   setInstrument,
   setSticking,
@@ -279,6 +280,36 @@ HH | x--- | --------------------------------`);
     expect(serializeDrumBlock(edited)).toBe("HH | x--- | --x-\nSD | ---- | --o-\nBar\nHH | --x-\nSD | --o-");
   });
 
+  it("splitSystemAfterBar moves later bars to a new untitled system", () => {
+    const block = parseDrumBlock(`Subtitle: Groove
+ST | R--- | --L- | B---
+HH | x--- | --x- | x-x-
+SD | ---- | --o- | oooo
+Bar
+Subtitle: Existing
+BD | o---`);
+    const edited = splitSystemAfterBar(block, 0);
+
+    expect(edited.systems.map((system) => system.bars.length)).toEqual([1, 2, 1]);
+    expect(edited.systems.map((system) => system.subtitle)).toEqual(["Groove", undefined, "Existing"]);
+    expect(edited.systems[1].bars[0].stickingPattern).toBe("--L-");
+    expect(findHit(edited, edited.systems[1].bars[0].startSlot + 2, SD.id)).toBeTruthy();
+    expect(findHit(edited, edited.systems[1].bars[1].startSlot, SD.id)).toBeTruthy();
+    expect(serializeDrumBlock(parseDrumBlock(serializeDrumBlock(edited)))).toBe(serializeDrumBlock(edited));
+  });
+
+  it("splitSystemAfterBar creates an empty new system after the last bar", () => {
+    const block = parseDrumBlock("ST | R--- | --L-\nHH | x--- | --x-\nSD | ---- | --o-");
+    const edited = splitSystemAfterBar(block, 1);
+
+    expect(edited.systems.map((system) => system.bars.length)).toEqual([2, 1]);
+    expect(edited.systems[1].subtitle).toBeUndefined();
+    expect(edited.systems[1].bars[0].slots.every((slot) => slot.hits.length === 0)).toBe(true);
+    expect(serializeDrumBlock(edited)).toBe(
+      "ST | R--- | --L-\nHH | x--- | --x-\nSD | ---- | --o-\nBar\nHH | ----------------\nSD | ----------------"
+    );
+  });
+
   it("duplicateBarToNextSystem creates an untitled next system when none exists", () => {
     const block = parseDrumBlock("HH | x--- | --x-\nSD | ---- | --o-");
     const edited = duplicateBarToNextSystem(block, 1);
@@ -347,6 +378,7 @@ BD | o---`);
 
     expect(insertBarAfter(block, 99)).toEqual(block);
     expect(duplicateBar(block, -1)).toEqual(block);
+    expect(splitSystemAfterBar(block, 2)).toEqual(block);
     expect(deleteBar(block, 3)).toEqual(block);
   });
 

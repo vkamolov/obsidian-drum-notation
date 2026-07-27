@@ -17,13 +17,15 @@ import {
   clearInstrumentInBar,
   clearSticking,
   deleteBar,
+  duplicateBar,
   findHit,
   findSticking,
   insertBarAfter,
   pasteBarClipboardPayload,
   setBarRepeat,
   setHit,
-  setSticking
+  setSticking,
+  splitSystemAfterBar
 } from "./edit";
 import { DrumBarClipboardStore, serializeDrumBarClipboardText } from "./bar-clipboard";
 import { DRUM_KIT, getAllowedArticulations, getArticulationForKey, getHitChar, isArticulationAllowed } from "./kit";
@@ -89,7 +91,7 @@ const GESTURE_SUPPRESS_CLICK_MS = 900;
 const STICKING_CYCLE: StickingHand[] = ["right", "left", "both"];
 const GRID_GESTURE_HINT_TEXT = "Tip: long-press deletes · double-tap cycles";
 
-type BarActionIcon = "add" | "copy" | "paste" | "new-line" | "repeat" | "unrepeat" | "delete";
+type BarActionIcon = "add" | "duplicate" | "copy" | "paste" | "new-line" | "repeat" | "unrepeat" | "delete";
 type GestureTap =
   | {
       kind: "instrument";
@@ -673,6 +675,10 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     applyChange(insertBarAfter(working, selectedBarIndex), undefined, selectedBarIndex + 1);
   };
 
+  const duplicateSelectedBar = () => {
+    applyChange(duplicateBar(working, selectedBarIndex), undefined, selectedBarIndex + 1);
+  };
+
   const copySelectedBar = () => {
     const payload = captureBarClipboardPayload(working, selectedBarIndex);
 
@@ -716,7 +722,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
   };
 
   const addBarOnNewSystem = () => {
-    applyChange(insertBarAfter(working, selectedBarIndex, "new-system"), undefined, barIndexAfterSelectedSystem());
+    applyChange(splitSystemAfterBar(working, selectedBarIndex), undefined, selectedBarIndex + 1);
   };
 
   const deleteSelectedBar = async () => {
@@ -756,22 +762,6 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     }
 
     applyChange(setBarRepeat(working, selectedBarIndex), undefined, selectedBarIndex);
-  };
-
-  const barIndexAfterSelectedSystem = (): number => {
-    let current = 0;
-
-    for (const system of working.systems) {
-      const next = current + system.bars.length;
-
-      if (selectedBarIndex >= current && selectedBarIndex < next) {
-        return next;
-      }
-
-      current = next;
-    }
-
-    return selectedBarIndex + 1;
   };
 
   const previousTabIndex = options.container.getAttribute("tabindex");
@@ -938,14 +928,8 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
 
     const actions = root.createEl("div", { cls: "pg-grid-editor__bar-actions" });
     createBarAction(actions, "Add", "add", "Add bar after", addBarAfterSelection);
-    createBarAction(actions, "New line", "new-line", "Add bar on new line", addBarOnNewSystem);
-    createBarActionSeparator(actions);
-    createBarAction(actions, "Copy", "copy", "Copy selected bar", copySelectedBar);
-    pasteButton = createBarAction(actions, "Paste", "paste", "Paste copied bar", () => {
-      void pasteSelectedBar();
-    });
-    pasteButton.disabled = options.barClipboard.get() === null;
-    createBarActionSeparator(actions);
+    createBarAction(actions, "Duplicate", "duplicate", "Duplicate bar after", duplicateSelectedBar);
+    createBarAction(actions, "New line", "new-line", "Start new line after selected bar", addBarOnNewSystem);
 
     const isRepeat = !!selectedBar()?.measureRepeat;
     const repeatButton = createBarAction(
@@ -960,7 +944,13 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     repeatButton.disabled = selectedBarIndex === 0 && !selectedBar()?.measureRepeat;
 
     createBarActionSeparator(actions);
+    createBarAction(actions, "Copy", "copy", "Copy selected bar", copySelectedBar);
+    pasteButton = createBarAction(actions, "Paste", "paste", "Paste copied bar", () => {
+      void pasteSelectedBar();
+    });
+    pasteButton.disabled = options.barClipboard.get() === null;
 
+    createBarActionSeparator(actions);
     createBarAction(actions, "Delete", "delete", "Delete bar", () => {
       void deleteSelectedBar();
     }, "pg-grid-editor__bar-action--delete");
@@ -1810,6 +1800,14 @@ function createBarActionIcon(doc: Document, icon: BarActionIcon): SVGSVGElement 
   switch (icon) {
     case "add":
       appendSvg(svg, "path", { d: "M12 5 V19 M5 12 H19", ...lineAttrs });
+      break;
+    case "duplicate":
+      appendSvg(svg, "rect", { x: "4", y: "4", width: "11", height: "11", rx: "1.5", ...lineAttrs });
+      appendSvg(svg, "path", {
+        d: "M18.5 14 V21 M15 17.5 H22",
+        ...lineAttrs,
+        "stroke-width": "2"
+      });
       break;
     case "copy":
       appendSvg(svg, "path", { d: "M9 5 H6 C5.4 5 5 5.4 5 6 V19 C5 19.6 5.4 20 6 20 H16 C16.6 20 17 19.6 17 19 V17", ...lineAttrs });
