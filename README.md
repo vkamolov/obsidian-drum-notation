@@ -8,6 +8,9 @@ See [docs/notation-format.md](https://github.com/vkamolov/obsidian-drum-notation
 
 ## Release Notes
 
+- `1.0.4` expands visual bar editing with Duplicate, split-at-selection New
+  line behavior, and a session clipboard that copies and pastes compatible bar
+  content across notation blocks.
 - `1.0.0` is the first stable public release for Obsidian Community plugin
   submission.
 - `0.9.7` polishes visual grid editing with a gesture hint, musical count
