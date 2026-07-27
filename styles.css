@@ -328,8 +328,13 @@
 }
 
 .drum-notation__score svg .vf-notehead path {
-  stroke: var(--drum-ink-note);
-  fill: var(--drum-ink-note);
+  stroke: var(--drum-notehead-color, var(--drum-ink-note));
+  fill: var(--drum-notehead-color, var(--drum-ink-note));
+}
+
+.drum-notation__score svg .vf-notehead text {
+  stroke: var(--drum-notehead-color, var(--drum-ink-note));
+  fill: var(--drum-notehead-color, var(--drum-ink-note));
 }
 
 .drum-notation__score svg .vf-clef path,

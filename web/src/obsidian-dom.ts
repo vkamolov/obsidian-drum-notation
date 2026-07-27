@@ -17,6 +17,17 @@ interface DomElementInfo {
   placeholder?: string;
 }
 
+interface NativeHtmlDocument {
+  createElement<K extends keyof HTMLElementTagNameMap>(tag: K): HTMLElementTagNameMap[K];
+}
+
+interface NativeSvgDocument {
+  createElementNS<K extends keyof SVGElementTagNameMap>(
+    namespace: "http://www.w3.org/2000/svg",
+    tag: K
+  ): SVGElementTagNameMap[K];
+}
+
 function applyClasses(el: Element, cls?: string | string[]): void {
   if (!cls) {
     return;
@@ -31,8 +42,11 @@ function createElement<K extends keyof HTMLElementTagNameMap>(
   tag: K,
   info?: DomElementInfo | string
 ): HTMLElementTagNameMap[K] {
-  // eslint-disable-next-line obsidianmd/prefer-create-el -- This browser-only shim bootstraps Obsidian's createEl helper.
-  const el = parent.ownerDocument.createElement(tag);
+  // The standalone playground has no Obsidian DOM helpers until this shim
+  // installs them, so bootstrap through the owning document's native factory.
+  const nativeDocument = parent.ownerDocument as NativeHtmlDocument;
+  const createNativeElement = nativeDocument.createElement.bind(parent.ownerDocument);
+  const el = createNativeElement(tag);
   const options: DomElementInfo = typeof info === "string" ? { text: info } : info ?? {};
 
   applyClasses(el, options.cls);
@@ -67,8 +81,9 @@ function createElement<K extends keyof HTMLElementTagNameMap>(
 
 function createSvgElement<K extends keyof SVGElementTagNameMap>(parent: Node, tag: K): SVGElementTagNameMap[K] {
   const doc = parent.ownerDocument ?? window.document;
-  // eslint-disable-next-line obsidianmd/prefer-create-el -- This browser-only shim bootstraps Obsidian's createSvg helper.
-  const el = doc.createElementNS("http://www.w3.org/2000/svg", tag);
+  const nativeDocument = doc as NativeSvgDocument;
+  const createNativeSvgElement = nativeDocument.createElementNS.bind(doc);
+  const el = createNativeSvgElement("http://www.w3.org/2000/svg", tag);
 
   parent.appendChild(el);
 

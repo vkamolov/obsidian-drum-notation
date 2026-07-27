@@ -656,6 +656,8 @@ function isInGraceNoteGroup(element: Element): boolean {
 function colorSvgShape(element: SVGElement, color: string): void {
   const shapes = [element, ...Array.from(element.querySelectorAll<SVGElement>("path, text, line, polygon, polyline, ellipse, circle"))];
 
+  element.style.setProperty("--drum-notehead-color", color);
+
   shapes.forEach((shape) => {
     shape.setAttribute("fill", color);
     shape.setAttribute("stroke", color);
