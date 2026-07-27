@@ -8,6 +8,9 @@ See [docs/notation-format.md](https://github.com/vkamolov/obsidian-drum-notation
 
 ## Release Notes
 
+- `1.0.5` makes the visual-edit setting searchable through Obsidian 1.13's
+  declarative settings API while preserving the legacy settings tab on older
+  supported Obsidian versions.
 - `1.0.4` expands visual bar editing with Duplicate, split-at-selection New
   line behavior, and a session clipboard that copies and pastes compatible bar
   content across notation blocks.

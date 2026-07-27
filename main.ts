@@ -12,6 +12,7 @@ import {
   setIcon,
   setTooltip,
   Setting,
+  type SettingDefinitionItem,
   TFile
 } from "obsidian";
 import {
@@ -2141,6 +2142,22 @@ class DrumNotationSettingTab extends PluginSettingTab {
     super(app, drumPlugin);
   }
 
+  getSettingDefinitions(): SettingDefinitionItem<keyof DrumNotationSettings>[] {
+    return [
+      {
+        name: "Enable visual edit mode",
+        desc: "Show the visual editor in Reading view and allow it to write changes back to top-level drums code blocks.",
+        aliases: ["visual editor", "edit notation"],
+        control: {
+          type: "toggle",
+          key: "enableVisualEditMode",
+          defaultValue: false
+        }
+      }
+    ];
+  }
+
+  // Obsidian versions before 1.13 do not use declarative setting definitions.
   display(): void {
     const { containerEl } = this;
 
