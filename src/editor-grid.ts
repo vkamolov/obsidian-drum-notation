@@ -83,13 +83,13 @@ const ARTICULATION_LABELS: Record<DrumArticulation, string> = {
   choke: "Choke"
 };
 
-const SVG_NS = "http://www.w3.org/2000/svg";
 const GESTURE_DOUBLE_TAP_MS = 700;
 const GESTURE_LONG_PRESS_MS = 575;
 const GESTURE_LONG_PRESS_MOVE_PX = 10;
 const GESTURE_SUPPRESS_CLICK_MS = 900;
 const STICKING_CYCLE: StickingHand[] = ["right", "left", "both"];
 const GRID_GESTURE_HINT_TEXT = "Tip: long-press deletes · double-tap cycles";
+const SVG_NS = "http://www.w3.org/2000/svg";
 
 type BarActionIcon = "add" | "duplicate" | "copy" | "paste" | "new-line" | "repeat" | "unrepeat" | "delete";
 type GestureTap =
@@ -828,7 +828,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     const scrollSnapshot = captureEditorScroll(options.container);
 
     options.container.empty();
-    const root = options.container.createEl("div", { cls: "pg-grid-editor" });
+    const root = options.container.createDiv({ cls: "pg-grid-editor" });
     root.tabIndex = -1;
 
     renderHeader(root);
@@ -873,9 +873,9 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
   };
 
   const renderHeader = (root: HTMLElement) => {
-    const bar = root.createEl("div", { cls: "pg-grid-editor__bar" });
+    const bar = root.createDiv({ cls: "pg-grid-editor__bar" });
 
-    const paletteWrap = bar.createEl("span", { cls: "pg-grid-editor__palette-wrap" });
+    const paletteWrap = bar.createSpan({ cls: "pg-grid-editor__palette-wrap" });
     const palette = paletteWrap.createEl("select", { cls: "pg-grid-editor__palette" });
     palette.createEl("option", { text: "+ add instrument", value: "" });
     palette.disabled = !!selectedBar()?.measureRepeat;
@@ -891,9 +891,9 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
         render(true);
       }
     });
-    paletteWrap.createEl("span", { cls: "pg-grid-editor__palette-caret", attr: { "aria-hidden": "true" } });
+    paletteWrap.createSpan({ cls: "pg-grid-editor__palette-caret", attr: { "aria-hidden": "true" } });
 
-    const spacer = bar.createEl("span", { cls: "pg-grid-editor__spacer" });
+    const spacer = bar.createSpan({ cls: "pg-grid-editor__spacer" });
     spacer.textContent = "Live edit";
 
     const undoButton = bar.createEl("button", { cls: "pg-btn", text: "Undo" });
@@ -906,7 +906,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
   };
 
   const renderBarPager = (root: HTMLElement) => {
-    const pager = root.createEl("div", { cls: "pg-grid-editor__bar-pager" });
+    const pager = root.createDiv({ cls: "pg-grid-editor__bar-pager" });
 
     working.bars.forEach((bar, index) => {
       const button = pager.createEl("button", {
@@ -926,7 +926,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
       return;
     }
 
-    const actions = root.createEl("div", { cls: "pg-grid-editor__bar-actions" });
+    const actions = root.createDiv({ cls: "pg-grid-editor__bar-actions" });
     createBarAction(actions, "Add", "add", "Add bar after", addBarAfterSelection);
     createBarAction(actions, "Duplicate", "duplicate", "Duplicate bar after", duplicateSelectedBar);
     createBarAction(actions, "New line", "new-line", "Start new line after selected bar", addBarOnNewSystem);
@@ -957,7 +957,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
   };
 
   const renderSelectedCellTools = (root: HTMLElement) => {
-    const tools = root.createEl("div", { cls: "pg-grid-editor__tools" });
+    const tools = root.createDiv({ cls: "pg-grid-editor__tools" });
     tools.setAttr("aria-live", "polite");
 
     if (selectedCell?.kind === "sticking" && renderStickingTools(tools)) {
@@ -968,7 +968,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
       return;
     }
 
-    tools.createEl("span", {
+    tools.createSpan({
       cls: "pg-grid-editor__tools-placeholder",
       text: "Select a note or sticking cell to edit"
     });
@@ -979,8 +979,8 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
       return;
     }
 
-    const hint = root.createEl("div", { cls: "pg-grid-editor__hint" });
-    hint.createEl("span", { text: GRID_GESTURE_HINT_TEXT });
+    const hint = root.createDiv({ cls: "pg-grid-editor__hint" });
+    hint.createSpan({ text: GRID_GESTURE_HINT_TEXT });
     const dismiss = hint.createEl("button", {
       cls: "pg-grid-editor__hint-dismiss",
       text: "Dismiss",
@@ -1009,7 +1009,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     const sharedRowArticulation = getSharedSelectedArticulation(selectedHits);
     const selectedHitCount: number = isRowSelection ? selectedHits.length : hit ? 1 : 0;
     const deleteRemovesExtraRow = isRowSelection && selectedHitCount === 0 && isExtraOnlyInstrument(instrument.id);
-    const label = tools.createEl("span", {
+    const label = tools.createSpan({
       cls: "pg-grid-editor__selection",
       text: isRowSelection
         ? `${shortLabel} · ${selectedHitCount === 1 ? "1 note" : selectedHitCount === 0 ? "no notes" : `${selectedHitCount} notes`}`
@@ -1033,7 +1033,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
       button.addEventListener("click", () => applyArticulationToSelection(articulation));
     });
 
-    tools.createEl("span", {
+    tools.createSpan({
       cls: "pg-grid-editor__tool-separator",
       attr: { "aria-hidden": "true" }
     });
@@ -1059,7 +1059,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
 
     const sticking = findSticking(working, slotIndex);
     tools.addClass("pg-grid-editor__tools--sticking");
-    const label = tools.createEl("span", {
+    const label = tools.createSpan({
       cls: "pg-grid-editor__selection",
       text: `ST · ${countLabelForSlot(slotIndex)}`
     });
@@ -1081,7 +1081,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
       button.addEventListener("click", () => applyStickingToSelection(hand));
     });
 
-    tools.createEl("span", {
+    tools.createSpan({
       cls: "pg-grid-editor__tool-separator",
       attr: { "aria-hidden": "true" }
     });
@@ -1143,7 +1143,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     const localIndex = new Map<number, number>();
     bar.slots.forEach((slot, index) => localIndex.set(slot.index, index));
 
-    const grid = root.createEl("div", { cls: "pg-grid" });
+    const grid = root.createDiv({ cls: "pg-grid" });
     grid.style.setProperty("--pg-grid-cols", String(bar.slots.length));
     grid.style.setProperty("--pg-grid-width", gridWidth(bar.slots.length));
 
@@ -1151,7 +1151,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     renderStickingRow(grid, bar, slotsPerBeat, barStartSlots, localIndex);
 
     for (const instrument of displayedInstruments()) {
-      const rowEl = grid.createEl("div", { cls: "pg-grid__row" });
+      const rowEl = grid.createDiv({ cls: "pg-grid__row" });
       const instrumentLabel = (instrument.aliases[0] ?? instrument.id).toUpperCase();
       const isRowSelected =
         selectedCell?.kind === "instrument-row" &&
@@ -1171,7 +1171,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
         render(true);
       });
 
-      const cells = rowEl.createEl("div", { cls: "pg-grid__cells" });
+      const cells = rowEl.createDiv({ cls: "pg-grid__cells" });
       cells.style.setProperty("--pg-grid-cols", String(bar.slots.length));
 
       for (const slot of bar.slots) {
@@ -1272,13 +1272,13 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     barStartSlots: Set<number>,
     localIndex: Map<number, number>
   ) => {
-    const rowEl = grid.createEl("div", { cls: "pg-grid__row pg-grid__row--sticking" });
-    rowEl.createEl("div", {
+    const rowEl = grid.createDiv({ cls: "pg-grid__row pg-grid__row--sticking" });
+    rowEl.createDiv({
       cls: "pg-grid__label pg-grid__label--sticking",
       text: "ST"
     });
 
-    const cells = rowEl.createEl("div", { cls: "pg-grid__cells" });
+    const cells = rowEl.createDiv({ cls: "pg-grid__cells" });
     cells.style.setProperty("--pg-grid-cols", String(bar.slots.length));
 
     for (const slot of bar.slots) {
@@ -1384,14 +1384,14 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     barStartSlots: Set<number>,
     localIndex: Map<number, number>
   ) => {
-    const ruler = grid.createEl("div", { cls: "pg-grid__ruler" });
-    ruler.createEl("div", { cls: "pg-grid__ruler-label", text: "Count" });
+    const ruler = grid.createDiv({ cls: "pg-grid__ruler" });
+    ruler.createDiv({ cls: "pg-grid__ruler-label", text: "Count" });
 
-    const cells = ruler.createEl("div", { cls: "pg-grid__ruler-cells" });
+    const cells = ruler.createDiv({ cls: "pg-grid__ruler-cells" });
     cells.style.setProperty("--pg-grid-cols", String(bar.slots.length));
 
     for (const slot of bar.slots) {
-      const cell = cells.createEl("div", {
+      const cell = cells.createDiv({
         cls: "pg-grid__ruler-cell",
         text: countLabel(localIndex.get(slot.index) ?? 0, slotsPerBeat)
       });
@@ -1634,7 +1634,7 @@ function clampBarIndex(block: DrumBlock, barIndex: number): number {
 }
 
 function createArticulationIcon(doc: Document, articulation: DrumArticulation): SVGSVGElement {
-  const svg = createSvg(doc, "svg", {
+  const svg = createDetachedSvg(doc, "svg", {
     class: "pg-grid-editor__tool-icon",
     viewBox: "0 0 36 36",
     "aria-hidden": "true",
@@ -1769,21 +1769,21 @@ function createBarAction(
   button.title = title;
   button.setAttr("aria-label", title);
   button.appendChild(createBarActionIcon(parent.ownerDocument, icon));
-  button.createEl("span", { cls: "pg-grid-editor__bar-action-label", text: label });
+  button.createSpan({ cls: "pg-grid-editor__bar-action-label", text: label });
   button.addEventListener("click", onClick);
 
   return button;
 }
 
 function createBarActionSeparator(parent: HTMLElement): void {
-  parent.createEl("span", {
+  parent.createSpan({
     cls: "pg-grid-editor__bar-action-separator",
     attr: { "aria-hidden": "true" }
   });
 }
 
 function createBarActionIcon(doc: Document, icon: BarActionIcon): SVGSVGElement {
-  const svg = createSvg(doc, "svg", {
+  const svg = createDetachedSvg(doc, "svg", {
     class: "pg-grid-editor__bar-action-icon",
     viewBox: "0 0 24 24",
     "aria-hidden": "true",
@@ -1851,7 +1851,7 @@ function createBarActionIcon(doc: Document, icon: BarActionIcon): SVGSVGElement 
 }
 
 function createDeleteIcon(doc: Document): SVGSVGElement {
-  const svg = createSvg(doc, "svg", {
+  const svg = createDetachedSvg(doc, "svg", {
     class: "pg-grid-editor__tool-icon",
     viewBox: "0 0 36 36",
     "aria-hidden": "true",
@@ -1934,14 +1934,16 @@ function appendSvg<K extends keyof SVGElementTagNameMap>(
   name: K,
   attrs: Record<string, string>
 ): SVGElementTagNameMap[K] {
-  const element = createSvg(parent.ownerDocument, name, attrs);
+  const element = parent.createSvg(name);
 
-  parent.append(element);
+  for (const key of Object.keys(attrs)) {
+    element.setAttribute(key, attrs[key]);
+  }
 
   return element;
 }
 
-function createSvg<K extends keyof SVGElementTagNameMap>(
+function createDetachedSvg<K extends keyof SVGElementTagNameMap>(
   doc: Document,
   name: K,
   attrs: Record<string, string>

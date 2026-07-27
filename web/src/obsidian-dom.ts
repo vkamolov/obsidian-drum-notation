@@ -31,6 +31,7 @@ function createElement<K extends keyof HTMLElementTagNameMap>(
   tag: K,
   info?: DomElementInfo | string
 ): HTMLElementTagNameMap[K] {
+  // eslint-disable-next-line obsidianmd/prefer-create-el -- This browser-only shim bootstraps Obsidian's createEl helper.
   const el = parent.ownerDocument.createElement(tag);
   const options: DomElementInfo = typeof info === "string" ? { text: info } : info ?? {};
 
@@ -64,8 +65,19 @@ function createElement<K extends keyof HTMLElementTagNameMap>(
   return el;
 }
 
+function createSvgElement<K extends keyof SVGElementTagNameMap>(parent: Node, tag: K): SVGElementTagNameMap[K] {
+  const doc = parent.ownerDocument ?? window.document;
+  // eslint-disable-next-line obsidianmd/prefer-create-el -- This browser-only shim bootstraps Obsidian's createSvg helper.
+  const el = doc.createElementNS("http://www.w3.org/2000/svg", tag);
+
+  parent.appendChild(el);
+
+  return el;
+}
+
 // Augment the prototype only once (HMR re-imports this module).
 const proto = HTMLElement.prototype as unknown as Record<string, unknown>;
+const nodeProto = Node.prototype as unknown as Record<string, unknown>;
 
 if (!proto.__drumDomShim) {
   proto.__drumDomShim = true;
@@ -115,9 +127,19 @@ if (!proto.__drumDomShim) {
   };
 }
 
+if (!nodeProto.createSvg) {
+  nodeProto.createSvg = function (this: Node, tag: keyof SVGElementTagNameMap) {
+    return createSvgElement(this, tag);
+  };
+}
+
 // Mirror Obsidian's type augmentation so engrave.ts (and the app) typecheck
 // against the same surface the plugin build sees from obsidian.d.ts.
 declare global {
+  interface Node {
+    createSvg<K extends keyof SVGElementTagNameMap>(tag: K): SVGElementTagNameMap[K];
+  }
+
   interface HTMLElement {
     createEl<K extends keyof HTMLElementTagNameMap>(tag: K, info?: DomElementInfo | string): HTMLElementTagNameMap[K];
     createDiv(info?: DomElementInfo | string): HTMLDivElement;

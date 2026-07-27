@@ -234,10 +234,10 @@ export default class DrumNotationPlugin extends Plugin {
     el.addClass("drum-notation-host");
     this.markDrumNotationWrappers(el);
 
-    const root = el.createEl("div", { cls: "drum-notation" });
-    const toolbar = root.createEl("div", { cls: "drum-notation__toolbar" });
-    const title = toolbar.createEl("div", { cls: "drum-notation__title" });
-    const controls = toolbar.createEl("div", { cls: "drum-notation__controls" });
+    const root = el.createDiv({ cls: "drum-notation" });
+    const toolbar = root.createDiv({ cls: "drum-notation__toolbar" });
+    const title = toolbar.createDiv({ cls: "drum-notation__title" });
+    const controls = toolbar.createDiv({ cls: "drum-notation__controls" });
     const makeIconButton = (icon: string, tooltip: string): HTMLButtonElement => {
       const button = controls.createEl("button", { cls: "drum-notation__button" });
       setIcon(button, icon);
@@ -257,16 +257,16 @@ export default class DrumNotationPlugin extends Plugin {
     const metronomeButton = makeIconButton("timer", "Metronome: Off");
     metronomeButton.setAttribute("aria-haspopup", "menu");
     const muteButton = makeIconButton("volume-2", "Mute instruments");
-    controls.createEl("span", { cls: "drum-notation__control-divider" });
+    controls.createSpan({ cls: "drum-notation__control-divider" });
     const editButton = makeIconButton("pencil", "Edit notation");
     const createButton = makeIconButton("square-plus", "Create first bar");
 
-    const tipEl = root.createEl("div", { cls: "drum-notation__tip" });
-    const warningsEl = root.createEl("div", { cls: "drum-notation__warnings" });
+    const tipEl = root.createDiv({ cls: "drum-notation__tip" });
+    const warningsEl = root.createDiv({ cls: "drum-notation__warnings" });
     warningsEl.hidden = true;
-    const notationViewport = root.createEl("div", { cls: "drum-notation__score-viewport" });
-    const notation = notationViewport.createEl("div", { cls: "drum-notation__score" });
-    const editRoot = root.createEl("div", { cls: "drum-notation__edit-root" });
+    const notationViewport = root.createDiv({ cls: "drum-notation__score-viewport" });
+    const notation = notationViewport.createDiv({ cls: "drum-notation__score" });
+    const editRoot = root.createDiv({ cls: "drum-notation__edit-root" });
     editRoot.hidden = true;
 
     const state: RenderState = {
@@ -314,7 +314,7 @@ export default class DrumNotationPlugin extends Plugin {
         return;
 	}
 
-      tipEl.createEl("span", {
+      tipEl.createSpan({
         text: "Tip: Use the playback controls here, and switch to Reading view to edit notation visually with the pencil button. Live Preview visual editing is planned."
       });
       const dismiss = tipEl.createEl("button", {
@@ -363,7 +363,7 @@ export default class DrumNotationPlugin extends Plugin {
 
       root.classList.toggle("drum-notation--legend-color", block.legendMode !== "off");
       title.empty();
-      title.createEl("span", { text: getTitle(block) });
+      title.createSpan({ text: getTitle(block) });
       const gridSlotLabel = block.gridResolution === 32 ? "thirty-second" : "sixteenth";
       title.createEl("small", {
         text: `${block.tempo} BPM · ${block.timeSignature} · ${block.bars.length} bar${block.bars.length === 1 ? "" : "s"} · ${block.slots.length} ${gridSlotLabel} slots${block.repeatCount > 1 ? ` · repeat ${block.repeatCount}x` : ""}`
@@ -514,7 +514,7 @@ export default class DrumNotationPlugin extends Plugin {
     };
 
     const createBufferedScoreTarget = (): HTMLElement => {
-      const target = notationViewport.createEl("div", { cls: "drum-notation__score" });
+      const target = notationViewport.createDiv({ cls: "drum-notation__score" });
 
       target.addClass("drum-notation__score-buffer");
       target.setCssProps({
@@ -593,7 +593,7 @@ export default class DrumNotationPlugin extends Plugin {
         return;
       }
 
-      const layer = notation.createEl("div", { cls: "pg-bar-selectors" });
+      const layer = notation.createDiv({ cls: "pg-bar-selectors" });
 
       state.barRegions.forEach((region) => {
         const button = layer.createEl("button", {
@@ -629,8 +629,8 @@ export default class DrumNotationPlugin extends Plugin {
         notation.empty();
         if (block.bars.length === 0) {
           const createAvailability = getCurrentCreateAvailability();
-          const empty = notation.createEl("div", { cls: "drum-notation__empty" });
-          empty.createEl("span", {
+          const empty = notation.createDiv({ cls: "drum-notation__empty" });
+          empty.createSpan({
             text: "Create an empty first bar, then add notes with visual edit mode."
           });
           const action = empty.createEl("button", {
@@ -642,7 +642,7 @@ export default class DrumNotationPlugin extends Plugin {
           action.title = !createAvailability.ok ? createAvailability.reason : "Create first bar";
           action.addEventListener("click", openCreateFirstBarModal);
         } else {
-          notation.createEl("div", {
+          notation.createDiv({
             cls: "drum-notation__empty",
             text: "No supported drum rows found. Add an instrument row such as HH, SD, or BD."
           });
@@ -667,7 +667,7 @@ export default class DrumNotationPlugin extends Plugin {
         if (block.legendMode !== "off") {
           colorRenderedNoteheads(block, notation);
         }
-        state.cursor = block.showCursor ? notation.createEl("div", { cls: "drum-notation__cursor" }) : null;
+        state.cursor = block.showCursor ? notation.createDiv({ cls: "drum-notation__cursor" }) : null;
         state.noteElements = makeRenderedNotesInteractive(block, notation, (slot) => {
           const slotBarIndex = barIndexForSlot(block, slot.index);
 
@@ -1983,11 +1983,11 @@ class DrumSetupModal extends Modal {
       dropdown.addOptions({ "16": "16", "32": "32" }).setValue(String(this.options.initialValues.grid));
     });
 
-    const summary = this.contentEl.createEl("div", {
+    const summary = this.contentEl.createDiv({
       cls: "drum-notation__setup-summary",
       attr: { "aria-live": "polite" }
     });
-    const buttons = this.contentEl.createEl("div", { cls: "drum-notation__confirm-buttons" });
+    const buttons = this.contentEl.createDiv({ cls: "drum-notation__confirm-buttons" });
     const cancelButton = buttons.createEl("button", { text: "Cancel", attr: { type: "button" } });
     const submitButton = buttons.createEl("button", {
       cls: "mod-cta",
@@ -2109,7 +2109,7 @@ class DrumConfirmModal extends Modal {
     this.contentEl.empty();
     this.contentEl.createEl("p", { text: this.message });
 
-    const buttons = this.contentEl.createEl("div", { cls: "drum-notation__confirm-buttons" });
+    const buttons = this.contentEl.createDiv({ cls: "drum-notation__confirm-buttons" });
     const cancel = buttons.createEl("button", { text: "Cancel" });
     const confirm = buttons.createEl("button", { cls: "mod-warning", text: "Confirm" });
 

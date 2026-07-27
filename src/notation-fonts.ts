@@ -29,11 +29,10 @@ export async function ensureNotationFontsInDocument(doc: Document): Promise<void
   }
 
   if (!doc.head.querySelector(`style[${FONT_STYLE_ATTR}]`)) {
-    const style = doc.createElement("style");
+    const style = doc.head.createEl("style");
 
     style.setAttribute(FONT_STYLE_ATTR, "");
     style.textContent = FONT_FACE_CSS;
-    doc.head.appendChild(style);
   }
 
   for (const descriptor of FONT_LOAD_DESCRIPTORS) {

@@ -246,8 +246,8 @@ function renderPreview(): void {
 
   renderFirstRunTip();
 
-  const viewport = preview.createEl("div", { cls: "drum-notation__score-viewport" });
-  const score = viewport.createEl("div", { cls: "drum-notation__score" });
+  const viewport = preview.createDiv({ cls: "drum-notation__score-viewport" });
+  const score = viewport.createDiv({ cls: "drum-notation__score" });
   scoreEl = score;
   score.addEventListener("click", selectRenderedBarAtPoint);
 
@@ -273,7 +273,7 @@ function renderPreview(): void {
     barRegions = [];
     noteElements = [];
     cursorEl = null;
-    score.createEl("div", {
+    score.createDiv({
       cls: "drum-notation__empty",
       text: "No supported drum rows yet. Add rows like HH, SD, BD."
     });
@@ -295,8 +295,8 @@ function renderFirstRunTip(): void {
     return;
   }
 
-  const tip = preview.createEl("div", { cls: "drum-notation__tip pg-discovery-tip" });
-  tip.createEl("span", {
+  const tip = preview.createDiv({ cls: "drum-notation__tip pg-discovery-tip" });
+  tip.createSpan({
     text: "Tip: Try the pencil/edit controls to edit notes visually, or choose an example from the list."
   });
   const dismiss = tip.createEl("button", {
@@ -323,7 +323,7 @@ function drawScore(block: DrumBlock, score: HTMLElement): void {
     if (block.legendMode !== "off") {
       colorRenderedNoteheads(block, score);
     }
-    cursorEl = block.showCursor ? score.createEl("div", { cls: "drum-notation__cursor" }) : null;
+    cursorEl = block.showCursor ? score.createDiv({ cls: "drum-notation__cursor" }) : null;
     noteElements = makeRenderedNotesInteractive(block, score, (slot) => {
       const slotBarIndex = barIndexForSlot(block, slot.index);
 
@@ -488,7 +488,7 @@ function renderBarSelectors(block: DrumBlock, score: HTMLElement): void {
   }
 
   clearBarSelectors();
-  const layer = score.createEl("div", { cls: "pg-bar-selectors" });
+  const layer = score.createDiv({ cls: "pg-bar-selectors" });
 
   barRegions.forEach((region) => {
     const button = layer.createEl("button", {
@@ -971,7 +971,7 @@ function syncMetronomeButton(): void {
 function renderMetronomeMenu(): void {
   metronomeMenu.empty();
 
-  metronomeMenu.createEl("div", { cls: "pg-metronome-menu__label", text: "Metronome" });
+  metronomeMenu.createDiv({ cls: "pg-metronome-menu__label", text: "Metronome" });
 
   METRONOME_MODE_OPTIONS.forEach((option) => {
     const item = metronomeMenu.createEl("button", {
@@ -984,11 +984,11 @@ function renderMetronomeMenu(): void {
       }
     });
 
-    item.createEl("span", {
+    item.createSpan({
       cls: "pg-metronome-menu__check",
       text: metronomeMode === option.value ? "✓" : ""
     });
-    item.createEl("span", { text: option.label });
+    item.createSpan({ text: option.label });
     item.addEventListener("click", () => {
       const block = currentBlock;
       if (!block) {
@@ -1002,7 +1002,7 @@ function renderMetronomeMenu(): void {
     });
   });
 
-  metronomeMenu.createEl("div", { cls: "pg-metronome-menu__label", text: "Count-in" });
+  metronomeMenu.createDiv({ cls: "pg-metronome-menu__label", text: "Count-in" });
 
   COUNT_IN_MODE_OPTIONS.forEach((option) => {
     const item = metronomeMenu.createEl("button", {
@@ -1015,11 +1015,11 @@ function renderMetronomeMenu(): void {
       }
     });
 
-    item.createEl("span", {
+    item.createSpan({
       cls: "pg-metronome-menu__check",
       text: countInMode === option.value ? "✓" : ""
     });
-    item.createEl("span", { text: option.label });
+    item.createSpan({ text: option.label });
     item.addEventListener("click", () => {
       const block = currentBlock;
       if (!block) {
@@ -1054,7 +1054,7 @@ function syncMuteButton(): void {
       ? `${mutedInstrumentIds.size} muted instrument${mutedInstrumentIds.size === 1 ? "" : "s"}`
       : "Mute instruments";
 
-  const labelEl = activeDocument.createElement("span");
+  const labelEl = muteBtn.createSpan();
   labelEl.addClass("pg-btn__label");
   labelEl.textContent = label;
   muteBtn.replaceChildren(createIconSvg(icon), labelEl);
@@ -1079,11 +1079,11 @@ function renderMuteMenu(): void {
         "aria-checked": mutedInstrumentIds.has(instrument.id) ? "true" : "false"
       }
     });
-    item.createEl("span", {
+    item.createSpan({
       cls: "pg-mute-menu__check",
       text: mutedInstrumentIds.has(instrument.id) ? "✓" : ""
     });
-    item.createEl("span", { text: instrument.label });
+    item.createSpan({ text: instrument.label });
     item.addEventListener("click", () => {
       const block = currentBlock;
       if (!block) {
@@ -1396,7 +1396,7 @@ function confirmPlaygroundAction(message: string): Promise<boolean> {
   dismissPlaygroundConfirm();
 
   return new Promise((resolve) => {
-    const panel = activeDocument.body.createEl("div", {
+    const panel = activeDocument.body.createDiv({
       cls: "pg-confirm",
       attr: {
         role: "dialog",
@@ -1405,7 +1405,7 @@ function confirmPlaygroundAction(message: string): Promise<boolean> {
       }
     });
     panel.createEl("p", { cls: "pg-confirm__message", text: message });
-    const actions = panel.createEl("div", { cls: "pg-confirm__actions" });
+    const actions = panel.createDiv({ cls: "pg-confirm__actions" });
     const cancel = actions.createEl("button", {
       cls: "pg-btn pg-btn--small",
       text: "Cancel",
@@ -1460,14 +1460,14 @@ async function writeClipboardText(text: string): Promise<void> {
 function showManualCopyText(text: string): void {
   dismissManualCopyText();
 
-  const panel = activeDocument.body.createEl("div", {
+  const panel = activeDocument.body.createDiv({
     cls: "pg-copy-fallback",
     attr: {
       role: "dialog",
       "aria-label": "Copy fallback"
     }
   });
-  const header = panel.createEl("div", { cls: "pg-copy-fallback__head" });
+  const header = panel.createDiv({ cls: "pg-copy-fallback__head" });
   header.createEl("strong", { text: "Clipboard blocked" });
   const close = header.createEl("button", {
     cls: "pg-btn pg-btn--small",
@@ -1488,7 +1488,7 @@ function showManualCopyText(text: string): void {
 // Prepends a Lucide icon before the existing button label (icon + text).
 function decorateButton(button: HTMLButtonElement, icon: string): void {
   const label = button.textContent ?? "";
-  const span = activeDocument.createElement("span");
+  const span = button.createSpan();
   span.addClass("pg-btn__label");
   span.textContent = label;
   button.replaceChildren(createIconSvg(icon), span);

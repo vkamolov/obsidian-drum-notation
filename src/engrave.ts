@@ -139,17 +139,17 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
   let previousBarAnchors: Array<{ note: Tickable; cursorPosition: CursorPosition } | undefined> = [];
 
   block.systems.forEach((scoreSystem, systemIndex) => {
-    const system = container.createEl("div", { cls: "drum-notation__system" });
+    const system = container.createDiv({ cls: "drum-notation__system" });
 
     if (scoreSystem.subtitle) {
-      system.createEl("div", {
+      system.createDiv({
         cls: "drum-notation__system-subtitle",
         text: scoreSystem.subtitle,
         attr: { "aria-label": `Notation section: ${scoreSystem.subtitle}` }
       });
     }
 
-    const scoreSurface = system.createEl("div", { cls: "drum-notation__system-score" });
+    const scoreSurface = system.createDiv({ cls: "drum-notation__system-score" });
 
     const renderer = new Renderer(scoreSurface, Renderer.Backends.SVG);
 
@@ -414,11 +414,11 @@ export function renderInstrumentLegend(block: DrumBlock, root: HTMLElement): voi
     return;
   }
 
-  const legend = root.createEl("div", { cls: "drum-notation__legend" });
+  const legend = root.createDiv({ cls: "drum-notation__legend" });
 
   instruments.forEach((instrument) => {
-    const item = legend.createEl("div", { cls: "drum-notation__legend-item" });
-    const swatch = item.createEl("span", { cls: "drum-notation__legend-swatch" });
+    const item = legend.createDiv({ cls: "drum-notation__legend-item" });
+    const swatch = item.createSpan({ cls: "drum-notation__legend-swatch" });
     const code = item.createEl("code", {
       cls: "drum-notation__legend-code",
       text: getPreferredInstrumentCode(instrument)
@@ -426,7 +426,7 @@ export function renderInstrumentLegend(block: DrumBlock, root: HTMLElement): voi
 
     item.dataset.instrumentId = instrument.id;
     swatch.setCssProps({ "--drum-legend-color": instrument.color });
-    item.createEl("span", {
+    item.createSpan({
       cls: "drum-notation__legend-label",
       text: instrument.label
     });
@@ -631,7 +631,7 @@ function drawNoteHitTargets(system: HTMLElement, note: StaveNote | undefined, sl
 
   note.noteHeads.forEach((noteHead) => {
     const box = noteHead.getBoundingBox();
-    const target = svg.ownerDocument.createElementNS("http://www.w3.org/2000/svg", "rect");
+    const target = svg.createSvg("rect");
     const padding = layout.noteHitTargetPadding;
 
     target.classList.add("drum-notation__hit-target");
@@ -642,7 +642,6 @@ function drawNoteHitTargets(system: HTMLElement, note: StaveNote | undefined, sl
     target.setAttribute("height", String(box.getH() + padding * 2));
     target.setAttribute("fill", "transparent");
     target.setAttribute("stroke", "none");
-    svg.appendChild(target);
   });
 }
 
@@ -721,7 +720,7 @@ function drawHatOpennessMarks(system: HTMLElement, notes: StaveNote[], noteSlots
     }
 
     const stemTopY = note.getStemExtents().topY;
-    const circle = svg.ownerDocument.createElementNS("http://www.w3.org/2000/svg", "circle");
+    const circle = svg.createSvg("circle");
     const x = note.getStemX();
     const y = stemTopY - layout.openHatGap - layout.openHatRadius;
 
@@ -732,10 +731,9 @@ function drawHatOpennessMarks(system: HTMLElement, notes: StaveNote[], noteSlots
     circle.setAttribute("fill", "none");
     circle.setAttribute("stroke", "currentColor");
     circle.setAttribute("stroke-width", String(layout.openHatStrokeWidth));
-    svg.appendChild(circle);
 
     if (hasHalfOpenHat) {
-      const line = svg.ownerDocument.createElementNS("http://www.w3.org/2000/svg", "line");
+      const line = svg.createSvg("line");
 
       line.classList.add("drum-notation__half-open-hat-line");
       line.setAttribute("x1", String(x));
@@ -745,7 +743,6 @@ function drawHatOpennessMarks(system: HTMLElement, notes: StaveNote[], noteSlots
       line.setAttribute("stroke", "currentColor");
       line.setAttribute("stroke-width", String(layout.openHatStrokeWidth));
       line.setAttribute("stroke-linecap", "round");
-      svg.appendChild(line);
     }
   });
 }
@@ -774,7 +771,7 @@ function drawFootSplashMarks(system: HTMLElement, notes: StaveNote[], noteSlots:
 
     const box = notehead.getBoundingBox();
     const radius = Math.max(box.getW(), box.getH()) / 2 + layout.footSplashCirclePadding;
-    const circle = svg.ownerDocument.createElementNS("http://www.w3.org/2000/svg", "circle");
+    const circle = svg.createSvg("circle");
 
     circle.classList.add("drum-notation__foot-splash");
     circle.setAttribute("cx", String(box.getX() + box.getW() / 2));
@@ -784,7 +781,6 @@ function drawFootSplashMarks(system: HTMLElement, notes: StaveNote[], noteSlots:
     circle.setAttribute("stroke", "currentColor");
     circle.setAttribute("stroke-width", String(layout.footSplashStrokeWidth));
     circle.setAttribute("pointer-events", "none");
-    svg.appendChild(circle);
   });
 }
 
@@ -810,7 +806,7 @@ function drawAccentMarks(system: HTMLElement, notes: StaveNote[], noteSlots: Dru
     const x = note.getStemX() - layout.accentWidth * 0.45;
     const y = stemTopY - layout.accentGap;
     const halfHeight = layout.accentHeight / 2;
-    const accent = svg.ownerDocument.createElementNS("http://www.w3.org/2000/svg", "polyline");
+    const accent = svg.createSvg("polyline");
 
     accent.classList.add("drum-notation__accent");
     accent.setAttribute("points", `${x},${y - halfHeight} ${x + layout.accentWidth},${y} ${x},${y + halfHeight}`);
@@ -819,7 +815,6 @@ function drawAccentMarks(system: HTMLElement, notes: StaveNote[], noteSlots: Dru
     accent.setAttribute("stroke-width", String(layout.accentStrokeWidth));
     accent.setAttribute("stroke-linecap", "round");
     accent.setAttribute("stroke-linejoin", "round");
-    svg.appendChild(accent);
   });
 }
 
@@ -851,7 +846,7 @@ function drawChokeMarks(system: HTMLElement, notes: StaveNote[], noteSlots: Drum
       const centerX = box.getX() + box.getW() / 2;
       const centerY = box.getY() - layout.chokeGap;
       const halfSize = layout.chokePlusSize / 2;
-      const plus = svg.ownerDocument.createElementNS("http://www.w3.org/2000/svg", "g");
+      const plus = svg.createSvg("g");
       const segments: Array<[number, number, number, number]> = [
         [centerX - halfSize, centerY, centerX + halfSize, centerY],
         [centerX, centerY - halfSize, centerX, centerY + halfSize]
@@ -860,7 +855,7 @@ function drawChokeMarks(system: HTMLElement, notes: StaveNote[], noteSlots: Drum
       plus.classList.add("drum-notation__choke");
       plus.setAttribute("pointer-events", "none");
       segments.forEach(([x1, y1, x2, y2]) => {
-        const segment = svg.ownerDocument.createElementNS("http://www.w3.org/2000/svg", "line");
+        const segment = plus.createSvg("line");
 
         segment.setAttribute("x1", String(x1));
         segment.setAttribute("y1", String(y1));
@@ -869,9 +864,7 @@ function drawChokeMarks(system: HTMLElement, notes: StaveNote[], noteSlots: Drum
         segment.setAttribute("stroke", "currentColor");
         segment.setAttribute("stroke-width", String(layout.chokeStrokeWidth));
         segment.setAttribute("stroke-linecap", "round");
-        plus.appendChild(segment);
       });
-      svg.appendChild(plus);
     });
   });
 }
@@ -902,7 +895,7 @@ function drawDiddleMarks(system: HTMLElement, notes: StaveNote[], noteSlots: Dru
 
     const stemMiddleY = getStemMarkMiddleY(note, layout.diddleHeight, layout.diddleThickness, layout.diddleNoteheadClearance);
     const stemX = note.getStemX();
-    const diddle = svg.ownerDocument.createElementNS("http://www.w3.org/2000/svg", "polygon");
+    const diddle = svg.createSvg("polygon");
     const leftX = stemX - layout.diddleWidth / 2;
     const rightX = stemX + layout.diddleWidth / 2;
     const leftY = stemMiddleY + layout.diddleHeight / 2;
@@ -917,7 +910,6 @@ function drawDiddleMarks(system: HTMLElement, notes: StaveNote[], noteSlots: Dru
     diddle.setAttribute("fill", layout.diddleFill);
     diddle.setAttribute("stroke", layout.diddleFill);
     diddle.setAttribute("stroke-width", "0");
-    svg.appendChild(diddle);
   });
 }
 
@@ -952,7 +944,7 @@ function drawBuzzRollMarks(
 
     const stemMiddleY = getStemMarkMiddleY(note, layout.diddleHeight, layout.diddleThickness, layout.diddleNoteheadClearance);
     const stemX = note.getStemX();
-    const buzz = svg.ownerDocument.createElementNS("http://www.w3.org/2000/svg", "g");
+    const buzz = svg.createSvg("g");
     const leftX = stemX - layout.buzzWidth / 2;
     const rightX = stemX + layout.buzzWidth / 2;
     const buzzCenterY = stemMiddleY;
@@ -968,7 +960,7 @@ function drawBuzzRollMarks(
     buzz.setAttribute("data-drum-anchor-y", String(stemMiddleY));
     buzz.setAttribute("data-drum-center-y", String(buzzCenterY));
     segments.forEach(([x1, y1, x2, y2]) => {
-      const segment = svg.ownerDocument.createElementNS("http://www.w3.org/2000/svg", "line");
+      const segment = buzz.createSvg("line");
 
       segment.setAttribute("x1", String(x1));
       segment.setAttribute("y1", String(y1));
@@ -978,9 +970,7 @@ function drawBuzzRollMarks(
       segment.setAttribute("stroke-width", String(layout.buzzStrokeWidth));
       segment.setAttribute("stroke-linecap", "round");
       segment.setAttribute("stroke-linejoin", "round");
-      buzz.appendChild(segment);
     });
-    svg.appendChild(buzz);
   });
 }
 
@@ -1019,7 +1009,7 @@ function drawGraceNoteSlurs(system: HTMLElement, notes: StaveNote[], layout: Not
       const cpX = (startX + endX) / 2;
       const topY = baseY + layout.graceSlurCp1;
       const bottomY = baseY + layout.graceSlurCp2;
-      const slur = svg.ownerDocument.createElementNS("http://www.w3.org/2000/svg", "path");
+      const slur = svg.createSvg("path");
 
       slur.classList.add("drum-notation__grace-slur");
       slur.setAttribute("d", `M ${startX} ${baseY} Q ${cpX} ${topY} ${endX} ${baseY} Q ${cpX} ${bottomY} ${startX} ${baseY} Z`);
@@ -1032,7 +1022,6 @@ function drawGraceNoteSlurs(system: HTMLElement, notes: StaveNote[], layout: Not
         slur.setAttribute("fill", color);
       }
 
-      svg.appendChild(slur);
     });
   });
 }
@@ -1088,7 +1077,7 @@ function drawStickingMarks(
     }
 
     const x = getStickingAnchorX(note);
-    const label = svg.ownerDocument.createElementNS("http://www.w3.org/2000/svg", "text");
+    const label = svg.createSvg("text");
 
     label.classList.add("drum-notation__sticking");
     label.setAttribute("x", String(x));
@@ -1098,7 +1087,6 @@ function drawStickingMarks(
     label.setAttribute("font-weight", layout.stickingFontWeight);
     label.setAttribute("pointer-events", "none");
     label.textContent = getStickingLabel(slot.sticking);
-    svg.appendChild(label);
   });
 }
 
@@ -1266,7 +1254,7 @@ function drawMeasureRepeatCount(
     return;
   }
 
-  const label = svg.ownerDocument.createElementNS("http://www.w3.org/2000/svg", "text");
+  const label = svg.createSvg("text");
 
   label.classList.add("drum-notation__measure-repeat-count");
   label.textContent = `x${count}`;
@@ -1281,7 +1269,6 @@ function drawMeasureRepeatCount(
   label.dataset.repeatBarIndexes = barIndexes.join(" ");
   label.dataset.repeatTotal = String(count);
   label.setAttribute("aria-label", `Repeat previous bar ${count} times`);
-  svg.appendChild(label);
 }
 
 function buildGridVisualBarNotes(
