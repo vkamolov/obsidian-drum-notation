@@ -569,6 +569,10 @@ Until Community directory approval, install the GitHub release with
 The Obsidian plugin makes no network requests and includes no telemetry. Notes,
 settings, and generated notation stay in your vault.
 
+When you press **Copy** in the visual editor, the plugin writes a generated
+one-bar notation snippet to the system clipboard. It never reads clipboard
+contents.
+
 The web playground runs entirely in the browser. It uses `localStorage` to keep
 the current playground notation and light/dark preference for the current
 browser profile. It does not send notation to a server.
