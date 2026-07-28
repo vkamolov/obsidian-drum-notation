@@ -1,5 +1,5 @@
 import { DRUM_KIT, getHitChar, normalizePattern } from "./kit";
-import { getSlotsPerBar } from "./music";
+import { getSlotsPerBar, isValidBeamGrouping } from "./music";
 import { finalizeDrumBlock } from "./parser";
 import {
   DrumArticulation,
@@ -59,7 +59,14 @@ export function setGrid(block: DrumBlock, grid: GridResolution): DrumBlock {
 }
 
 export function setTimeSignature(block: DrumBlock, numerator: number, denominator: number): DrumBlock {
-  return { ...block, timeSignature: `${Math.max(1, Math.round(numerator))}/${Math.max(1, Math.round(denominator))}` };
+  const timeSignature = `${Math.max(1, Math.round(numerator))}/${Math.max(1, Math.round(denominator))}`;
+  const nextBlock = { ...block, timeSignature };
+
+  if (nextBlock.beamGrouping && !isValidBeamGrouping(timeSignature, nextBlock.beamGrouping)) {
+    delete nextBlock.beamGrouping;
+  }
+
+  return nextBlock;
 }
 
 // --- Hit edits --------------------------------------------------------------
@@ -931,7 +938,17 @@ function defaultLabel(instrument: DrumInstrument): string {
 }
 
 function headerOf(block: DrumBlock): DrumBlockHeader {
-  const { tempo, timeSignature, repeatCount, showCursor, showHighlight, legendMode, gridResolution, metadata } = block;
+  const { tempo, timeSignature, beamGrouping, repeatCount, showCursor, showHighlight, legendMode, gridResolution, metadata } = block;
 
-  return { tempo, timeSignature, repeatCount, showCursor, showHighlight, legendMode, gridResolution, metadata };
+  return {
+    tempo,
+    timeSignature,
+    ...(beamGrouping ? { beamGrouping: [...beamGrouping] } : {}),
+    repeatCount,
+    showCursor,
+    showHighlight,
+    legendMode,
+    gridResolution,
+    metadata
+  };
 }

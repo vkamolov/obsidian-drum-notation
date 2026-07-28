@@ -3,7 +3,7 @@ import { DRUM_KIT } from "./kit";
 import {
   compareVexKeys,
   durationForGridSpan,
-  getBeamGroupSlotCount,
+  getBeamGroupSlotCounts,
   getBeatValue,
   getGridSpanToNextHit,
   getSlotVisualDurationSeconds,
@@ -209,7 +209,14 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
         });
       }
 
-      const visualBar = buildVisualBarNotes(bar.slots, bar.measureRepeat, block.timeSignature, block.gridResolution, block.legendMode !== "off");
+      const visualBar = buildVisualBarNotes(
+        bar.slots,
+        bar.measureRepeat,
+        block.timeSignature,
+        block.gridResolution,
+        block.legendMode !== "off",
+        block.beamGrouping
+      );
       const notes = visualBar.notes;
       notes.forEach((note) => {
         if (layout.noteFontSize !== undefined) {
@@ -1218,13 +1225,14 @@ function buildVisualBarNotes(
   measureRepeat: MeasureRepeat | undefined,
   timeSignature: string,
   gridResolution: GridResolution,
-  colorNoteheads: boolean
+  colorNoteheads: boolean,
+  beamGrouping?: readonly number[]
 ): VisualBarNotes {
   if (measureRepeat) {
     return buildMeasureRepeatVisualBarNotes(measureRepeat);
   }
 
-  return buildGridVisualBarNotes(slots, timeSignature, gridResolution, colorNoteheads);
+  return buildGridVisualBarNotes(slots, timeSignature, gridResolution, colorNoteheads, beamGrouping);
 }
 
 function buildMeasureRepeatVisualBarNotes(measureRepeat: MeasureRepeat): VisualBarNotes {
@@ -1278,7 +1286,8 @@ export function buildGridVisualBarNotes(
   slots: DrumSlot[],
   timeSignature: string,
   gridResolution: GridResolution,
-  colorNoteheads: boolean
+  colorNoteheads: boolean,
+  beamGrouping?: readonly number[]
 ): VisualBarNotes {
   const notes: Tickable[] = [];
   const hitNotes: StaveNote[] = [];
@@ -1286,7 +1295,17 @@ export function buildGridVisualBarNotes(
   const beams: Beam[] = [];
   const tuplets: Tuplet[] = [];
   const slotsPerBeat = getSlotsPerBeat(timeSignature, gridResolution);
-  const beamGroupSlotCount = getBeamGroupSlotCount(timeSignature, gridResolution);
+  const beamGroupSlotCounts = getBeamGroupSlotCounts(timeSignature, gridResolution, beamGrouping);
+  const beamGroupBoundaries = new Set<number>();
+  let boundary = 0;
+  let boundaryGroupIndex = 0;
+
+  while (boundary < slots.length) {
+    boundary += beamGroupSlotCounts[boundaryGroupIndex % beamGroupSlotCounts.length];
+    beamGroupBoundaries.add(boundary);
+    boundaryGroupIndex += 1;
+  }
+
   let beamGroup: StaveNote[] = [];
   let secondaryBeamBreakIndexes: number[] = [];
 
@@ -1306,7 +1325,7 @@ export function buildGridVisualBarNotes(
   };
 
   for (let start = 0; start < slots.length; start += slotsPerBeat) {
-    if (start > 0 && start % beamGroupSlotCount === 0) {
+    if (start > 0 && beamGroupBoundaries.has(start)) {
       finishBeamGroup();
     } else if (beamGroup.length > 0) {
       secondaryBeamBreakIndexes.push(beamGroup.length - 1);
@@ -1355,7 +1374,7 @@ export function buildGridVisualBarNotes(
 
     const beatEnd = start + beatSlots.length;
 
-    if (beatEnd % beamGroupSlotCount === 0 || beatEnd >= slots.length) {
+    if (beamGroupBoundaries.has(beatEnd) || beatEnd >= slots.length) {
       finishBeamGroup();
     }
   }

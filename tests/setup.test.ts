@@ -49,6 +49,8 @@ describe("initial drum notation setup", () => {
     const existing = parseDrumBlock(`Title: Old title
 Author: Sam
 Comment: Keep this
+Time: 6/8
+Grouping: 3+3
 Repeat: 3
 Legend: used
 Cursor: on`);
@@ -65,6 +67,7 @@ Cursor: on`);
 
     expect(block.metadata).toEqual(["Title: New title", "Author: Sam", "Comment: Keep this"]);
     expect(block.repeatCount).toBe(3);
+    expect(block.beamGrouping).toEqual([3, 3]);
     expect(block.legendMode).toBe("used");
     expect(block.showCursor).toBe(true);
     expect(block.tempo).toBe(92);

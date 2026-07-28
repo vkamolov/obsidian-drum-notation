@@ -63,6 +63,36 @@ HH | x-x-x-x-x-x-x-x-`);
   });
 });
 
+describe("parseDrumBlock - explicit beam grouping", () => {
+  it("parses grouping with flexible whitespace after the final Time value is known", () => {
+    const block = parseDrumBlock(`Grouping: 2 + 2 + 3
+Time: 7/8
+HH | x-x-x-x-x-x-x-`);
+
+    expect(block.beamGrouping).toEqual([2, 2, 3]);
+    expect(block.metadata).not.toContain("Grouping: 2 + 2 + 3");
+  });
+
+  it.each([
+    ["Grouping: two+two+three\nTime: 7/8", "positive whole numbers", 1],
+    ["Grouping: 2+0+5\nTime: 7/8", "positive group sizes", 1],
+    ["Grouping: 2+2\nTime: 7/8", "totals 4", 1],
+    ["Time: 5/4\nGrouping: 3+2", "only for /8 and /16", 2]
+  ])("warns and falls back for %s", (header, message, line) => {
+    const parsed = parseDrumBlockWithWarnings(`${header}
+HH | x---`);
+
+    expect(parsed.block.beamGrouping).toBeUndefined();
+    expect(parsed.warnings).toContainEqual(
+      expect.objectContaining({
+        code: "invalid-setting",
+        line,
+        message: expect.stringContaining(message)
+      })
+    );
+  });
+});
+
 describe("parseDrumBlock - removed settings", () => {
   it("treats old Engraving lines as metadata instead of rendering options", () => {
     const block = parseDrumBlock(`Engraving: classic

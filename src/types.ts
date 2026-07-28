@@ -1,6 +1,7 @@
 export interface DrumBlockHeader {
   tempo: number;
   timeSignature: string;
+  beamGrouping?: number[];
   repeatCount: number;
   showCursor: boolean;
   showHighlight: boolean;

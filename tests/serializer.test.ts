@@ -31,6 +31,16 @@ SD | ----o-------o---
 BD | o-------o-o-----`);
   });
 
+  it("round-trips and canonically serializes explicit beam grouping", () => {
+    const out = roundTrips(`Grouping: 2 + 2 + 3
+Time: 7/8
+HH | x-x-x-x-x-x-x-`);
+
+    expect(out).toContain("Time: 7/8");
+    expect(out).toContain("Grouping: 2+2+3");
+    expect(out).not.toContain("2 + 2 + 3");
+  });
+
   it("preserves unknown metadata and removed settings verbatim", () => {
     const block = parseDrumBlock(`Engraving: classic
 Author: Jane
@@ -216,6 +226,19 @@ Grid: 16
 Count: 1 e & a 2 e & a 3 e & a 4 e & a
 HH | x-x-
 SD | --o-`);
+  });
+
+  it("includes explicit beam grouping once in authoring mode", () => {
+    const out = serializeDrumBlock(
+      parseDrumBlock(`Title: Odd groove
+Time: 7/8
+Grouping: 2 + 2 + 3
+HH | x-x-x-x-x-x-x-`),
+      { mode: "authoring" }
+    );
+
+    expect(out).toContain("Time: 7/8\nGrouping: 2+2+3\nGrid: 16");
+    expect(out.match(/^Grouping:/gm)).toHaveLength(1);
   });
 
   it("preserves system subtitles in authoring mode", () => {

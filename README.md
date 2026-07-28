@@ -10,6 +10,8 @@ or see the
 
 ## Release Notes
 
+- `1.0.7` adds explicit `Grouping:` syntax for beaming asymmetric `/8` and
+  `/16` meters, plus a 7/8 playground example grouped as 2+2+3.
 - `1.0.6` beams regular eighth-note patterns by compound beat in 6/8, 9/8,
   and 12/8, adds a 9/8 playground example, and includes a small font-registry
   type-safety cleanup.
@@ -153,6 +155,7 @@ Author: Your name
 Comment: Practice slowly, then loop it.
 Tempo: 120
 Time: 7/8
+Grouping: 2+2+3
 Subtitle: Verse
 Repeat: 4
 Cursor: on
@@ -169,6 +172,7 @@ Supported settings:
 | `Subtitle:` | `Subtitle: Verse` | Labels the current rendered staff line and all inline bars on it. |
 | `Tempo:` or `BPM:` | `Tempo: 96` | Playback tempo, clamped between 30 and 260 BPM. |
 | `Time:`, `Meter:`, or `Time Signature:` | `Time: 6/8` | Drawn on the staff. |
+| `Grouping:` | `Grouping: 2+2+3` | Beams `/8` or `/16` meters in explicit groups that add up to the meter numerator. |
 | `Repeat:` or `Repeats:` | `Repeat: 4` | Plays the whole block this many times when pressing **Play**. |
 | `Cursor:` or `Playback Cursor:` | `Cursor: on` | Shows or hides the blinking playback cursor. Defaults to `off`. |
 | `Highlight:`, `Note Highlight:`, or `Playback Highlight:` | `Highlight: off` | Highlights the note/chord that is currently sounding. Defaults to `on`. |
@@ -329,9 +333,12 @@ derives note values from the distance to the next hit inside each beat:
 
 Hidden rests keep spacing exact when a gap cannot be represented by one simple
 or dotted note value. In 6/8, 9/8, and 12/8, regular eighth notes are beamed in
-compound groups of three. Three hits in a Grid-16 count are not treated as an
-implicit triplet; use meters such as 6/8 or 12/8 for triplet-feel notation until
-explicit triplet syntax exists.
+compound groups of three. For asymmetric `/8` and `/16` meters, add a block-level
+setting such as `Grouping: 2+2+3` to control beam boundaries. Grouping changes
+engraving only; it does not change playback timing, metronome/count-in pulses,
+or create tuplets. Three hits in a Grid-16 count are not treated as an implicit
+triplet; use meters such as 6/8 or 12/8 for triplet-feel notation until explicit
+triplet syntax exists.
 
 ## Hit Characters
 
@@ -480,6 +487,7 @@ Because rows share the same grid, the final `X` on `BD` and `HF` creates a kick 
 Title: Seven-eight groove
 Tempo: 132
 Time: 7/8
+Grouping: 2+2+3
 Count: 1 & 2 & 3 & 4 & 5 & 6 & 7 &
 HH | x-x-x-x-x-x-x-
 SD | ----o-----o---
@@ -487,7 +495,9 @@ BD | o-----o-o-----
 ```
 ````
 
-The plugin currently treats each pattern character as a sixteenth-note slot for spacing and playback. The time signature controls the displayed meter.
+Each pattern character remains a sixteenth-note slot for spacing and playback.
+`Grouping: 2+2+3` beams the seven written eighth notes as two, two, and three
+without changing their timing.
 
 Rest slots keep the rhythm spaced correctly, but rest symbols are hidden in the rendered score.
 

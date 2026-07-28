@@ -68,6 +68,7 @@ const SETTING_KEYS = new Set([
   "time",
   "timesignature",
   "meter",
+  "grouping",
   "count",
   "repeat",
   "repeats",
@@ -90,6 +91,7 @@ const DIAGNOSTIC_SETTING_KEYS = new Set([
   "time",
   "timesignature",
   "meter",
+  "grouping",
   "repeat",
   "repeats",
   "cursor",
@@ -134,6 +136,7 @@ function parseDrumBlockInternal(source: string, collectWarnings: boolean): Parse
   const barHistory: BarSnapshot[] = [];
   let tempo = DEFAULT_TEMPO;
   let timeSignature = DEFAULT_TIME_SIGNATURE;
+  let beamGroupingSetting: { value: string; line: number; originalKey: string } | undefined;
   let repeatCount = DEFAULT_REPEAT_COUNT;
   let showCursor = DEFAULT_SHOW_CURSOR;
   let showHighlight = DEFAULT_SHOW_HIGHLIGHT;
@@ -232,6 +235,12 @@ function parseDrumBlockInternal(source: string, collectWarnings: boolean): Parse
         }
 
         timeSignature = nextTimeSignature;
+      } else if (setting.key === "grouping") {
+        beamGroupingSetting = {
+          value: setting.value,
+          line: lineNumber,
+          originalKey: setting.originalKey
+        };
       } else if (setting.key === "repeat" || setting.key === "repeats") {
         const parsedRepeat = parseRepeatSettingValue(setting.value);
         const nextRepeatCount = parseRepeatCount(setting.value);
@@ -314,10 +323,32 @@ function parseDrumBlockInternal(source: string, collectWarnings: boolean): Parse
   });
 
   pushCurrentBar();
+  const beamGroupingResult = beamGroupingSetting
+    ? parseBeamGrouping(beamGroupingSetting.value, timeSignature)
+    : {};
+
+  if (beamGroupingSetting && beamGroupingResult.error) {
+    warn(
+      beamGroupingSetting.line,
+      "invalid-setting",
+      `${beamGroupingSetting.originalKey}: ${beamGroupingResult.error}`
+    );
+  }
+
   warnForRowLengthMismatches(rowSections, stickingSections, timeSignature, gridResolution, warn);
 
   const block = finalizeDrumBlock(
-    { tempo, timeSignature, repeatCount, showCursor, showHighlight, legendMode, gridResolution, metadata },
+    {
+      tempo,
+      timeSignature,
+      ...(beamGroupingResult.grouping ? { beamGrouping: beamGroupingResult.grouping } : {}),
+      repeatCount,
+      showCursor,
+      showHighlight,
+      legendMode,
+      gridResolution,
+      metadata
+    },
     rowSections,
     repeatSections,
     stickingSections,
@@ -928,6 +959,45 @@ function parseTimeSignature(value: string): string {
   }
 
   return `${match[1]}/${match[2]}`;
+}
+
+function parseBeamGrouping(
+  value: string,
+  timeSignature: string
+): { grouping?: number[]; error?: string } {
+  if (!/^\d+(?:\s*\+\s*\d+)*$/.test(value)) {
+    return {
+      error: `"${value}" must contain positive whole numbers joined with +, such as 2+2+3; using normal meter grouping.`
+    };
+  }
+
+  const grouping = value.split("+").map((part) => Number.parseInt(part.trim(), 10));
+
+  if (grouping.some((group) => group <= 0)) {
+    return {
+      error: `"${value}" must contain only positive group sizes; using normal meter grouping.`
+    };
+  }
+
+  const match = /^(\d+)\/(\d+)$/.exec(timeSignature);
+  const numerator = match ? Number.parseInt(match[1], 10) : 4;
+  const denominator = match ? Number.parseInt(match[2], 10) : 4;
+
+  if (denominator !== 8 && denominator !== 16) {
+    return {
+      error: `is supported only for /8 and /16 meters; Time ${timeSignature} uses /${denominator}. Using normal meter grouping.`
+    };
+  }
+
+  const total = grouping.reduce((sum, group) => sum + group, 0);
+
+  if (total !== numerator) {
+    return {
+      error: `"${value}" totals ${total}, but Time ${timeSignature} requires ${numerator}; using normal meter grouping.`
+    };
+  }
+
+  return { grouping };
 }
 
 function parseRepeatSettingValue(value: string): number | null {

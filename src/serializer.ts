@@ -68,6 +68,10 @@ function serializeMinimalHeader(block: DrumBlock): string[] {
     lines.push(`Time: ${block.timeSignature}`);
   }
 
+  if (block.beamGrouping) {
+    lines.push(`Grouping: ${block.beamGrouping.join("+")}`);
+  }
+
   if (block.repeatCount !== DEFAULT_REPEAT_COUNT) {
     lines.push(`Repeat: ${block.repeatCount}`);
   }
@@ -96,6 +100,7 @@ function serializeAuthoringBlock(block: DrumBlock): string {
     `Title: ${getMetadataTitle(block)}`,
     `Tempo: ${block.tempo}`,
     `Time: ${block.timeSignature}`,
+    ...(block.beamGrouping ? [`Grouping: ${block.beamGrouping.join("+")}`] : []),
     `Grid: ${block.gridResolution}`
   ];
 
@@ -139,6 +144,7 @@ function isManagedAuthoringLine(line: string): boolean {
     "time",
     "timesignature",
     "meter",
+    "grouping",
     "repeat",
     "repeats",
     "grid",

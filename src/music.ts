@@ -40,22 +40,55 @@ export function getSlotsPerBeat(timeSignature: string, gridResolution: GridResol
   return Math.max(1, Math.round(gridResolution / beatValue));
 }
 
-export function getBeamGroupSlotCount(
+export function getBeamGroupSlotCounts(
   timeSignature: string,
-  gridResolution: GridResolution = DEFAULT_GRID_RESOLUTION
-): number {
+  gridResolution: GridResolution = DEFAULT_GRID_RESOLUTION,
+  beamGrouping?: readonly number[]
+): number[] {
   const slotsPerBeat = getSlotsPerBeat(timeSignature, gridResolution);
   const match = /^(\d+)\/(\d+)$/.exec(timeSignature);
 
   if (!match) {
-    return slotsPerBeat;
+    return [slotsPerBeat];
   }
 
   const beats = Number.parseInt(match[1], 10);
   const beatValue = Number.parseInt(match[2], 10);
+  const explicitGrouping = beamGrouping && isValidBeamGrouping(timeSignature, beamGrouping)
+    ? beamGrouping
+    : undefined;
+
+  if (explicitGrouping) {
+    return explicitGrouping.map((group) => group * slotsPerBeat);
+  }
+
   const usesCompoundEighthGrouping = beatValue === 8 && (beats === 6 || beats === 9 || beats === 12);
 
-  return slotsPerBeat * (usesCompoundEighthGrouping ? 3 : 1);
+  if (usesCompoundEighthGrouping) {
+    return Array.from({ length: beats / 3 }, () => slotsPerBeat * 3);
+  }
+
+  return Array.from({ length: beats }, () => slotsPerBeat);
+}
+
+export function isValidBeamGrouping(
+  timeSignature: string,
+  beamGrouping: readonly number[]
+): boolean {
+  const match = /^(\d+)\/(\d+)$/.exec(timeSignature);
+
+  if (!match || beamGrouping.length === 0) {
+    return false;
+  }
+
+  const beats = Number.parseInt(match[1], 10);
+  const beatValue = Number.parseInt(match[2], 10);
+
+  return (
+    (beatValue === 8 || beatValue === 16) &&
+    beamGrouping.every((group) => Number.isInteger(group) && group > 0) &&
+    beamGrouping.reduce((sum, group) => sum + group, 0) === beats
+  );
 }
 
 export function getBeatValue(timeSignature: string): number {

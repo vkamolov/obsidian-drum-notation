@@ -38,6 +38,8 @@ Row-length mismatch warnings use a low-noise rule: near-full bars such as 15 or
 17 slots in `Time: 4/4` + `Grid: 16`, or rows mixed with a full 16-slot row, are
 flagged because they can silently change playback feel. Short shorthand sketches
 such as `HH | x---` remain valid and warning-free.
+Invalid `Grouping:` values are also advisory: the score falls back to its normal
+meter grouping and continues rendering.
 
 A minimal block:
 
@@ -58,6 +60,7 @@ case-insensitive and ignore spaces/hyphens (`Time Signature` == `timesignature`)
 |---------|---------|-------|---------|-------|
 | `Tempo` | `BPM` | integer | `100` | Clamped to 30–260 |
 | `Time` | `Time Signature`, `Meter` | `n/n` | `4/4` | 1–2 digits each |
+| `Grouping` | — | positive integers joined by `+` | unset | Beam grouping for `/8` and `/16` meters; groups must sum to the numerator |
 | `Repeat` | `Repeats` | integer | `1` | Clamped to 1–64 |
 | `Grid` | `Subdivision`, `Resolution` | `16` or `32` | `16` | One character = one grid slot |
 | `Legend` | `Instrument Legend`, `Kit Legend`, `Color Legend` | `off` / `used` / `all` | `off` | Color key visibility |
@@ -73,6 +76,13 @@ false: `off`, `false`, `no`, `n`, `0`, `hide`, `hidden`.
 `none`/`hide`/`no`. When the legend is visible, active instrument symbols
 briefly highlight during playback and clicked-note previews if `Highlight` is
 enabled.
+
+`Grouping:` applies to every bar and system in the block. Whitespace is
+accepted (`2 + 2 + 3`) and serialization normalizes it to `2+2+3`. It changes
+beam boundaries only: playback timing, metronome/count-in pulses, and cursor
+positions remain unchanged. Unsupported meters, malformed groups, zero values,
+or totals that do not match the meter numerator produce an advisory warning and
+fall back to normal meter grouping.
 
 ### System subtitles
 
@@ -297,6 +307,18 @@ gaps that cannot be represented by one simple or dotted value.
 In 6/8, 9/8, and 12/8, regular eighth notes are beamed in compound groups of
 three: two groups in 6/8, three in 9/8, and four in 12/8.
 
+Asymmetric `/8` and `/16` meters can define explicit beam boundaries:
+
+```drums
+Time: 7/8
+Grouping: 2+2+3
+HH | x-x-x-x-x-x-x-
+```
+
+The grouping components count denominator beats and must add up to the meter
+numerator. Explicit grouping overrides automatic compound grouping for that
+block. It is not tuplet syntax and does not draw a triplet numeral.
+
 Three hits in one Grid-16 count are not implicit triplets. Use compound meters
 such as 6/8 or 12/8 for triplet-feel notation until explicit triplet syntax is
 added. Slots-per-bar is `beats × (grid ÷ beat-value)`; e.g. 4/4 at grid 16 =
@@ -476,6 +498,7 @@ To stay deterministic and diff-friendly, serialization **normalizes**:
   `c`).
 - Rests collapse to `-`.
 - Settings left at their default are **omitted** (they re-parse to the default).
+- Explicit beam grouping normalizes to `Grouping: n+n+…`.
 - Unknown/metadata lines are preserved verbatim and in order.
 - Bar separators normalize to `Bar`; row patterns are joined with ` | `.
 - System subtitles normalize to `Subtitle: text` before each system's rows.

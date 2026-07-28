@@ -1,5 +1,5 @@
 import { DRUM_KIT } from "./kit";
-import { getSlotsPerBar } from "./music";
+import { getSlotsPerBar, isValidBeamGrouping } from "./music";
 import { finalizeDrumBlock } from "./parser";
 import { serializeDrumBlock } from "./serializer";
 import {
@@ -78,6 +78,8 @@ export function getDrumSetupSlotCount(values: DrumSetupValues): number {
 export function createInitialDrumBlock(values: DrumSetupValues, existing?: DrumBlock): DrumBlock {
   const normalized = normalizeSetupValues(values);
   const baseHeader = existing ? toHeader(existing) : defaultHeader();
+  const { beamGrouping, ...baseHeaderWithoutGrouping } = baseHeader;
+  const timeSignature = `${normalized.timeNumerator}/${normalized.timeDenominator}`;
   const slotCount = getDrumSetupSlotCount(normalized);
   const restPattern = "-".repeat(slotCount);
   const rows: DrumRowInput[] = SETUP_INSTRUMENTS.map(({ label, instrument }) => ({
@@ -92,9 +94,12 @@ export function createInitialDrumBlock(values: DrumSetupValues, existing?: DrumB
 
   return finalizeDrumBlock(
     {
-      ...baseHeader,
+      ...baseHeaderWithoutGrouping,
       tempo: normalized.tempo,
-      timeSignature: `${normalized.timeNumerator}/${normalized.timeDenominator}`,
+      timeSignature,
+      ...(beamGrouping && isValidBeamGrouping(timeSignature, beamGrouping)
+        ? { beamGrouping }
+        : {}),
       gridResolution: normalized.grid,
       metadata
     },
@@ -181,6 +186,7 @@ function toHeader(block: DrumBlock): DrumBlockHeader {
   return {
     tempo: block.tempo,
     timeSignature: block.timeSignature,
+    ...(block.beamGrouping ? { beamGrouping: [...block.beamGrouping] } : {}),
     repeatCount: block.repeatCount,
     showCursor: block.showCursor,
     showHighlight: block.showHighlight,

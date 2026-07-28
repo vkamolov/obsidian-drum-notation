@@ -18,15 +18,21 @@ function repeatedEighthPattern(count: number, grid: GridResolution): string {
   return Array.from({ length: count }, () => (grid === 16 ? "x-" : "x---")).join("");
 }
 
-function buildBeams(timeSignature: string, grid: GridResolution, pattern: string) {
+function buildBeams(
+  timeSignature: string,
+  grid: GridResolution,
+  pattern: string,
+  grouping?: string
+) {
   const block = parseDrumBlock(`Time: ${timeSignature}
 Grid: ${grid}
-HH | ${pattern}`);
+${grouping ? `Grouping: ${grouping}\n` : ""}HH | ${pattern}`);
   const visualBar = buildGridVisualBarNotes(
     block.bars[0].slots,
     block.timeSignature,
     block.gridResolution,
-    false
+    false,
+    block.beamGrouping
   );
 
   return { block, visualBar };
@@ -69,6 +75,48 @@ describe("compound-meter beaming", () => {
     const { visualBar } = buildBeams("4/4", 16, repeatedEighthPattern(8, 16));
 
     expect(beamNoteCounts(visualBar.beams)).toEqual([2, 2, 2, 2]);
+  });
+
+  it.each([
+    [16, [2, 2, 3]],
+    [32, [2, 2, 3]]
+  ] as const)("beams 7/8 as 2+2+3 at Grid %i", (grid, expected) => {
+    const { visualBar } = buildBeams(
+      "7/8",
+      grid,
+      repeatedEighthPattern(7, grid),
+      "2+2+3"
+    );
+
+    expect(beamNoteCounts(visualBar.beams)).toEqual(expected);
+  });
+
+  it("supports explicit grouping in other /8 and /16 meters", () => {
+    expect(
+      beamNoteCounts(
+        buildBeams("5/8", 16, repeatedEighthPattern(5, 16), "3+2").visualBar.beams
+      )
+    ).toEqual([3, 2]);
+    expect(
+      beamNoteCounts(buildBeams("7/16", 16, "xxxxxxx", "2+2+3").visualBar.beams)
+    ).toEqual([2, 2, 3]);
+  });
+
+  it("lets explicit grouping override automatic compound grouping", () => {
+    const { visualBar } = buildBeams(
+      "9/8",
+      16,
+      repeatedEighthPattern(9, 16),
+      "2+2+2+3"
+    );
+
+    expect(beamNoteCounts(visualBar.beams)).toEqual([2, 2, 2, 3]);
+  });
+
+  it("keeps 7/8 ungrouped when Grouping is absent", () => {
+    const { visualBar } = buildBeams("7/8", 16, repeatedEighthPattern(7, 16));
+
+    expect(visualBar.beams).toEqual([]);
   });
 
   it("breaks compound beams at rests", () => {

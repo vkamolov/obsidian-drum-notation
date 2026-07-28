@@ -40,6 +40,16 @@ HH | x-x-x-x-x-x- | x-x-x-x-x-x-
 SD | ------o----- | ------o-----
 BD | o----------- | o---o-------`,
 
+  "7/8 groove": `Title: 7/8 groove
+Tempo: 104
+Time: 7/8
+Grouping: 2+2+3
+Count: 1 2 3 4 5 6 7
+Subtitle: Grouped 2 + 2 + 3
+HH | x-x-x-x-x-x-x-
+SD | ----o-------o-
+BD | o---o---o-----`,
+
   "9/8 groove": `Title: 9/8 groove
 Tempo: 92
 Time: 9/8

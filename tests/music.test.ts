@@ -3,7 +3,7 @@ import {
   compareVexKeys,
   durationForDenominator,
   durationForGridSpan,
-  getBeamGroupSlotCount,
+  getBeamGroupSlotCounts,
   getBeatValue,
   getGridSpanToNextHit,
   getSecondsPerSlot,
@@ -48,23 +48,34 @@ describe("getSlotsPerBeat / getBeatValue", () => {
   });
 });
 
-describe("getBeamGroupSlotCount", () => {
+describe("getBeamGroupSlotCounts", () => {
   it.each([
-    ["6/8", 16, 6],
-    ["9/8", 16, 6],
-    ["12/8", 16, 6],
-    ["6/8", 32, 12],
-    ["9/8", 32, 12],
-    ["12/8", 32, 12]
+    ["6/8", 16, [6, 6]],
+    ["9/8", 16, [6, 6, 6]],
+    ["12/8", 16, [6, 6, 6, 6]],
+    ["6/8", 32, [12, 12]],
+    ["9/8", 32, [12, 12, 12]],
+    ["12/8", 32, [12, 12, 12, 12]]
   ] as const)("groups three written eighth-note beats in %s at Grid %i", (timeSignature, grid, expected) => {
-    expect(getBeamGroupSlotCount(timeSignature, grid)).toBe(expected);
+    expect(getBeamGroupSlotCounts(timeSignature, grid)).toEqual(expected);
   });
 
   it("keeps non-compound meters grouped by one written beat", () => {
-    expect(getBeamGroupSlotCount("4/4", 16)).toBe(4);
-    expect(getBeamGroupSlotCount("3/8", 16)).toBe(2);
-    expect(getBeamGroupSlotCount("7/8", 16)).toBe(2);
-    expect(getBeamGroupSlotCount("6/4", 16)).toBe(4);
+    expect(getBeamGroupSlotCounts("4/4", 16)).toEqual([4, 4, 4, 4]);
+    expect(getBeamGroupSlotCounts("3/8", 16)).toEqual([2, 2, 2]);
+    expect(getBeamGroupSlotCounts("7/8", 16)).toEqual([2, 2, 2, 2, 2, 2, 2]);
+    expect(getBeamGroupSlotCounts("6/4", 16)).toEqual([4, 4, 4, 4, 4, 4]);
+  });
+
+  it("maps explicit asymmetric groups to grid slots", () => {
+    expect(getBeamGroupSlotCounts("7/8", 16, [2, 2, 3])).toEqual([4, 4, 6]);
+    expect(getBeamGroupSlotCounts("7/8", 32, [2, 2, 3])).toEqual([8, 8, 12]);
+    expect(getBeamGroupSlotCounts("7/16", 16, [3, 2, 2])).toEqual([3, 2, 2]);
+  });
+
+  it("ignores invalid or unsupported explicit groups defensively", () => {
+    expect(getBeamGroupSlotCounts("7/8", 16, [2, 2])).toEqual([2, 2, 2, 2, 2, 2, 2]);
+    expect(getBeamGroupSlotCounts("5/4", 16, [3, 2])).toEqual([4, 4, 4, 4, 4]);
   });
 });
 

@@ -222,6 +222,25 @@ describe("setting edits", () => {
     expect(setTimeSignature(block, 6, 8).timeSignature).toBe("6/8");
   });
 
+  it("preserves compatible grouping and clears it when the meter becomes incompatible", () => {
+    const grouped = parseDrumBlock(`Time: 7/8
+Grouping: 2+2+3
+HH | x-x-x-x-x-x-x-`);
+
+    expect(setTimeSignature(grouped, 7, 8).beamGrouping).toEqual([2, 2, 3]);
+    expect(setTimeSignature(grouped, 4, 4).beamGrouping).toBeUndefined();
+  });
+
+  it("preserves grouping through structural visual edits", () => {
+    const grouped = parseDrumBlock(`Time: 7/8
+Grouping: 2+2+3
+HH | x-x-x-x-x-x-x-`);
+    const edited = toggleHit(grouped, 1, SD);
+
+    expect(edited.beamGrouping).toEqual([2, 2, 3]);
+    expect(serializeDrumBlock(edited)).toContain("Grouping: 2+2+3");
+  });
+
   it("setting edits survive a serialize round-trip", () => {
     const edited = setTempo(setGrid(block, 32), 90);
     const text = serializeDrumBlock(edited);
