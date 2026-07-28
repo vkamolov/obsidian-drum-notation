@@ -288,6 +288,20 @@ The serializer emits `%` for a single repeat and `%xN` for counted one-bar
 repeats. Separate `%` lines remain separate repeat bars; only explicit `%xN`
 syntax renders as one compact repeat bar with an `xN` mark.
 
+A normal row group may follow repeat notation without a `Bar` separator. It
+continues the same rendered system as a new editable bar:
+
+```drums
+HH | x-x-x-x-x-x-x-x-
+SD | ----o-------o---
+%
+HH | x-x-x-x-x-x-x-x-
+SD | o-o-o-o-o-o-o-o-
+```
+
+This is also the canonical form used when visual editing places a normal bar
+after a repeat bar on the same staff line.
+
 `%2` is reserved for a future two-bar repeat symbol and is not modeled yet.
 Section repeat signs, first/second endings, D.S./D.C., Segno, and Coda roadmaps
 are not modeled yet either. They need span and playback-roadmap semantics beyond

@@ -43,11 +43,13 @@ interface BarSnapshot {
 interface ParsedDrumRowInput extends DrumRowInput {
   lineNumber: number;
   generatedSegments?: ReadonlySet<number>;
+  segmentLineNumbers?: ReadonlyMap<number, number>;
 }
 
 interface ParsedDrumStickingInput extends DrumStickingInput {
   lineNumber: number;
   generatedSegments?: ReadonlySet<number>;
+  segmentLineNumbers?: ReadonlyMap<number, number>;
 }
 
 interface RowLengthWarningEntry {
@@ -56,6 +58,7 @@ interface RowLengthWarningEntry {
   lineNumber: number;
   kind: "row" | "sticking";
   generatedSegments?: ReadonlySet<number>;
+  segmentLineNumbers?: ReadonlyMap<number, number>;
 }
 
 const STICKING_LABELS = new Set(["st", "stick", "sticking", "hands"]);
@@ -307,7 +310,11 @@ function parseDrumBlockInternal(source: string, collectWarnings: boolean): Parse
 
     if (sticking) {
       warnForUnsupportedStickingCharacters(line, lineNumber, warn);
-      currentSticking = { ...sticking, lineNumber };
+      const parsedSticking = { ...sticking, lineNumber };
+      currentSticking =
+        currentRepeats.length > 0
+          ? appendStickingAfterRepeat(currentRows, currentSticking, currentRepeats.length, parsedSticking)
+          : parsedSticking;
       return;
     }
 
@@ -315,7 +322,13 @@ function parseDrumBlockInternal(source: string, collectWarnings: boolean): Parse
 
     if (row) {
       warnForUnsupportedPatternCharacters(line, row.label, lineNumber, warn);
-      currentRows.push({ ...row, lineNumber });
+      const parsedRow = { ...row, lineNumber };
+
+      if (currentRepeats.length > 0) {
+        appendRowAfterRepeat(currentRows, currentSticking, currentRepeats.length, parsedRow);
+      } else {
+        currentRows.push(parsedRow);
+      }
     } else {
       warnForUnparsedPipeLine(line, lineNumber, warn);
       metadata.push(line);
@@ -620,7 +633,8 @@ function warnForRowLengthMismatches(
       patterns: row.patterns,
       lineNumber: row.lineNumber,
       kind: "row",
-      generatedSegments: row.generatedSegments
+      generatedSegments: row.generatedSegments,
+      segmentLineNumbers: row.segmentLineNumbers
     }));
 
     if (sticking) {
@@ -629,7 +643,8 @@ function warnForRowLengthMismatches(
         patterns: sticking.patterns,
         lineNumber: sticking.lineNumber,
         kind: "sticking",
-        generatedSegments: sticking.generatedSegments
+        generatedSegments: sticking.generatedSegments,
+        segmentLineNumbers: sticking.segmentLineNumbers
       });
     }
 
@@ -650,7 +665,7 @@ function warnForRowLengthMismatches(
             length: pattern.length
           };
         })
-        .filter((entry): entry is { label: string; patterns: string[]; lineNumber: number; kind: "row" | "sticking"; generatedSegments?: ReadonlySet<number>; pattern: string; length: number } => entry !== null);
+        .filter((entry): entry is RowLengthWarningEntry & { pattern: string; length: number } => entry !== null);
       const hasExpectedLengthEntry = presentEntries.some((entry) => entry.length === expectedSlots);
 
       presentEntries.forEach((entry) => {
@@ -669,7 +684,7 @@ function warnForRowLengthMismatches(
         const label = entry.kind === "sticking" ? "Sticking row" : `${entry.label} row`;
 
         warn(
-          entry.lineNumber,
+          entry.segmentLineNumbers?.get(segmentIndex) ?? entry.lineNumber,
           "row-length-mismatch",
           `${label} bar ${segmentIndex + 1} has ${entry.length} slots; Time ${timeSignature} + Grid ${gridResolution} expects ${expectedSlots}. ${effect}`
         );
@@ -745,6 +760,66 @@ function appendMeasureRepeat(
   return nextSticking;
 }
 
+function appendRowAfterRepeat(
+  currentRows: ParsedDrumRowInput[],
+  currentSticking: ParsedDrumStickingInput | undefined,
+  targetBarIndex: number,
+  source: ParsedDrumRowInput
+): void {
+  const widths = getBarWidths(currentRows, currentSticking);
+  let target = currentRows.find((candidate) => candidate.instrument.id === source.instrument.id);
+
+  if (!target) {
+    target = {
+      label: source.label,
+      patterns: [],
+      instrument: source.instrument,
+      lineNumber: source.lineNumber
+    };
+    currentRows.push(target);
+  }
+
+  while (target.patterns.length < targetBarIndex) {
+    target.patterns.push("-".repeat(widths[target.patterns.length] ?? source.patterns[0]?.length ?? 0));
+    markGeneratedSegment(target, target.patterns.length - 1);
+  }
+
+  source.patterns.forEach((pattern) => {
+    const segmentIndex = target.patterns.length;
+
+    target.patterns.push(pattern);
+    markSourceSegment(target, segmentIndex, source.lineNumber);
+  });
+}
+
+function appendStickingAfterRepeat(
+  currentRows: ParsedDrumRowInput[],
+  currentSticking: ParsedDrumStickingInput | undefined,
+  targetBarIndex: number,
+  source: ParsedDrumStickingInput
+): ParsedDrumStickingInput {
+  const widths = getBarWidths(currentRows, currentSticking);
+  const target = currentSticking ?? {
+    label: source.label,
+    patterns: [],
+    lineNumber: source.lineNumber
+  };
+
+  while (target.patterns.length < targetBarIndex) {
+    target.patterns.push("-".repeat(widths[target.patterns.length] ?? source.patterns[0]?.length ?? 0));
+    markGeneratedSegment(target, target.patterns.length - 1);
+  }
+
+  source.patterns.forEach((pattern) => {
+    const segmentIndex = target.patterns.length;
+
+    target.patterns.push(pattern);
+    markSourceSegment(target, segmentIndex, source.lineNumber);
+  });
+
+  return target;
+}
+
 function appendSnapshotBar(
   currentRows: ParsedDrumRowInput[],
   currentSticking: ParsedDrumStickingInput | undefined,
@@ -797,6 +872,17 @@ function markGeneratedSegment(target: DrumRowInput | DrumStickingInput, segmentI
 
   generatedSegments.add(segmentIndex);
   candidate.generatedSegments = generatedSegments;
+}
+
+function markSourceSegment(
+  target: ParsedDrumRowInput | ParsedDrumStickingInput,
+  segmentIndex: number,
+  lineNumber: number
+): void {
+  const segmentLineNumbers = new Map(target.segmentLineNumbers ?? []);
+
+  segmentLineNumbers.set(segmentIndex, lineNumber);
+  target.segmentLineNumbers = segmentLineNumbers;
 }
 
 function syncRepeatMarkers(

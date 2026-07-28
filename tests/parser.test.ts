@@ -255,6 +255,20 @@ Bar
     expect(block.bars[1].rows[0].pattern).toBe("x---");
   });
 
+  it("keeps a normal bar after a cross-system repeat visible and separately playable", () => {
+    const block = parseDrumBlock(`HH | x---
+Bar
+%
+HH | --x-
+SD | -o--`);
+
+    expect(block.systems.map((system) => system.bars.length)).toEqual([1, 2]);
+    expect(block.systems[1].bars.map((bar) => bar.measureRepeat)).toEqual([1, undefined]);
+    expect(block.slots[5].hits).toEqual([]);
+    expect(block.slots[9].hits.map((hit) => hit.instrument.id)).toEqual(["snare"]);
+    expect(block.slots[10].hits.map((hit) => hit.instrument.id)).toEqual(["closed-hat"]);
+  });
+
   it("copies sticking into repeated bars for playback/model consistency", () => {
     const block = parseDrumBlock(`ST | R-B-
 HH | x---
@@ -262,6 +276,30 @@ HH | x---
 
     expect(block.bars[1]).toMatchObject({ measureRepeat: 1, stickingPattern: "R-B-" });
     expect(block.slots.slice(4, 8).map((slot) => slot.sticking)).toEqual(["right", undefined, "both", undefined]);
+  });
+
+  it("keeps normal bars after a repeat separate on the same system", () => {
+    const block = parseDrumBlock(`ST | R---
+HH | x---
+%
+ST | --L-
+HH | --x-
+SD | -o--`);
+
+    expect(block.systems).toHaveLength(1);
+    expect(block.systems[0].bars).toHaveLength(3);
+    expect(block.bars.map((bar) => bar.measureRepeat)).toEqual([undefined, 1, undefined]);
+    expect(block.bars[2].rows.map((row) => [row.instrument.id, row.pattern])).toEqual([
+      ["closed-hat", "--x-"],
+      ["snare", "-o--"]
+    ]);
+    expect(block.slots[4].hits.map((hit) => hit.instrument.id)).toEqual(["closed-hat"]);
+    expect(block.slots[5].hits).toEqual([]);
+    expect(block.slots[9].hits.map((hit) => hit.instrument.id)).toEqual(["snare"]);
+    expect(block.slots[10]).toMatchObject({
+      sticking: "left",
+      hits: [{ instrument: expect.objectContaining({ id: "closed-hat" }) }]
+    });
   });
 });
 

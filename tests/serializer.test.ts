@@ -181,6 +181,23 @@ HH | x---
 %`);
   });
 
+  it("round-trips a normal bar after a repeat on the same system", () => {
+    const out = roundTrips(`ST | R---
+HH | x---
+%
+ST | --L-
+HH | --x-
+SD | -o--`);
+
+    expect(out).toBe(`ST | R---
+HH | x---
+SD | ----
+%
+ST | --L-
+HH | --x-
+SD | -o--`);
+  });
+
   it("round-trips a cross-system one-bar repeat", () => {
     const out = roundTrips(`HH | x---
 Bar
