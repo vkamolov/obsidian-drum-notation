@@ -3,6 +3,7 @@ import { DRUM_KIT } from "./kit";
 import {
   compareVexKeys,
   durationForGridSpan,
+  getBeamGroupSlotCount,
   getBeatValue,
   getGridSpanToNextHit,
   getSlotVisualDurationSeconds,
@@ -1273,7 +1274,7 @@ function drawMeasureRepeatCount(
   label.setAttribute("aria-label", `Repeat previous bar ${count} times`);
 }
 
-function buildGridVisualBarNotes(
+export function buildGridVisualBarNotes(
   slots: DrumSlot[],
   timeSignature: string,
   gridResolution: GridResolution,
@@ -1285,24 +1286,40 @@ function buildGridVisualBarNotes(
   const beams: Beam[] = [];
   const tuplets: Tuplet[] = [];
   const slotsPerBeat = getSlotsPerBeat(timeSignature, gridResolution);
+  const beamGroupSlotCount = getBeamGroupSlotCount(timeSignature, gridResolution);
+  let beamGroup: StaveNote[] = [];
+  let secondaryBeamBreakIndexes: number[] = [];
+
+  const finishBeamGroup = () => {
+    if (beamGroup.length > 1) {
+      const beam = new Beam(beamGroup);
+
+      if (secondaryBeamBreakIndexes.length > 0) {
+        beam.breakSecondaryAt(secondaryBeamBreakIndexes);
+      }
+
+      beams.push(beam);
+    }
+
+    beamGroup = [];
+    secondaryBeamBreakIndexes = [];
+  };
 
   for (let start = 0; start < slots.length; start += slotsPerBeat) {
+    if (start > 0 && start % beamGroupSlotCount === 0) {
+      finishBeamGroup();
+    } else if (beamGroup.length > 0) {
+      secondaryBeamBreakIndexes.push(beamGroup.length - 1);
+    }
+
     const beatSlots = slots.slice(start, start + slotsPerBeat);
     const hitIndexes = beatSlots
       .map((slot, index) => (slot.hits.length > 0 ? index : -1))
       .filter((index) => index >= 0);
     let cursor = 0;
-    let beamGroup: StaveNote[] = [];
-
-    const finishBeamGroup = () => {
-      if (beamGroup.length > 1) {
-        beams.push(new Beam(beamGroup));
-      }
-
-      beamGroup = [];
-    };
 
     if (hitIndexes.length === 0) {
+      finishBeamGroup();
       appendHiddenGridRests(notes, beatSlots.length, gridResolution);
       continue;
     }
@@ -1331,12 +1348,19 @@ function buildGridVisualBarNotes(
       }
     });
 
-    finishBeamGroup();
-
     if (cursor < beatSlots.length) {
+      finishBeamGroup();
       appendHiddenGridRests(notes, beatSlots.length - cursor, gridResolution);
     }
+
+    const beatEnd = start + beatSlots.length;
+
+    if (beatEnd % beamGroupSlotCount === 0 || beatEnd >= slots.length) {
+      finishBeamGroup();
+    }
   }
+
+  finishBeamGroup();
 
   return { notes, hitNotes, noteSlots, cursorNotes: hitNotes, cursorSlots: noteSlots, beams, tuplets };
 }

@@ -40,11 +40,19 @@ HH | x-x-x-x-x-x- | x-x-x-x-x-x-
 SD | ------o----- | ------o-----
 BD | o----------- | o---o-------`,
 
+  "9/8 groove": `Title: 9/8 groove
+Tempo: 92
+Time: 9/8
+Count: 1 2 3 4 5 6 7 8 9
+HH | x-x-x-x-x-x-x-x-x-
+SD | ------o-----------
+BD | o-----------o-----`,
+
   "12/8 blues shuffle": `Title: 12/8 blues shuffle
 Tempo: 90
 Time: 12/8
 Count: 1 & a 2 & a 3 & a 4 & a
-RD | x---x-x---x-x---x-x---x-
+RD | x-x-x-x-x-x-x-x-x-x-x-x-
 SD | ------o-----------o-----
 BD | o-----------o-----------`,
 

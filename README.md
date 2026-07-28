@@ -8,6 +8,9 @@ See [docs/notation-format.md](https://github.com/vkamolov/obsidian-drum-notation
 
 ## Release Notes
 
+- `1.0.6` beams regular eighth-note patterns by compound beat in 6/8, 9/8,
+  and 12/8, adds a 9/8 playground example, and includes a small font-registry
+  type-safety cleanup.
 - `1.0.5` makes the visual-edit setting searchable through Obsidian 1.13's
   declarative settings API while preserving the legacy settings tab on older
   supported Obsidian versions.
@@ -323,7 +326,8 @@ derives note values from the distance to the next hit inside each beat:
 | `xxxxxxxx` in `Grid: 32` | Eight thirty-second notes |
 
 Hidden rests keep spacing exact when a gap cannot be represented by one simple
-or dotted note value. Three hits in a Grid-16 count are not treated as an
+or dotted note value. In 6/8, 9/8, and 12/8, regular eighth notes are beamed in
+compound groups of three. Three hits in a Grid-16 count are not treated as an
 implicit triplet; use meters such as 6/8 or 12/8 for triplet-feel notation until
 explicit triplet syntax exists.
 

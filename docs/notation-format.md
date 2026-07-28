@@ -294,6 +294,9 @@ renders as eighth notes, `x--x` renders as dotted eighth plus sixteenth, and
 `xxxx` renders as sixteenth notes. Hidden rests preserve spacing for unusual
 gaps that cannot be represented by one simple or dotted value.
 
+In 6/8, 9/8, and 12/8, regular eighth notes are beamed in compound groups of
+three: two groups in 6/8, three in 9/8, and four in 12/8.
+
 Three hits in one Grid-16 count are not implicit triplets. Use compound meters
 such as 6/8 or 12/8 for triplet-feel notation until explicit triplet syntax is
 added. Slots-per-bar is `beats × (grid ÷ beat-value)`; e.g. 4/4 at grid 16 =

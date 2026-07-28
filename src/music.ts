@@ -40,6 +40,24 @@ export function getSlotsPerBeat(timeSignature: string, gridResolution: GridResol
   return Math.max(1, Math.round(gridResolution / beatValue));
 }
 
+export function getBeamGroupSlotCount(
+  timeSignature: string,
+  gridResolution: GridResolution = DEFAULT_GRID_RESOLUTION
+): number {
+  const slotsPerBeat = getSlotsPerBeat(timeSignature, gridResolution);
+  const match = /^(\d+)\/(\d+)$/.exec(timeSignature);
+
+  if (!match) {
+    return slotsPerBeat;
+  }
+
+  const beats = Number.parseInt(match[1], 10);
+  const beatValue = Number.parseInt(match[2], 10);
+  const usesCompoundEighthGrouping = beatValue === 8 && (beats === 6 || beats === 9 || beats === 12);
+
+  return slotsPerBeat * (usesCompoundEighthGrouping ? 3 : 1);
+}
+
 export function getBeatValue(timeSignature: string): number {
   const match = /^\d+\/(\d+)$/.exec(timeSignature);
 

@@ -3,6 +3,7 @@ import {
   compareVexKeys,
   durationForDenominator,
   durationForGridSpan,
+  getBeamGroupSlotCount,
   getBeatValue,
   getGridSpanToNextHit,
   getSecondsPerSlot,
@@ -44,6 +45,26 @@ describe("getSlotsPerBeat / getBeatValue", () => {
     expect(getBeatValue("4/4")).toBe(4);
     expect(getBeatValue("6/8")).toBe(8);
     expect(getBeatValue("garbage")).toBe(4);
+  });
+});
+
+describe("getBeamGroupSlotCount", () => {
+  it.each([
+    ["6/8", 16, 6],
+    ["9/8", 16, 6],
+    ["12/8", 16, 6],
+    ["6/8", 32, 12],
+    ["9/8", 32, 12],
+    ["12/8", 32, 12]
+  ] as const)("groups three written eighth-note beats in %s at Grid %i", (timeSignature, grid, expected) => {
+    expect(getBeamGroupSlotCount(timeSignature, grid)).toBe(expected);
+  });
+
+  it("keeps non-compound meters grouped by one written beat", () => {
+    expect(getBeamGroupSlotCount("4/4", 16)).toBe(4);
+    expect(getBeamGroupSlotCount("3/8", 16)).toBe(2);
+    expect(getBeamGroupSlotCount("7/8", 16)).toBe(2);
+    expect(getBeamGroupSlotCount("6/4", 16)).toBe(4);
   });
 });
 
