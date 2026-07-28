@@ -10,6 +10,8 @@ or see the
 
 ## Release Notes
 
+- `1.0.8` restores full notehead highlighting during playback and keeps normal
+  bars following measure-repeat notation visible and separately playable.
 - `1.0.7` adds explicit `Grouping:` syntax for beaming asymmetric `/8` and
   `/16` meters, plus a 7/8 playground example grouped as 2+2+3.
 - `1.0.6` beams regular eighth-note patterns by compound beat in 6/8, 9/8,
