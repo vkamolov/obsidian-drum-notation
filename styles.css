@@ -558,8 +558,8 @@ body.is-mobile .drum-notation__speed {
   filter: drop-shadow(0 0 5px color-mix(in srgb, var(--drum-accent) 72%, transparent));
 }
 
-.drum-notation__interactive-note.is-playing path,
-.drum-notation__interactive-note.is-playing text {
+.drum-notation__score svg .drum-notation__interactive-note.is-playing .vf-notehead path,
+.drum-notation__score svg .drum-notation__interactive-note.is-playing .vf-notehead text {
   stroke: var(--drum-accent);
   fill: var(--drum-accent);
 }
@@ -574,10 +574,10 @@ body.is-mobile .drum-notation__speed {
   filter: drop-shadow(0 0 5px color-mix(in srgb, var(--pg-accent) 72%, transparent));
 }
 
-.drum-notation.is-editing .drum-notation__interactive-note.is-edit-selected path,
-.drum-notation.is-editing .drum-notation__interactive-note.is-edit-selected text,
-.pg-editing #pg-preview .drum-notation__interactive-note.is-edit-selected path,
-.pg-editing #pg-preview .drum-notation__interactive-note.is-edit-selected text {
+.drum-notation.is-editing .drum-notation__score svg .drum-notation__interactive-note.is-edit-selected .vf-notehead path,
+.drum-notation.is-editing .drum-notation__score svg .drum-notation__interactive-note.is-edit-selected .vf-notehead text,
+.pg-editing #pg-preview .drum-notation__score svg .drum-notation__interactive-note.is-edit-selected .vf-notehead path,
+.pg-editing #pg-preview .drum-notation__score svg .drum-notation__interactive-note.is-edit-selected .vf-notehead text {
   stroke: var(--pg-accent);
   fill: var(--pg-accent);
 }
