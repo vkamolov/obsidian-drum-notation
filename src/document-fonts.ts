@@ -39,9 +39,9 @@ export class DocumentFontRegistry {
     definitions: readonly DocumentFontDefinition[]
   ): Promise<void> {
     const fontFaceConstructor = getFontFaceConstructor(doc);
-    const fontSet = doc.fonts as WritableFontFaceSet;
+    const fontSet = doc.fonts;
 
-    if (!fontFaceConstructor) {
+    if (!fontFaceConstructor || !isWritableFontFaceSet(fontSet)) {
       return;
     }
 
@@ -63,6 +63,10 @@ export class DocumentFontRegistry {
       })
     );
   }
+}
+
+function isWritableFontFaceSet(fontSet: FontFaceSet): fontSet is WritableFontFaceSet {
+  return "add" in fontSet && typeof fontSet.add === "function";
 }
 
 function getFontFaceConstructor(doc: Document): FontFaceConstructor | null {
