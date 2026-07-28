@@ -4,7 +4,9 @@
 
 Render drum kit patterns as graphical SVG percussion staff notation in Obsidian, with playback.
 
-See [docs/notation-format.md](https://github.com/vkamolov/obsidian-drum-notation/blob/main/docs/notation-format.md) for the full notation format reference.
+Try the [interactive web playground](https://vkamolov.github.io/obsidian-drum-notation/),
+or see the
+[full notation format reference](https://github.com/vkamolov/obsidian-drum-notation/blob/main/docs/notation-format.md).
 
 ## Release Notes
 
