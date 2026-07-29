@@ -42,7 +42,8 @@ describe("bar clipboard model helpers", () => {
 
   it("pastes into the selected bar while preserving its system and subtitle", () => {
     const source = parseDrumBlock("ST | R---\nHH | X---\nSD | --g-");
-    const target = parseDrumBlock(`Subtitle: Keep me
+    const target = parseDrumBlock(`Rests: off
+Subtitle: Keep me
 BD | o--- | ----
 HH | ---- | x---
 Bar
@@ -58,6 +59,7 @@ CR | c---`);
     }
 
     expect(result.block.systems[0].subtitle).toBe("Keep me");
+    expect(result.block.showRests).toBe(false);
     expect(findHit(result.block, result.block.bars[1].startSlot, "closed-hat")?.articulation).toBe("accent");
     expect(findHit(result.block, result.block.bars[1].startSlot + 2, "snare")?.articulation).toBe("ghost");
     expect(findSticking(result.block, result.block.bars[1].startSlot)).toBe("right");

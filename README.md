@@ -10,6 +10,9 @@ or see the
 
 ## Release Notes
 
+- `1.0.9` shows inferred rest symbols by default, adds `Rests: off` for the
+  previous compact style, groups fully silent bars by meter, and adds a
+  playground example for rests and off-beat entries.
 - `1.0.8` restores full notehead highlighting during playback and keeps normal
   bars following measure-repeat notation visible and separately playable.
 - `1.0.7` adds explicit `Grouping:` syntax for beaming asymmetric `/8` and
@@ -162,6 +165,7 @@ Subtitle: Verse
 Repeat: 4
 Cursor: on
 Highlight: on
+Rests: on
 Legend: off
 Grid: 16
 ```
@@ -178,6 +182,7 @@ Supported settings:
 | `Repeat:` or `Repeats:` | `Repeat: 4` | Plays the whole block this many times when pressing **Play**. |
 | `Cursor:` or `Playback Cursor:` | `Cursor: on` | Shows or hides the blinking playback cursor. Defaults to `off`. |
 | `Highlight:`, `Note Highlight:`, or `Playback Highlight:` | `Highlight: off` | Highlights the note/chord that is currently sounding. Defaults to `on`. |
+| `Rests:` | `Rests: off` | Shows inferred rest symbols by default. Use `off` to keep their spacing while hiding the symbols. |
 | `Legend:`, `Instrument Legend:`, or `Kit Legend:` | `Legend: all` | Shows a compact color key. Use `on`/`used` for instruments in the current block, `all` for the full supported kit, or `off` to hide it. Defaults to `off`. |
 | `Grid:`, `Subdivision:`, or `Resolution:` | `Grid: 32` | Sets one source character to a sixteenth note (`16`, default) or thirty-second note (`32`). |
 | `Author:` | `Author: Test Author` | Stored as metadata. |
@@ -333,14 +338,18 @@ derives note values from the distance to the next hit inside each beat:
 | `xxxx` | Four sixteenth notes |
 | `xxxxxxxx` in `Grid: 32` | Eight thirty-second notes |
 
-Hidden rests keep spacing exact when a gap cannot be represented by one simple
-or dotted note value. In 6/8, 9/8, and 12/8, regular eighth notes are beamed in
-compound groups of three. For asymmetric `/8` and `/16` meters, add a block-level
-setting such as `Grouping: 2+2+3` to control beam boundaries. Grouping changes
-engraving only; it does not change playback timing, metronome/count-in pulses,
-or create tuplets. Three hits in a Grid-16 count are not treated as an implicit
-triplet; use meters such as 6/8 or 12/8 for triplet-feel notation until explicit
-triplet syntax exists.
+Rest tickables keep spacing exact when a gap cannot be represented by one
+simple or dotted note value. Their symbols are visible by default; add
+`Rests: off` to hide the symbols without changing timing or spacing. Hyphens
+describe silence, but they do not force a separate rest after every hit because
+the preceding note duration is inferred from the next hit. In 6/8, 9/8, and
+12/8, regular eighth notes are beamed in compound groups of three. For
+asymmetric `/8` and `/16` meters, add a block-level setting such as
+`Grouping: 2+2+3` to control beam boundaries. Grouping changes engraving only;
+it does not change playback timing, metronome/count-in pulses, or create
+tuplets. Three hits in a Grid-16 count are not treated as an implicit triplet;
+use meters such as 6/8 or 12/8 for triplet-feel notation until explicit triplet
+syntax exists.
 
 ## Hit Characters
 
@@ -501,7 +510,10 @@ Each pattern character remains a sixteenth-note slot for spacing and playback.
 `Grouping: 2+2+3` beams the seven written eighth notes as two, two, and three
 without changing their timing.
 
-Rest slots keep the rhythm spaced correctly, but rest symbols are hidden in the rendered score.
+Rest slots keep the rhythm spaced correctly and inferred rest symbols are
+visible by default. Use `Rests: off` to hide those symbols while retaining the
+same timing and spacing. Fully silent bars currently use beat-group rests;
+centered whole-measure rests are planned separately.
 
 ## Repetition And Looping
 

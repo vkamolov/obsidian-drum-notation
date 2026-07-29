@@ -5,6 +5,7 @@ import {
   DEFAULT_REPEAT_COUNT,
   DEFAULT_SHOW_CURSOR,
   DEFAULT_SHOW_HIGHLIGHT,
+  DEFAULT_SHOW_RESTS,
   DEFAULT_TEMPO,
   DEFAULT_TIME_SIGNATURE,
   DrumBlock,
@@ -90,6 +91,10 @@ function serializeMinimalHeader(block: DrumBlock): string[] {
 
   if (block.showHighlight !== DEFAULT_SHOW_HIGHLIGHT) {
     lines.push(`Highlight: ${block.showHighlight ? "on" : "off"}`);
+  }
+
+  if (block.showRests !== DEFAULT_SHOW_RESTS) {
+    lines.push(`Rests: ${block.showRests ? "on" : "off"}`);
   }
 
   return lines;

@@ -213,14 +213,27 @@ Bar
 HH | xxxxxxxxxxxxxxxx`);
   });
 
+  it("canonically serializes hidden rests and omits the visible default", () => {
+    const hidden = roundTrips(`Rests: hide
+HH | x---`);
+    const visible = serializeDrumBlock(parseDrumBlock(`Rests: on
+HH | x---`));
+
+    expect(hidden).toBe(`Rests: off
+HH | x---`);
+    expect(visible).toBe("HH | x---");
+  });
+
   it("drops settings left at their defaults", () => {
     const out = serializeDrumBlock(parseDrumBlock(`Tempo: 100
 Time: 4/4
 Cursor: off
+Rests: on
 HH | x---`));
 
     expect(out).not.toContain("Tempo");
     expect(out).not.toContain("Cursor");
+    expect(out).not.toContain("Rests");
     expect(out).toBe("HH | x---");
   });
 
@@ -290,6 +303,7 @@ Repeat: 2
 Grid: 32
 Legend: used
 Cursor: on
+Rests: off
 HH | x---`),
       { mode: "authoring" }
     );
@@ -301,6 +315,7 @@ Grid: 32
 Repeat: 2
 Legend: used
 Cursor: on
+Rests: off
 HH | x---`);
   });
 

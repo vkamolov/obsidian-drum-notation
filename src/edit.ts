@@ -938,7 +938,7 @@ function defaultLabel(instrument: DrumInstrument): string {
 }
 
 function headerOf(block: DrumBlock): DrumBlockHeader {
-  const { tempo, timeSignature, beamGrouping, repeatCount, showCursor, showHighlight, legendMode, gridResolution, metadata } = block;
+  const { tempo, timeSignature, beamGrouping, repeatCount, showCursor, showHighlight, showRests, legendMode, gridResolution, metadata } = block;
 
   return {
     tempo,
@@ -947,6 +947,7 @@ function headerOf(block: DrumBlock): DrumBlockHeader {
     repeatCount,
     showCursor,
     showHighlight,
+    showRests,
     legendMode,
     gridResolution,
     metadata

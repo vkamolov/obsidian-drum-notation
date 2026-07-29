@@ -241,6 +241,15 @@ HH | x-x-x-x-x-x-x-`);
     expect(serializeDrumBlock(edited)).toContain("Grouping: 2+2+3");
   });
 
+  it("preserves rest visibility through structural visual edits", () => {
+    const hiddenRests = parseDrumBlock(`Rests: off
+HH | x---`);
+    const edited = toggleHit(hiddenRests, 1, SD);
+
+    expect(edited.showRests).toBe(false);
+    expect(serializeDrumBlock(edited)).toContain("Rests: off");
+  });
+
   it("setting edits survive a serialize round-trip", () => {
     const edited = setTempo(setGrid(block, 32), 90);
     const text = serializeDrumBlock(edited);

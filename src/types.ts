@@ -5,6 +5,7 @@ export interface DrumBlockHeader {
   repeatCount: number;
   showCursor: boolean;
   showHighlight: boolean;
+  showRests: boolean;
   legendMode: LegendMode;
   gridResolution: GridResolution;
   metadata: string[];
@@ -186,5 +187,6 @@ export const DEFAULT_TIME_SIGNATURE = "4/4";
 export const DEFAULT_REPEAT_COUNT = 1;
 export const DEFAULT_SHOW_CURSOR = false;
 export const DEFAULT_SHOW_HIGHLIGHT = true;
+export const DEFAULT_SHOW_RESTS = true;
 export const DEFAULT_LEGEND_MODE: LegendMode = "off";
 export const DEFAULT_GRID_RESOLUTION: GridResolution = 16;

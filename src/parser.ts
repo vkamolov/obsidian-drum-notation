@@ -6,6 +6,7 @@ import {
   DEFAULT_REPEAT_COUNT,
   DEFAULT_SHOW_CURSOR,
   DEFAULT_SHOW_HIGHLIGHT,
+  DEFAULT_SHOW_RESTS,
   DEFAULT_TEMPO,
   DEFAULT_TIME_SIGNATURE,
   DrumBar,
@@ -80,6 +81,7 @@ const SETTING_KEYS = new Set([
   "highlight",
   "notehighlight",
   "playbackhighlight",
+  "rests",
   "legend",
   "instrumentlegend",
   "kitlegend",
@@ -102,6 +104,7 @@ const DIAGNOSTIC_SETTING_KEYS = new Set([
   "highlight",
   "notehighlight",
   "playbackhighlight",
+  "rests",
   "legend",
   "instrumentlegend",
   "kitlegend",
@@ -143,6 +146,7 @@ function parseDrumBlockInternal(source: string, collectWarnings: boolean): Parse
   let repeatCount = DEFAULT_REPEAT_COUNT;
   let showCursor = DEFAULT_SHOW_CURSOR;
   let showHighlight = DEFAULT_SHOW_HIGHLIGHT;
+  let showRests = DEFAULT_SHOW_RESTS;
   let legendMode = DEFAULT_LEGEND_MODE;
   let gridResolution = DEFAULT_GRID_RESOLUTION;
   const warn = (line: number, code: ParseWarningCode, message: string, column?: number) => {
@@ -267,6 +271,12 @@ function parseDrumBlockInternal(source: string, collectWarnings: boolean): Parse
         }
 
         showHighlight = parseBooleanSetting(setting.value, DEFAULT_SHOW_HIGHLIGHT);
+      } else if (setting.key === "rests") {
+        if (!isBooleanSettingValue(setting.value)) {
+          warn(lineNumber, "invalid-setting", `${setting.originalKey}: "${setting.value}" is not a recognized on/off value; using ${DEFAULT_SHOW_RESTS ? "on" : "off"}.`);
+        }
+
+        showRests = parseBooleanSetting(setting.value, DEFAULT_SHOW_RESTS);
       } else if (setting.key === "legend" || setting.key === "instrumentlegend" || setting.key === "kitlegend" || setting.key === "colorlegend") {
         if (!isLegendSettingValue(setting.value)) {
           warn(lineNumber, "invalid-setting", `${setting.originalKey}: "${setting.value}" is not a recognized legend mode; using ${DEFAULT_LEGEND_MODE}.`);
@@ -358,6 +368,7 @@ function parseDrumBlockInternal(source: string, collectWarnings: boolean): Parse
       repeatCount,
       showCursor,
       showHighlight,
+      showRests,
       legendMode,
       gridResolution,
       metadata

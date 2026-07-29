@@ -66,9 +66,12 @@ case-insensitive and ignore spaces/hyphens (`Time Signature` == `timesignature`)
 | `Legend` | `Instrument Legend`, `Kit Legend`, `Color Legend` | `off` / `used` / `all` | `off` | Color key visibility |
 | `Cursor` | `Playback Cursor` | boolean | `off` | Blinking playback cursor |
 | `Highlight` | `Note Highlight`, `Playback Highlight` | boolean | `on` | Highlight the playing note |
+| `Rests` | — | boolean | `on` | Show or hide inferred rest symbols without changing spacing |
 
 **Boolean values** — true: `on`, `true`, `yes`, `y`, `1`, `show`, `visible`;
 false: `off`, `false`, `no`, `n`, `0`, `hide`, `hidden`.
+Because visible rests are the default, serialization omits `Rests: on` and
+normalizes any hidden-rest alias to `Rests: off`.
 
 **Legend values** — `used` (instruments present in the block) also accepts
 `on`/`true`/`yes`/`current`/`present`; `all` (full kit) also accepts
@@ -315,8 +318,13 @@ the current local one-bar repeat.
 means one character is a thirty-second-note slot. In both grids, rendered note
 values are derived from the distance to the next hit within each beat: `x-x-`
 renders as eighth notes, `x--x` renders as dotted eighth plus sixteenth, and
-`xxxx` renders as sixteenth notes. Hidden rests preserve spacing for unusual
-gaps that cannot be represented by one simple or dotted value.
+`xxxx` renders as sixteenth notes. Inferred rests preserve spacing for silent
+beats, leading gaps, and unusual spans that cannot be represented by one simple
+or dotted value. Rest symbols are visible by default; `Rests: off` suppresses
+the symbols while retaining the same rest tickables, timing, and spacing.
+Hyphens indicate silence, but do not force a separate rest after every hit:
+`x---` is a quarter note, while `--x-` is an eighth rest followed by an eighth
+note.
 
 In 6/8, 9/8, and 12/8, regular eighth notes are beamed in compound groups of
 three: two groups in 6/8, three in 9/8, and four in 12/8.
@@ -328,6 +336,11 @@ Time: 7/8
 Grouping: 2+2+3
 HH | x-x-x-x-x-x-x-
 ```
+
+Fully silent bars are displayed with rests matching the active beat grouping,
+such as two dotted-quarter rests in 6/8. Centered whole-measure rests are not
+modeled yet. Sticking marks and playback cursor anchors still attach to written
+hits rather than hitless rest slots.
 
 The grouping components count denominator beats and must add up to the meter
 numerator. Explicit grouping overrides automatic compound grouping for that

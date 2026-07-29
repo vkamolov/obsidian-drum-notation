@@ -32,6 +32,11 @@ Subtitle: Break: dotted kicks and off-beat snares
 SD | ----------o-o---
 BD | o--o--o---------`,
 
+  "Rests and off-beats": `Title: Rests and off-beats
+Time: 4/4
+Grid: 16
+HH | x-x-x-x-x------- | ----x----------- | x-x-----x-x-----`,
+
   "6/8 ballad": `Title: 6/8 ballad
 Tempo: 66
 Time: 6/8

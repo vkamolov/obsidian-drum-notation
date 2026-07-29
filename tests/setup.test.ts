@@ -53,7 +53,8 @@ Time: 6/8
 Grouping: 3+3
 Repeat: 3
 Legend: used
-Cursor: on`);
+Cursor: on
+Rests: off`);
     const block = createInitialDrumBlock(
       {
         title: "New title",
@@ -70,6 +71,7 @@ Cursor: on`);
     expect(block.beamGrouping).toEqual([3, 3]);
     expect(block.legendMode).toBe("used");
     expect(block.showCursor).toBe(true);
+    expect(block.showRests).toBe(false);
     expect(block.tempo).toBe(92);
     expect(block.timeSignature).toBe("6/8");
     expect(block.gridResolution).toBe(32);

@@ -1,17 +1,22 @@
-import { Beam } from "vexflow/bravura";
+import { Beam, Dot, StaveNote } from "vexflow/bravura";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { buildGridVisualBarNotes } from "../src/engrave";
 import { parseDrumBlock } from "../src/parser";
 import { GridResolution } from "../src/types";
 
 let vexFlowWarning: ReturnType<typeof vi.spyOn>;
+let dotSetFont: ReturnType<typeof vi.spyOn>;
 
 beforeAll(() => {
   vexFlowWarning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+  dotSetFont = vi.spyOn(Dot.prototype, "setFont").mockImplementation(function () {
+    return this;
+  });
 });
 
 afterAll(() => {
   vexFlowWarning.mockRestore();
+  dotSetFont.mockRestore();
 });
 
 function repeatedEighthPattern(count: number, grid: GridResolution): string {
@@ -48,6 +53,16 @@ function secondaryBeamBreakIndexes(beam: Beam): number[] {
   return Array.isArray(value)
     ? value.filter((index): index is number => typeof index === "number")
     : [];
+}
+
+function restSignatures(notes: readonly unknown[]): Array<{ duration: string; dots: number; visible: boolean }> {
+  return notes
+    .filter((note): note is StaveNote => note instanceof StaveNote && note.isRest())
+    .map((note) => ({
+      duration: note.getDuration(),
+      dots: note.getModifiersByType("Dot").length,
+      visible: note.renderOptions.draw !== false
+    }));
 }
 
 describe("compound-meter beaming", () => {
@@ -141,5 +156,85 @@ describe("compound-meter beaming", () => {
 
     expect(visualBar.noteSlots.map((slot) => slot.index)).toEqual(expectedSlots);
     expect(visualBar.cursorSlots.map((slot) => slot.index)).toEqual(expectedSlots);
+  });
+});
+
+describe("rest engraving", () => {
+  it("emits visible rests for silent beats and leading gaps", () => {
+    const firstBar = buildBeams("4/4", 16, "x-x-x-x-x-------").visualBar;
+    const secondBar = buildBeams("4/4", 16, "----x-----------").visualBar;
+
+    expect(restSignatures(firstBar.notes)).toEqual([
+      { duration: "4", dots: 0, visible: true }
+    ]);
+    expect(restSignatures(secondBar.notes)).toEqual([
+      { duration: "4", dots: 0, visible: true },
+      { duration: "4", dots: 0, visible: true },
+      { duration: "4", dots: 0, visible: true }
+    ]);
+  });
+
+  it("renders an off-beat eighth rest without adding a trailing rest after a sustained hit", () => {
+    const offBeat = buildBeams("4/4", 16, "--x-xxxxxxxxxxxx").visualBar;
+    const sustained = buildBeams("4/4", 16, "x---xxxxxxxxxxxx").visualBar;
+
+    expect(restSignatures(offBeat.notes)).toEqual([
+      { duration: "8", dots: 0, visible: true }
+    ]);
+    expect(offBeat.hitNotes[0].getDuration()).toBe("8");
+    expect(restSignatures(sustained.notes)).toEqual([]);
+    expect(sustained.hitNotes[0].getDuration()).toBe("4");
+  });
+
+  it.each([
+    ["4/4", 16, undefined, "----------------", [
+      { duration: "4", dots: 0, visible: true },
+      { duration: "4", dots: 0, visible: true },
+      { duration: "4", dots: 0, visible: true },
+      { duration: "4", dots: 0, visible: true }
+    ]],
+    ["6/8", 16, undefined, "------------", [
+      { duration: "4", dots: 1, visible: true },
+      { duration: "4", dots: 1, visible: true }
+    ]],
+    ["9/8", 16, undefined, "------------------", [
+      { duration: "4", dots: 1, visible: true },
+      { duration: "4", dots: 1, visible: true },
+      { duration: "4", dots: 1, visible: true }
+    ]],
+    ["12/8", 16, undefined, "------------------------", [
+      { duration: "4", dots: 1, visible: true },
+      { duration: "4", dots: 1, visible: true },
+      { duration: "4", dots: 1, visible: true },
+      { duration: "4", dots: 1, visible: true }
+    ]],
+    ["7/8", 16, "2+2+3", "--------------", [
+      { duration: "4", dots: 0, visible: true },
+      { duration: "4", dots: 0, visible: true },
+      { duration: "4", dots: 1, visible: true }
+    ]]
+  ] as const)(
+    "groups a fully silent %s bar by its engraving meter",
+    (timeSignature, grid, grouping, pattern, expected) => {
+      const { visualBar } = buildBeams(timeSignature, grid, pattern, grouping);
+
+      expect(restSignatures(visualBar.notes)).toEqual(expected);
+      expect(visualBar.hitNotes).toEqual([]);
+      expect(visualBar.noteSlots).toEqual([]);
+      expect(visualBar.cursorSlots).toEqual([]);
+      expect(visualBar.beams).toEqual([]);
+    }
+  );
+
+  it("keeps Grid 32 rest decomposition and written hit mappings stable", () => {
+    const { visualBar } = buildBeams("4/4", 32, "----x---x-----------------------");
+
+    expect(restSignatures(visualBar.notes)[0]).toEqual({
+      duration: "8",
+      dots: 0,
+      visible: true
+    });
+    expect(visualBar.noteSlots.map((slot) => slot.index)).toEqual([4, 8]);
+    expect(visualBar.cursorSlots.map((slot) => slot.index)).toEqual([4, 8]);
   });
 });

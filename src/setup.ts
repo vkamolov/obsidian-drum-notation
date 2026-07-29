@@ -8,6 +8,7 @@ import {
   DEFAULT_REPEAT_COUNT,
   DEFAULT_SHOW_CURSOR,
   DEFAULT_SHOW_HIGHLIGHT,
+  DEFAULT_SHOW_RESTS,
   DEFAULT_TEMPO,
   DEFAULT_TIME_SIGNATURE,
   DrumBlock,
@@ -176,6 +177,7 @@ function defaultHeader(): DrumBlockHeader {
     repeatCount: DEFAULT_REPEAT_COUNT,
     showCursor: DEFAULT_SHOW_CURSOR,
     showHighlight: DEFAULT_SHOW_HIGHLIGHT,
+    showRests: DEFAULT_SHOW_RESTS,
     legendMode: DEFAULT_LEGEND_MODE,
     gridResolution: DEFAULT_GRID_RESOLUTION,
     metadata: []
@@ -190,6 +192,7 @@ function toHeader(block: DrumBlock): DrumBlockHeader {
     repeatCount: block.repeatCount,
     showCursor: block.showCursor,
     showHighlight: block.showHighlight,
+    showRests: block.showRests,
     legendMode: block.legendMode,
     gridResolution: block.gridResolution,
     metadata: [...block.metadata]

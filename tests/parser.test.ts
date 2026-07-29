@@ -21,6 +21,7 @@ describe("parseDrumBlock - defaults and basic structure", () => {
     expect(block.legendMode).toBe("off");
     expect(block.showCursor).toBe(false);
     expect(block.showHighlight).toBe(true);
+    expect(block.showRests).toBe(true);
   });
 
   it("builds one bar of sixteen slots from three rows", () => {
@@ -50,6 +51,7 @@ Grid: 32
 Legend: all
 Cursor: off
 Highlight: no
+Rests: hide
 HH | x-x-x-x-x-x-x-x-`);
 
   it("clamps and normalizes settings", () => {
@@ -60,6 +62,29 @@ HH | x-x-x-x-x-x-x-x-`);
     expect(block.legendMode).toBe("all");
     expect(block.showCursor).toBe(false);
     expect(block.showHighlight).toBe(false);
+    expect(block.showRests).toBe(false);
+  });
+
+  it.each(["on", "show", "true", "yes", "1"])("accepts Rests: %s as visible", (value) => {
+    expect(parseDrumBlock(`Rests: ${value}\nHH | x---`).showRests).toBe(true);
+  });
+
+  it.each(["off", "hide", "false", "no", "0"])("accepts Rests: %s as hidden", (value) => {
+    expect(parseDrumBlock(`Rests: ${value}\nHH | x---`).showRests).toBe(false);
+  });
+
+  it("warns and uses visible rests for an invalid value", () => {
+    const parsed = parseDrumBlockWithWarnings(`Rests: maybe
+HH | x---`);
+
+    expect(parsed.block.showRests).toBe(true);
+    expect(parsed.warnings).toContainEqual(
+      expect.objectContaining({
+        code: "invalid-setting",
+        line: 1,
+        message: expect.stringContaining("using on")
+      })
+    );
   });
 });
 

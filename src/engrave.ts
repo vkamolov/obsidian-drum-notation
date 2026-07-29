@@ -18,6 +18,7 @@ export type LegendHighlightSource = "playback" | "preview";
 
 const LEGEND_HIGHLIGHT_MIN_MS = 90;
 const LEGEND_HIGHLIGHT_MAX_MS = 320;
+const REST_FONT_SCALE = 0.9;
 
 interface NotationLayout {
   systemHeight: number;
@@ -220,11 +221,16 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
       const notes = visualBar.notes;
       notes.forEach((note) => {
         if (layout.noteFontSize !== undefined) {
-          note.setFontSize(layout.noteFontSize);
+          const isRest = note instanceof StaveNote && note.isRest();
+          const fontSize = isRest
+            ? layout.noteFontSize * REST_FONT_SCALE
+            : layout.noteFontSize;
+
+          note.setFontSize(fontSize);
 
           if (note instanceof StaveNote) {
             note.noteHeads.forEach((noteHead) => {
-              noteHead.setFontSize(layout.noteFontSize);
+              noteHead.setFontSize(fontSize);
             });
           }
         }
@@ -232,6 +238,10 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
         note.setStyle({ fillStyle: "currentColor", strokeStyle: "currentColor", lineWidth: layout.strokeWidth });
 
         if (note instanceof StaveNote) {
+          if (note.isRest() && !block.showRests) {
+            note.renderOptions.draw = false;
+          }
+
           note.setLedgerLineStyle({ fillStyle: "currentColor", strokeStyle: "currentColor", lineWidth: layout.ledgerLineWidth });
         }
       });
@@ -1306,6 +1316,12 @@ export function buildGridVisualBarNotes(
     boundaryGroupIndex += 1;
   }
 
+  if (slots.length > 0 && slots.every((slot) => slot.hits.length === 0)) {
+    appendSilentBarRests(notes, slots.length, gridResolution, beamGroupSlotCounts);
+
+    return { notes, hitNotes, noteSlots, cursorNotes: hitNotes, cursorSlots: noteSlots, beams, tuplets };
+  }
+
   let beamGroup: StaveNote[] = [];
   let secondaryBeamBreakIndexes: number[] = [];
 
@@ -1339,14 +1355,14 @@ export function buildGridVisualBarNotes(
 
     if (hitIndexes.length === 0) {
       finishBeamGroup();
-      appendHiddenGridRests(notes, beatSlots.length, gridResolution);
+      appendGridRests(notes, beatSlots.length, gridResolution);
       continue;
     }
 
     hitIndexes.forEach((hitIndex, indexInBeat) => {
       if (hitIndex > cursor) {
         finishBeamGroup();
-        appendHiddenGridRests(notes, hitIndex - cursor, gridResolution);
+        appendGridRests(notes, hitIndex - cursor, gridResolution);
       }
 
       const slot = beatSlots[hitIndex];
@@ -1362,15 +1378,10 @@ export function buildGridVisualBarNotes(
 
       if (span.supportedSpan !== nextHitIndex - hitIndex) {
         finishBeamGroup();
-        appendHiddenGridRests(notes, nextHitIndex - hitIndex - span.supportedSpan, gridResolution);
+        appendGridRests(notes, nextHitIndex - hitIndex - span.supportedSpan, gridResolution);
         cursor = nextHitIndex;
       }
     });
-
-    if (cursor < beatSlots.length) {
-      finishBeamGroup();
-      appendHiddenGridRests(notes, beatSlots.length - cursor, gridResolution);
-    }
 
     const beatEnd = start + beatSlots.length;
 
@@ -1384,10 +1395,49 @@ export function buildGridVisualBarNotes(
   return { notes, hitNotes, noteSlots, cursorNotes: hitNotes, cursorSlots: noteSlots, beams, tuplets };
 }
 
-function appendHiddenGridRests(notes: Tickable[], span: number, gridResolution: GridResolution): void {
+function appendGridRests(notes: Tickable[], span: number, gridResolution: GridResolution): void {
   let remaining = span;
 
   while (remaining > 0) {
+    const restSpan = largestPowerOfTwoAtMost(remaining);
+
+    notes.push(makeStaveNote({ index: -1, hits: [] }, durationForGridSpan(gridResolution, restSpan)));
+    remaining -= restSpan;
+  }
+}
+
+function appendSilentBarRests(
+  notes: Tickable[],
+  slotCount: number,
+  gridResolution: GridResolution,
+  beamGroupSlotCounts: readonly number[]
+): void {
+  let cursor = 0;
+  let groupIndex = 0;
+
+  while (cursor < slotCount) {
+    const groupSpan = Math.min(
+      beamGroupSlotCounts[groupIndex % beamGroupSlotCounts.length],
+      slotCount - cursor
+    );
+
+    appendGroupedGridRests(notes, groupSpan, gridResolution);
+    cursor += groupSpan;
+    groupIndex += 1;
+  }
+}
+
+function appendGroupedGridRests(notes: Tickable[], span: number, gridResolution: GridResolution): void {
+  let remaining = span;
+
+  while (remaining > 0) {
+    const exactSpan = getGridSpanToNextHit(0, remaining, remaining, gridResolution);
+
+    if (exactSpan.supportedSpan === remaining) {
+      notes.push(makeStaveNote({ index: -1, hits: [] }, exactSpan.duration, false, exactSpan.dots));
+      return;
+    }
+
     const restSpan = largestPowerOfTwoAtMost(remaining);
 
     notes.push(makeStaveNote({ index: -1, hits: [] }, durationForGridSpan(gridResolution, restSpan)));
@@ -1461,14 +1511,13 @@ function getRenderedSlotIndexes(group: SVGGElement): number[] {
 function makeStaveNote(slot: DrumSlot, duration = "16", colorNoteheads = false, dots = 0): StaveNote {
   if (slot.hits.length === 0) {
     const rest = new StaveNote({
-      keys: ["b/4"],
+      keys: [restKeyForDuration(duration)],
       duration: `${duration}r`,
       clef: "percussion",
       stemDirection: Stem.UP
     });
 
     attachDots(rest, dots);
-    rest.renderOptions.draw = false;
 
     return rest;
   }
@@ -1491,6 +1540,10 @@ function makeStaveNote(slot: DrumSlot, duration = "16", colorNoteheads = false, 
   applyHitModifiers(note, slot.hits, colorNoteheads);
 
   return note;
+}
+
+function restKeyForDuration(duration: string): string {
+  return duration === "1" ? "d/5" : "b/4";
 }
 
 function attachDots(note: StaveNote, dots: number): void {
