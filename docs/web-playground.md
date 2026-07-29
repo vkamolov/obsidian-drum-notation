@@ -129,11 +129,12 @@ the **first** import in `app.ts`. `engrave.ts` itself was **not** changed.
   Instrument palette adds rows.
   Edits live-apply to the editor text and notation preview immediately; Undo/Redo
   replaces the old Save/Cancel flow. The selected-bar editor also exposes compact
-  bar actions arranged as **Add · Duplicate · New line · Repeat | Copy · Paste
+  bar actions arranged as **Add · Duplicate · Repeat · New line | Copy · Paste
   | Delete**. Add inserts an empty bar; Duplicate inserts an immediate editable
-  copy; New line splits after the selected bar (or creates an empty next line
-  after a final bar); Copy stores content without mutating notation; Paste
-  replaces the selected bar; Repeat toggles one-bar repeat notation. The typed
+  copy; Repeat inserts a repeat bar after the selection or converts a selected
+  repeat into editable notation; New line splits after the selected bar (or
+  creates an empty next line after a final bar); Copy stores content without
+  mutating notation; Paste replaces the selected bar. The typed
   bar clipboard is shared across editors for the current page session and
   rejects incompatible Time/Grid or bar-length combinations. First interactive
   consumer of `src/edit.ts`.
@@ -163,12 +164,13 @@ In the browser at `localhost:5173`:
    matching rendered note while showing snare-valid tools such as flam, drag,
    diddle, and buzz. Horizontally scroll the grid → instrument labels remain
    pinned while count markers and cells scroll. Confirm the action order is
-   **Add · Duplicate · New line · Repeat | Copy · Paste | Delete**. Add inserts
+   **Add · Duplicate · Repeat · New line | Copy · Paste | Delete**. Add inserts
    a Time/Grid-sized empty bar; Duplicate inserts an immediate editable copy;
-   New line moves trailing bars to a new system or creates an empty system after
-   a final bar. Copy must not mutate notation. Paste replaces the selected bar
-   and asks before overwriting existing musical content. Repeat/Unrepeat toggles
-   one-bar repeat notation, and Delete removes the selected bar. The selected
+   Repeat inserts a repeat bar after the selected normal bar, while Unrepeat
+   converts a selected repeat into editable notation. New line moves trailing
+   bars to a new system or creates an empty system after a final bar. Copy must
+   not mutate notation. Paste replaces the selected bar and asks before
+   overwriting existing musical content, and Delete removes the selected bar. The selected
    bar follows the changed bar.
    If playback is running, visual edits and debounced text-code edits restart the
    active play/loop mode against the updated notation so new hits are heard

@@ -533,17 +533,18 @@ To stay deterministic and diff-friendly, serialization **normalizes**:
   text.
 - Sticking annotations serialize as a canonical `ST` row and remain display-only.
 - Model-level bar edits serialize through the same row/bar invariants as parsed
-  text. The visual editor presents them as **Add · Duplicate · New line ·
-  Repeat | Copy · Paste | Delete**.
+  text. The visual editor presents them as **Add · Duplicate · Repeat · New
+  line | Copy · Paste | Delete**.
   - **Add** inserts an empty bar after the selected bar, represented as
     Time/Grid-sized rest patterns for the selected bar's instruments.
   - **Duplicate** inserts the selected bar's exact playable content immediately
     after it.
+  - **Repeat** inserts a new `%` bar immediately after the selected normal bar.
+    **Unrepeat** converts a selected repeat into normal editable row text while
+    preserving its playable content.
   - **New line** splits after a non-final selected bar and moves the trailing
     bars into a new untitled system. When the selected bar is final, it creates
     an empty system.
-  - **Repeat/Unrepeat** marks a normal bar as `%` by copying the previous bar's
-    playable pattern; clearing the marker leaves normal editable row text.
   - **Copy** stores playable rows and sticking without changing the block.
     **Paste** replaces another selected bar only when `Time`, `Grid`, and slot
     width match. Pasted repeat content becomes normal editable row text.

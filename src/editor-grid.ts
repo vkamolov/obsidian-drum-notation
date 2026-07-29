@@ -21,8 +21,8 @@ import {
   findHit,
   findSticking,
   insertBarAfter,
+  insertRepeatBarAfter,
   pasteBarClipboardPayload,
-  setBarRepeat,
   setHit,
   setSticking,
   splitSystemAfterBar
@@ -740,7 +740,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     applyChange(deleteBar(working, selectedBarIndex), undefined, Math.max(0, selectedBarIndex - 1));
   };
 
-  const toggleSelectedBarRepeat = async () => {
+  const toggleSelectedBarRepeat = () => {
     const bar = selectedBar();
 
     if (!bar) {
@@ -752,16 +752,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
       return;
     }
 
-    if (selectedBarIndex === 0) {
-      return;
-    }
-
-    const hasHits = bar.slots.some((slot) => slot.hits.length > 0);
-    if (hasHits && !(await confirmAction(`Replace bar ${selectedBarIndex + 1} with a repeat of the previous bar?`))) {
-      return;
-    }
-
-    applyChange(setBarRepeat(working, selectedBarIndex), undefined, selectedBarIndex);
+    applyChange(insertRepeatBarAfter(working, selectedBarIndex), undefined, selectedBarIndex + 1);
   };
 
   const previousTabIndex = options.container.getAttribute("tabindex");
@@ -929,19 +920,16 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     const actions = root.createDiv({ cls: "pg-grid-editor__bar-actions" });
     createBarAction(actions, "Add", "add", "Add bar after", addBarAfterSelection);
     createBarAction(actions, "Duplicate", "duplicate", "Duplicate bar after", duplicateSelectedBar);
-    createBarAction(actions, "New line", "new-line", "Start new line after selected bar", addBarOnNewSystem);
 
     const isRepeat = !!selectedBar()?.measureRepeat;
-    const repeatButton = createBarAction(
+    createBarAction(
       actions,
       isRepeat ? "Unrepeat" : "Repeat",
       isRepeat ? "unrepeat" : "repeat",
-      isRepeat ? "Make repeat bar editable" : "Repeat previous bar",
-      () => {
-        void toggleSelectedBarRepeat();
-      }
+      isRepeat ? "Make repeat bar editable" : "Add repeat bar after selected bar",
+      toggleSelectedBarRepeat
     );
-    repeatButton.disabled = selectedBarIndex === 0 && !selectedBar()?.measureRepeat;
+    createBarAction(actions, "New line", "new-line", "Start new line after selected bar", addBarOnNewSystem);
 
     createBarActionSeparator(actions);
     createBarAction(actions, "Copy", "copy", "Copy selected bar", copySelectedBar);
@@ -1823,20 +1811,29 @@ function createBarActionIcon(doc: Document, icon: BarActionIcon): SVGSVGElement 
       appendSvg(svg, "path", { d: "M9.5 15.5 L13 19 L16.5 15.5", ...lineAttrs });
       break;
     case "repeat":
-      appendSvg(svg, "path", { d: "M17 2 L21 6 L17 10", ...lineAttrs });
-      appendSvg(svg, "path", { d: "M3 11 V9 C3 7.3 4.3 6 6 6 H21", ...lineAttrs });
-      appendSvg(svg, "path", { d: "M7 22 L3 18 L7 14", ...lineAttrs });
-      appendSvg(svg, "path", { d: "M21 13 V15 C21 16.7 19.7 18 18 18 H3", ...lineAttrs });
+      appendSvg(svg, "circle", { cx: "6.5", cy: "7.5", r: "1.75", fill: "currentColor" });
+      appendSvg(svg, "path", {
+        d: "M8.5 18 L15.5 6",
+        ...lineAttrs,
+        "stroke-width": "2"
+      });
+      appendSvg(svg, "circle", { cx: "17.5", cy: "16.5", r: "1.75", fill: "currentColor" });
       break;
     case "unrepeat":
-      appendSvg(svg, "path", { d: "M17 2 L21 6 L17 10", ...lineAttrs });
-      appendSvg(svg, "path", { d: "M3 11 V9 C3 7.3 4.3 6 6 6 H21", ...lineAttrs });
-      appendSvg(svg, "path", { d: "M7 22 L3 18 L7 14", ...lineAttrs });
-      appendSvg(svg, "path", { d: "M21 13 V15 C21 16.7 19.7 18 18 18 H3", ...lineAttrs });
       appendSvg(svg, "path", {
-        d: "M9.5 9.5 L14.5 14.5 M14.5 9.5 L9.5 14.5",
+        d: "M3.75 5.75 L7.25 9.25 M7.25 5.75 L3.75 9.25",
         ...lineAttrs,
-        "stroke-width": "2.2"
+        "stroke-width": "1.8"
+      });
+      appendSvg(svg, "path", {
+        d: "M7.5 18 L14.5 6",
+        ...lineAttrs,
+        "stroke-width": "2"
+      });
+      appendSvg(svg, "path", {
+        d: "M14.75 13.75 L18.25 17.25 M18.25 13.75 L14.75 17.25",
+        ...lineAttrs,
+        "stroke-width": "1.8"
       });
       break;
     case "delete":

@@ -593,6 +593,16 @@ export function setBarRepeat(block: DrumBlock, barIndex: number): DrumBlock {
   return rebuildBlock(block, views);
 }
 
+export function insertRepeatBarAfter(block: DrumBlock, barIndex: number): DrumBlock {
+  const inserted = insertBarAfter(block, barIndex);
+
+  if (inserted === block) {
+    return block;
+  }
+
+  return setBarRepeat(inserted, barIndex + 1);
+}
+
 export function clearBarRepeat(block: DrumBlock, barIndex: number): DrumBlock {
   const views = block.systems.map(toSystemView);
   const location = locateBar(views, barIndex);

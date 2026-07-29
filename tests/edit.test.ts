@@ -16,6 +16,7 @@ import {
   findSticking,
   hitKey,
   insertBarAfter,
+  insertRepeatBarAfter,
   removeHit,
   setGrid,
   setBarRepeat,
@@ -510,6 +511,24 @@ SD | oooo`);
 
     expect(setBarRepeat(block, 0)).toEqual(block);
     expect(setBarRepeat(block, 4)).toEqual(block);
+  });
+
+  it("insertRepeatBarAfter adds a repeat without replacing the selected bar", () => {
+    const block = parseDrumBlock("HH | x--- | -x--");
+    const edited = insertRepeatBarAfter(block, 0);
+
+    expect(edited.systems).toHaveLength(1);
+    expect(edited.bars).toHaveLength(3);
+    expect(edited.bars[1].measureRepeat).toBe(1);
+    expect(findHit(edited, 0, HH.id)).toBeTruthy();
+    expect(findHit(edited, 4, HH.id)).toBeTruthy();
+    expect(findHit(edited, 9, HH.id)).toBeTruthy();
+  });
+
+  it("insertRepeatBarAfter is a no-op for a missing bar", () => {
+    const block = parseDrumBlock("HH | x---");
+
+    expect(insertRepeatBarAfter(block, 4)).toEqual(block);
   });
 
   it("clearBarRepeat turns a repeat bar back into an editable copied bar", () => {

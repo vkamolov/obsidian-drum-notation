@@ -10,6 +10,9 @@ or see the
 
 ## Release Notes
 
+- `1.0.10` makes Repeat insert a new one-bar repeat after the selected bar,
+  keeps Unrepeat as a non-destructive conversion to editable notation, and
+  refreshes the visual-editor repeat icons and toolbar order.
 - `1.0.9` shows inferred rest symbols by default, adds `Rests: off` for the
   previous compact style, groups fully silent bars by meter, and adds a
   playground example for rests and off-beat entries.
@@ -91,16 +94,18 @@ Add `Cursor: on` if you want a blinking cursor to follow playback. Click a rende
 
 Visual edit mode is opt-in because it writes changes back to your notes. Enable **Drum Notation → Enable visual edit mode** in the plugin settings first. Then, in Obsidian reading view, press **Edit** to open a selected-bar grid below the rendered score. Click or tap a rendered bar to choose which bar the grid edits. Empty cells add a normal hit; filled cells select the hit and show the articulation tool strip. Edits apply immediately to the rendered notation and are saved back into the fenced `drums` block when you close visual edit mode or when Obsidian unloads the rendered block.
 
-The bar toolbar is arranged as **Add · Duplicate · New line · Repeat |
+The bar toolbar is arranged as **Add · Duplicate · Repeat · New line |
 Copy · Paste | Delete**:
 
 - **Add** inserts an empty bar after the selected bar on the same line.
 - **Duplicate** inserts an editable copy of the selected bar immediately after
   it.
+- **Repeat** inserts a one-bar repeat immediately after the selected normal bar.
+  **Unrepeat** turns a selected repeat into an editable copy without changing
+  playback length.
 - **New line** splits the current line after the selected bar, moving later bars
   to a new untitled line. If the selected bar is already last, it creates an
   empty next line.
-- **Repeat/Unrepeat** toggles one-bar repeat notation.
 - **Copy** stores the selected bar without changing the notation. **Paste**
   replaces the selected bar with that copied content.
 - **Delete** removes the selected bar.
@@ -117,7 +122,8 @@ Visual edit mode is intentionally limited in v1:
 - It edits only top-level `drums` fences. Blocks nested inside callouts, lists, or indented Markdown are rendered and playable, but visual editing is disabled.
 - Embedded drums blocks are rendered and playable, but visual editing and first-bar creation are disabled. Open the source note to edit the groove.
 - The first visual edit serializes the whole block in the plugin's canonical authoring form. This keeps the model safe and deterministic, but it may normalize spacing, labels, header order, and equivalent hit characters.
-- One-bar repeat bars are selectable and can be marked/unmarked with the grid controls, but the repeated bar body itself remains read-only.
+- One-bar repeat bars are selectable and can be converted to editable copies
+  with **Unrepeat**, but their repeated body remains read-only until converted.
 
 ## Embedding Grooves In Other Notes
 
