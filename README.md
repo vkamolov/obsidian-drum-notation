@@ -100,9 +100,11 @@ Copy · Paste | Delete**:
 - **Add** inserts an empty bar after the selected bar on the same line.
 - **Duplicate** inserts an editable copy of the selected bar immediately after
   it.
-- **Repeat** inserts a one-bar repeat immediately after the selected normal bar.
-  **Unrepeat** turns a selected repeat into an editable copy without changing
-  playback length.
+- **Repeat** opens a count dialog (1–99, default 1), then inserts `%` for one
+  repeat or a compact `%xN` group immediately after the selected normal bar.
+  **Unrepeat** opens the repeat dialog for both `%` and `%xN`, where you can
+  change the count or use **Make editable** to replace the repeat/group with
+  one editable copy.
 - **New line** splits the current line after the selected bar, moving later bars
   to a new untitled line. If the selected bar is already last, it creates an
   empty next line.
@@ -122,8 +124,9 @@ Visual edit mode is intentionally limited in v1:
 - It edits only top-level `drums` fences. Blocks nested inside callouts, lists, or indented Markdown are rendered and playable, but visual editing is disabled.
 - Embedded drums blocks are rendered and playable, but visual editing and first-bar creation are disabled. Open the source note to edit the groove.
 - The first visual edit serializes the whole block in the plugin's canonical authoring form. This keeps the model safe and deterministic, but it may normalize spacing, labels, header order, and equivalent hit characters.
-- One-bar repeat bars are selectable and can be converted to editable copies
-  with **Unrepeat**, but their repeated body remains read-only until converted.
+- One-bar repeat bars are selectable but their repeated body remains read-only.
+  Use **Unrepeat** to open the repeat dialog, resize `%`/`%xN`, or retain one
+  editable copy.
 
 ## Embedding Grooves In Other Notes
 
@@ -538,7 +541,8 @@ BD | o-------o-o-----
 ````
 
 Use `%` on its own line for a one-bar measure repeat. Add a count suffix such
-as `%x3` to repeat the previous bar three times:
+as `%x3` to repeat the previous bar three times. Counted measure repeats support
+1–99 copies:
 
 ````
 ```drums

@@ -14,10 +14,12 @@ import {
   duplicateBarToNextSystem,
   findHit,
   findSticking,
+  getBarRepeatGroupCount,
   hitKey,
   insertBarAfter,
   insertRepeatBarAfter,
   removeHit,
+  resizeBarRepeatGroup,
   setGrid,
   setBarRepeat,
   splitSystemAfterBar,
@@ -525,19 +527,103 @@ SD | oooo`);
     expect(findHit(edited, 9, HH.id)).toBeTruthy();
   });
 
+  it("insertRepeatBarAfter creates a compact counted repeat group", () => {
+    const block = parseDrumBlock("ST | R-L-\nHH | x-x-");
+    const edited = insertRepeatBarAfter(block, 0, 3);
+
+    expect(edited.bars).toHaveLength(4);
+    expect(edited.bars[1]).toMatchObject({ measureRepeat: 1, measureRepeatCount: 3 });
+    expect(edited.bars[2].measureRepeat).toBe(1);
+    expect(edited.bars[3].measureRepeat).toBe(1);
+    expect(serializeDrumBlock(edited)).toBe("ST | R-L-\nHH | x-x-\n%x3");
+  });
+
+  it("insertRepeatBarAfter clamps counted repeats to 99", () => {
+    const block = parseDrumBlock("HH | x---");
+    const edited = insertRepeatBarAfter(block, 0, 120);
+
+    expect(edited.bars).toHaveLength(100);
+    expect(edited.bars[1].measureRepeatCount).toBe(99);
+    expect(serializeDrumBlock(edited)).toBe("HH | x---\n%x99");
+  });
+
+  it("insertRepeatBarAfter falls back to one repeat for a non-finite count", () => {
+    const block = parseDrumBlock("HH | x---");
+    const edited = insertRepeatBarAfter(block, 0, Number.NaN);
+
+    expect(edited.bars).toHaveLength(2);
+    expect(serializeDrumBlock(edited)).toBe("HH | x---\n%");
+  });
+
   it("insertRepeatBarAfter is a no-op for a missing bar", () => {
     const block = parseDrumBlock("HH | x---");
 
     expect(insertRepeatBarAfter(block, 4)).toEqual(block);
   });
 
-  it("clearBarRepeat turns a repeat bar back into an editable copied bar", () => {
+  it("reports the compact repeat group count from any expanded member", () => {
+    const block = parseDrumBlock("HH | x---\n%x3");
+
+    expect(getBarRepeatGroupCount(block, 1)).toBe(3);
+    expect(getBarRepeatGroupCount(block, 2)).toBe(3);
+    expect(getBarRepeatGroupCount(block, 0)).toBe(0);
+  });
+
+  it("resizeBarRepeatGroup increases and decreases one compact group", () => {
+    const block = parseDrumBlock("HH | x---\n%x3");
+    const increased = resizeBarRepeatGroup(block, 1, 6);
+    const decreased = resizeBarRepeatGroup(increased, 1, 3);
+    const single = resizeBarRepeatGroup(decreased, 1, 1);
+
+    expect(increased.bars).toHaveLength(7);
+    expect(serializeDrumBlock(increased)).toBe("HH | x---\n%x6");
+    expect(decreased.bars).toHaveLength(4);
+    expect(serializeDrumBlock(decreased)).toBe("HH | x---\n%x3");
+    expect(single.bars).toHaveLength(2);
+    expect(serializeDrumBlock(single)).toBe("HH | x---\n%");
+  });
+
+  it("resizeBarRepeatGroup leaves adjacent repeats and following bars intact", () => {
+    const block = parseDrumBlock(`HH | x---
+%x3
+%
+SD | --o-`);
+    const edited = resizeBarRepeatGroup(block, 1, 2);
+
+    expect(edited.bars).toHaveLength(5);
+    expect(serializeDrumBlock(edited)).toContain("%x2\n%\nSD | --o-");
+    expect(findHit(edited, edited.bars[4].startSlot + 2, SD.id)).toBeTruthy();
+  });
+
+  it("resizeBarRepeatGroup returns the same block when the count is unchanged", () => {
+    const block = parseDrumBlock("HH | x---\n%x3");
+
+    expect(resizeBarRepeatGroup(block, 1, 3)).toBe(block);
+  });
+
+  it("clearBarRepeat replaces a counted group with one editable copied bar", () => {
     const block = parseDrumBlock("HH | x---\n%x2");
     const edited = clearBarRepeat(block, 1);
 
+    expect(edited.bars).toHaveLength(2);
     expect(edited.bars[1].measureRepeat).toBeUndefined();
-    expect(edited.bars[2].measureRepeat).toBe(1);
-    expect(serializeDrumBlock(edited)).toBe("HH | x--- | x---\n%");
+    expect(serializeDrumBlock(edited)).toBe("HH | x--- | x---");
+  });
+
+  it("clearBarRepeat preserves copied content, sticking, subtitles, and following bars", () => {
+    const block = parseDrumBlock(`Subtitle: Groove
+ST | R---
+HH | X---
+%x3
+SD | --o-`);
+    const edited = clearBarRepeat(block, 1);
+
+    expect(edited.bars).toHaveLength(3);
+    expect(edited.systems[0].subtitle).toBe("Groove");
+    expect(findHit(edited, edited.bars[1].startSlot, HH.id)?.articulation).toBe("accent");
+    expect(findSticking(edited, edited.bars[1].startSlot)).toBe("right");
+    expect(findHit(edited, edited.bars[2].startSlot + 2, SD.id)).toBeTruthy();
+    expect(serializeDrumBlock(parseDrumBlock(serializeDrumBlock(edited)))).toBe(serializeDrumBlock(edited));
   });
 
   it("repeat toggle edits remain serialize round-trip stable", () => {

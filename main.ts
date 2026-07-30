@@ -26,7 +26,13 @@ import {
   updateMeasureRepeatProgress
 } from "./src/engrave";
 import { DrumBarClipboardStore } from "./src/bar-clipboard";
-import { GridEditorHandle, GridEditorSessionState, mountGridEditor } from "./src/editor-grid";
+import {
+  GridEditorHandle,
+  GridEditorSessionState,
+  mountGridEditor,
+  RepeatBarDialogRequest,
+  RepeatBarDialogResult
+} from "./src/editor-grid";
 import {
   getRenderedDrumsBlockEditStatus,
   replaceDrumsBlockBody,
@@ -71,6 +77,7 @@ import {
   CountInMode,
   DrumBlock,
   DrumSlot,
+  MAX_MEASURE_REPEAT_COUNT,
   MetronomeMode,
   ParseWarning,
   ScoreBarRegion
@@ -1229,6 +1236,7 @@ export default class DrumNotationPlugin extends Plugin {
         },
         onSelectBar: (barIndex) => selectBar(barIndex, false),
         confirmAction: (message) => confirmWithModal(this.app, message),
+        requestRepeatAction: (request) => requestRepeatActionWithModal(this.app, request),
         notifyAction: (message) => new Notice(message),
         barClipboard: this.barClipboard,
         writeClipboardText: async (text) => {
@@ -2077,6 +2085,15 @@ function confirmWithModal(app: App, message: string): Promise<boolean> {
   });
 }
 
+function requestRepeatActionWithModal(
+  app: App,
+  request: RepeatBarDialogRequest
+): Promise<RepeatBarDialogResult | null> {
+  return new Promise((resolve) => {
+    new DrumRepeatActionModal(app, request, resolve).open();
+  });
+}
+
 function selectedSlotIndexFromSession(session: GridEditorSessionState | undefined): number | null {
   const selectedCell = session?.selectedCell;
 
@@ -2128,6 +2145,109 @@ class DrumConfirmModal extends Modal {
   private finish(confirmed: boolean): void {
     if (!this.settled) {
       this.resolve(confirmed);
+      this.settled = true;
+    }
+    this.close();
+  }
+}
+
+class DrumRepeatActionModal extends Modal {
+  private settled = false;
+  private inputEl: HTMLInputElement | null = null;
+  private confirmButton: HTMLButtonElement | null = null;
+
+  constructor(
+    app: App,
+    private readonly request: RepeatBarDialogRequest,
+    private readonly resolve: (result: RepeatBarDialogResult | null) => void
+  ) {
+    super(app);
+  }
+
+  onOpen(): void {
+    const isEditing = this.request.mode === "edit";
+
+    this.titleEl.setText(isEditing ? "Edit repeat bar" : "Add repeat bar");
+    this.contentEl.empty();
+
+    new Setting(this.contentEl)
+      .setName("Number of repeats")
+      .setDesc(
+        isEditing
+          ? "Change the repeat count, or replace the group with one editable copy."
+          : `Choose from 1 to ${MAX_MEASURE_REPEAT_COUNT}.`
+      )
+      .addText((text) => {
+        this.inputEl = text.inputEl;
+        this.inputEl.type = "number";
+        this.inputEl.min = "1";
+        this.inputEl.max = String(MAX_MEASURE_REPEAT_COUNT);
+        this.inputEl.step = "1";
+        this.inputEl.value = String(this.request.initialCount);
+        this.inputEl.setAttr("aria-label", "Number of repeats");
+        this.inputEl.addEventListener("input", () => this.updateValidity());
+        this.inputEl.addEventListener("keydown", (event) => {
+          if (event.key === "Enter") {
+            const count = this.readCount();
+            if (count !== null) {
+              event.preventDefault();
+              this.finish({ action: "set-count", count });
+            }
+          }
+        });
+      });
+
+    const buttons = this.contentEl.createDiv({ cls: "drum-notation__confirm-buttons" });
+    const cancel = buttons.createEl("button", { text: "Cancel" });
+    if (isEditing) {
+      const makeEditable = buttons.createEl("button", { text: "Make editable" });
+
+      makeEditable.addEventListener("click", () => this.finish({ action: "make-editable" }));
+    }
+    this.confirmButton = buttons.createEl("button", {
+      cls: "mod-cta",
+      text: isEditing ? "Update repeat" : "Add repeat"
+    });
+
+    cancel.addEventListener("click", () => this.finish(null));
+    this.confirmButton.addEventListener("click", () => {
+      const count = this.readCount();
+
+      if (count !== null) {
+        this.finish({ action: "set-count", count });
+      }
+    });
+    this.updateValidity();
+
+    this.contentEl.ownerDocument.defaultView?.requestAnimationFrame(() => {
+      this.inputEl?.focus();
+      this.inputEl?.select();
+    });
+  }
+
+  onClose(): void {
+    this.contentEl.empty();
+    if (!this.settled) {
+      this.resolve(null);
+      this.settled = true;
+    }
+  }
+
+  private readCount(): number | null {
+    const value = Number(this.inputEl?.value);
+
+    return Number.isInteger(value) && value >= 1 && value <= MAX_MEASURE_REPEAT_COUNT ? value : null;
+  }
+
+  private updateValidity(): void {
+    if (this.confirmButton) {
+      this.confirmButton.disabled = this.readCount() === null;
+    }
+  }
+
+  private finish(result: RepeatBarDialogResult | null): void {
+    if (!this.settled) {
+      this.resolve(result);
       this.settled = true;
     }
     this.close();

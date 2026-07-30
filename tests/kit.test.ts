@@ -36,7 +36,7 @@ describe("getArticulation", () => {
 describe("getVelocity", () => {
   it("derives velocity from the articulation table", () => {
     expect(getVelocity("O")).toBe(1);
-    expect(getVelocity("g")).toBe(0.4);
+    expect(getVelocity("g")).toBe(0.2);
     expect(getVelocity("z")).toBe(0.68);
     expect(getVelocity("f")).toBe(0.75);
     expect(getVelocity("r")).toBe(0.75);

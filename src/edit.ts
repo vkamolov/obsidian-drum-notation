@@ -12,6 +12,7 @@ import {
   DrumStickingInput,
   DrumSystem,
   GridResolution,
+  MAX_MEASURE_REPEAT_COUNT,
   MeasureRepeat,
   MeasureRepeatInput,
   StickingHand
@@ -593,14 +594,108 @@ export function setBarRepeat(block: DrumBlock, barIndex: number): DrumBlock {
   return rebuildBlock(block, views);
 }
 
-export function insertRepeatBarAfter(block: DrumBlock, barIndex: number): DrumBlock {
-  const inserted = insertBarAfter(block, barIndex);
+export function insertRepeatBarAfter(block: DrumBlock, barIndex: number, count = 1): DrumBlock {
+  const views = block.systems.map(toSystemView);
+  const location = locateBar(views, barIndex);
 
-  if (inserted === block) {
+  if (!location) {
     return block;
   }
 
-  return setBarRepeat(inserted, barIndex + 1);
+  const requestedCount = Number.isFinite(count) ? Math.round(count) : 1;
+  const repeatCount = Math.min(MAX_MEASURE_REPEAT_COUNT, Math.max(1, requestedCount));
+  const view = views[location.system];
+  const sourceBar = view.bars[location.bar];
+  const sourceRows = rowsForBar(view, location.bar);
+  const snapshot = snapshotBar(view, location.bar);
+
+  for (let index = 0; index < repeatCount; index++) {
+    insertPatternsIntoSystem(
+      view,
+      location.bar + index + 1,
+      {
+        ...emptyBarLike(sourceBar),
+        ...(snapshot.stickingPattern !== undefined ? { stickingPattern: snapshot.stickingPattern } : {}),
+        measureRepeat: 1,
+        ...(index === 0 && repeatCount > 1 ? { measureRepeatCount: repeatCount } : {})
+      },
+      sourceRows,
+      (row) => row.patterns[location.bar]
+    );
+  }
+
+  return rebuildBlock(block, views);
+}
+
+export function getBarRepeatGroupCount(block: DrumBlock, barIndex: number): number {
+  const views = block.systems.map(toSystemView);
+  const location = locateBar(views, barIndex);
+
+  if (!location) {
+    return 0;
+  }
+
+  return locateRepeatGroup(views[location.system], location.bar)?.count ?? 0;
+}
+
+export function resizeBarRepeatGroup(block: DrumBlock, barIndex: number, count: number): DrumBlock {
+  const views = block.systems.map(toSystemView);
+  const location = locateBar(views, barIndex);
+
+  if (!location) {
+    return block;
+  }
+
+  const view = views[location.system];
+  const group = locateRepeatGroup(view, location.bar);
+
+  if (!group) {
+    return block;
+  }
+
+  const requestedCount = Number.isFinite(count) ? Math.round(count) : group.count;
+  const repeatCount = Math.min(MAX_MEASURE_REPEAT_COUNT, Math.max(1, requestedCount));
+
+  if (repeatCount === group.count) {
+    return block;
+  }
+
+  syncMeasureRepeatCopies(views);
+
+  if (repeatCount < group.count) {
+    removeBarsFromSystem(view, group.start + repeatCount, group.count - repeatCount);
+  } else {
+    const sourceBar = view.bars[group.start];
+    const sourceRows = rowsForBar(view, group.start);
+    const snapshot = snapshotBar(view, group.start);
+
+    for (let index = group.count; index < repeatCount; index++) {
+      insertPatternsIntoSystem(
+        view,
+        group.start + index,
+        {
+          ...emptyBarLike(sourceBar),
+          ...(snapshot.stickingPattern !== undefined ? { stickingPattern: snapshot.stickingPattern } : {}),
+          measureRepeat: 1
+        },
+        sourceRows,
+        (row) => row.patterns[group.start]
+      );
+    }
+  }
+
+  for (let index = 0; index < repeatCount; index++) {
+    const bar = view.bars[group.start + index];
+
+    bar.measureRepeat = 1;
+    if (index === 0 && repeatCount > 1) {
+      bar.measureRepeatCount = repeatCount;
+    } else {
+      delete bar.measureRepeatCount;
+    }
+  }
+
+  return rebuildBlock(block, views);
 }
 
 export function clearBarRepeat(block: DrumBlock, barIndex: number): DrumBlock {
@@ -611,14 +706,19 @@ export function clearBarRepeat(block: DrumBlock, barIndex: number): DrumBlock {
     return block;
   }
 
-  const bar = views[location.system].bars[location.bar];
+  const view = views[location.system];
+  const group = locateRepeatGroup(view, location.bar);
 
-  if (!bar.measureRepeat) {
+  if (!group) {
     return block;
   }
 
+  syncMeasureRepeatCopies(views);
+
+  const bar = view.bars[group.start];
   delete bar.measureRepeat;
   delete bar.measureRepeatCount;
+  removeBarsFromSystem(view, group.start + 1, group.count - 1);
 
   return rebuildBlock(block, views);
 }
@@ -807,6 +907,30 @@ function locateBar(views: SystemView[], barIndex: number): { system: number; bar
   return null;
 }
 
+function locateRepeatGroup(view: SystemView, barIndex: number): { start: number; count: number } | null {
+  for (let index = 0; index < view.bars.length; index++) {
+    const bar = view.bars[index];
+
+    if (!bar.measureRepeat) {
+      continue;
+    }
+
+    let runCount = 0;
+    for (let runIndex = index; runIndex < view.bars.length && view.bars[runIndex].measureRepeat; runIndex++) {
+      runCount++;
+    }
+
+    const count = Math.max(1, Math.min(bar.measureRepeatCount ?? 1, runCount));
+    if (barIndex >= index && barIndex < index + count) {
+      return { start: index, count };
+    }
+
+    index += count - 1;
+  }
+
+  return null;
+}
+
 function rowsForBar(view: SystemView, barIndex: number): RowView[] {
   return view.rows.filter((row) => row.patterns[barIndex] !== undefined);
 }
@@ -836,6 +960,20 @@ function insertPatternsIntoSystem(
       row.patterns.splice(insertIndex, 0, "-".repeat(bar.width));
     }
   });
+}
+
+function removeBarsFromSystem(view: SystemView, startIndex: number, count: number): void {
+  if (count <= 0) {
+    return;
+  }
+
+  view.bars.splice(startIndex, count);
+  view.rows.forEach((row) => {
+    if (row.patterns.length > startIndex) {
+      row.patterns.splice(startIndex, count);
+    }
+  });
+  view.rows = view.rows.filter((row) => row.patterns.length > 0);
 }
 
 function appendSnapshotAsBar(view: SystemView, bar: BarView, snapshot: BarSnapshot): void {

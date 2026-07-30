@@ -46,13 +46,19 @@ import {
   DrumSlot,
   GridResolution,
   LegendMode,
+  MAX_MEASURE_REPEAT_COUNT,
   MetronomeMode,
   ParseWarning,
   ScoreBarRegion
 } from "../../src/types";
 import { normalizeLabel } from "../../src/util";
 import { EXAMPLES } from "./examples";
-import { GridEditorHandle, mountGridEditor } from "../../src/editor-grid";
+import {
+  GridEditorHandle,
+  mountGridEditor,
+  RepeatBarDialogRequest,
+  RepeatBarDialogResult
+} from "../../src/editor-grid";
 import { createIconSvg } from "./icons";
 
 const STORAGE_KEY = "drum-playground.notation";
@@ -1262,6 +1268,7 @@ function enterEditMode(): void {
     },
     onSelectBar: (barIndex) => selectBar(barIndex, false),
     confirmAction: confirmPlaygroundAction,
+    requestRepeatAction: requestPlaygroundRepeatAction,
     notifyAction: (message) => {
       gridEditorMessage = message;
       if (currentBlock) {
@@ -1432,6 +1439,103 @@ function confirmPlaygroundAction(message: string): Promise<boolean> {
     });
 
     window.requestAnimationFrame(() => cancel.focus());
+  });
+}
+
+function requestPlaygroundRepeatAction(
+  request: RepeatBarDialogRequest
+): Promise<RepeatBarDialogResult | null> {
+  dismissPlaygroundConfirm();
+
+  return new Promise((resolve) => {
+    const isEditing = request.mode === "edit";
+    const panel = activeDocument.body.createDiv({
+      cls: "pg-confirm",
+      attr: {
+        role: "dialog",
+        "aria-modal": "true",
+        "aria-label": isEditing ? "Edit repeat bar" : "Add repeat bar"
+      }
+    });
+    panel.createEl("p", {
+      cls: "pg-confirm__message",
+      text: isEditing
+        ? "Change the repeat count, or replace the group with one editable copy."
+        : `Choose how many times to repeat the selected bar (1–${MAX_MEASURE_REPEAT_COUNT}).`
+    });
+    const field = panel.createEl("label", { cls: "pg-confirm__field" });
+    field.createSpan({ text: "Number of repeats" });
+    const input = field.createEl("input", {
+      cls: "pg-confirm__number",
+      attr: {
+        type: "number",
+        min: "1",
+        max: String(MAX_MEASURE_REPEAT_COUNT),
+        step: "1",
+        value: String(request.initialCount)
+      }
+    });
+    const actions = panel.createDiv({ cls: "pg-confirm__actions" });
+    const cancel = actions.createEl("button", {
+      cls: "pg-btn pg-btn--small",
+      text: "Cancel",
+      attr: { type: "button" }
+    });
+    if (isEditing) {
+      const makeEditable = actions.createEl("button", {
+        cls: "pg-btn pg-btn--small",
+        text: "Make editable",
+        attr: { type: "button" }
+      });
+
+      makeEditable.addEventListener("click", () => finish({ action: "make-editable" }));
+    }
+    const confirm = actions.createEl("button", {
+      cls: "pg-btn pg-btn--small pg-confirm__confirm",
+      text: isEditing ? "Update repeat" : "Add repeat",
+      attr: { type: "button" }
+    });
+
+    const readCount = (): number | null => {
+      const value = Number(input.value);
+
+      return Number.isInteger(value) && value >= 1 && value <= MAX_MEASURE_REPEAT_COUNT ? value : null;
+    };
+    const updateValidity = (): void => {
+      confirm.disabled = readCount() === null;
+    };
+    const finish = (value: RepeatBarDialogResult | null): void => {
+      panel.remove();
+      resolve(value);
+    };
+
+    input.addEventListener("input", updateValidity);
+    cancel.addEventListener("click", () => finish(null));
+    confirm.addEventListener("click", () => {
+      const count = readCount();
+
+      if (count !== null) {
+        finish({ action: "set-count", count });
+      }
+    });
+    panel.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        event.stopPropagation();
+        finish(null);
+      } else if (event.key === "Enter") {
+        const count = readCount();
+        if (count !== null) {
+          event.preventDefault();
+          finish({ action: "set-count", count });
+        }
+      }
+    });
+
+    updateValidity();
+    window.requestAnimationFrame(() => {
+      input.focus();
+      input.select();
+    });
   });
 }
 

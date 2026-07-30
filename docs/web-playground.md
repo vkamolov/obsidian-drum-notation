@@ -166,9 +166,10 @@ In the browser at `localhost:5173`:
    pinned while count markers and cells scroll. Confirm the action order is
    **Add · Duplicate · Repeat · New line | Copy · Paste | Delete**. Add inserts
    a Time/Grid-sized empty bar; Duplicate inserts an immediate editable copy;
-   Repeat inserts a repeat bar after the selected normal bar, while Unrepeat
-   converts a selected repeat into editable notation. New line moves trailing
-   bars to a new system or creates an empty system after a final bar. Copy must
+   Repeat opens the count dialog and inserts `%` or `%xN`. Unrepeat opens the
+   edit dialog for either form, allowing resizing or making one copy editable.
+   New line moves trailing bars to a new system or
+   creates an empty system after a final bar. Copy must
    not mutate notation. Paste replaces the selected bar and asks before
    overwriting existing musical content, and Delete removes the selected bar. The selected
    bar follows the changed bar.
@@ -189,7 +190,9 @@ Console should be free of errors/warnings.
   empty rows).
 - **`%` measure-repeat bars:** repeat bars are read-only for cell edits, but the
   bar action row can convert a selected repeat back into a normal copied bar.
-  Count editing for `%xN` is still deferred.
+  The Repeat action accepts a count from 1–99 and creates `%` or compact `%xN`
+  notation. Unrepeat opens a dialog for `%` and `%xN` that can resize the
+  repeat/group or replace it with one editable copy.
 - The notation textarea uses `serializeDrumBlock(..., { mode: "authoring" })`;
   advanced diagnostics still show the default normalized form.
 - Edit mode uses a selected-cell tool strip; direct SVG/grid overlay editing is

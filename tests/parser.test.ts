@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { getBarRange } from "../src/music";
 import { getTitle, parseDrumBlock, parseDrumBlockWithWarnings } from "../src/parser";
+import { serializeDrumBlock } from "../src/serializer";
 
 const TEMPLATE = `Title: Basic rock groove
 Tempo: 100
@@ -134,7 +135,7 @@ describe("parseDrumBlock - articulations", () => {
   it("records articulation and velocity per character", () => {
     const hits = block.slots.map((slot) => slot.hits[0]);
     expect(hits[0]).toMatchObject({ articulation: "accent", velocity: 1 });
-    expect(hits[1]).toMatchObject({ articulation: "ghost", velocity: 0.4 });
+    expect(hits[1]).toMatchObject({ articulation: "ghost", velocity: 0.2 });
     expect(hits[2]).toMatchObject({ articulation: "flam", velocity: 0.75 });
     expect(hits[3]).toMatchObject({ articulation: "drag", velocity: 0.75 });
     expect(hits[4]).toMatchObject({ articulation: "diddle", velocity: 0.75 });
@@ -268,6 +269,14 @@ SD | --o-
       "closed-hat",
       "closed-hat"
     ]);
+  });
+
+  it("supports counted one-bar repeats through 99", () => {
+    const block = parseDrumBlock("HH | x---\n%x99");
+
+    expect(block.bars).toHaveLength(100);
+    expect(block.bars[1]).toMatchObject({ measureRepeat: 1, measureRepeatCount: 99 });
+    expect(serializeDrumBlock(block)).toBe("HH | x---\n%x99");
   });
 
   it("can repeat the previous bar across a system separator", () => {

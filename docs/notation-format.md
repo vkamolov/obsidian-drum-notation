@@ -196,7 +196,7 @@ Every pattern character is either a **rest** or a **hit with an articulation**.
 |--------------|---------|-------------------|
 | `x`, `o` | Normal hit | 0.75 |
 | `X`, `O`, `>`, `!`, `#` | Accent | 1.0 |
-| `g` | Ghost note (parenthesized, quieter) | 0.4 |
+| `g` | Ghost note (parenthesized, quieter) | 0.2 |
 | `f` | Flam (grace note + connector) | 0.75 |
 | `r` | Drag / ruff (two beamed grace notes + connector) | 0.75 |
 | `d` | Diddle (two hits inside the slot) | 0.75 |
@@ -286,7 +286,7 @@ Bar
 
 Accepted text forms are `%`, `Repeat`, `Repeat bar`, `Repeat measure`,
 `Repeat previous bar`, `Repeat 1 bar`, and `Repeat one bar`; each may include
-an `xN` suffix such as `%x3` or `Repeat bar x3`. Counts are clamped to 1–64.
+an `xN` suffix such as `%x3` or `Repeat bar x3`. Counts are clamped to 1–99.
 The serializer emits `%` for a single repeat and `%xN` for counted one-bar
 repeats. Separate `%` lines remain separate repeat bars; only explicit `%xN`
 syntax renders as one compact repeat bar with an `xN` mark.
@@ -539,9 +539,11 @@ To stay deterministic and diff-friendly, serialization **normalizes**:
     Time/Grid-sized rest patterns for the selected bar's instruments.
   - **Duplicate** inserts the selected bar's exact playable content immediately
     after it.
-  - **Repeat** inserts a new `%` bar immediately after the selected normal bar.
-    **Unrepeat** converts a selected repeat into normal editable row text while
-    preserving its playable content.
+  - **Repeat** asks for a count from 1–99, then inserts a new `%` bar for one
+    repeat or a compact `%xN` group after the selected normal bar.
+    **Unrepeat** opens the same edit dialog for `%` and `%xN`, allowing the
+    count to change or the repeat/group to become one normal editable copy.
+    Making a counted group editable therefore shortens it to one copied bar.
   - **New line** splits after a non-final selected bar and moves the trailing
     bars into a new untitled system. When the selected bar is final, it creates
     an empty system.

@@ -267,7 +267,7 @@ const ARTICULATION_BY_CHAR: Record<string, DrumArticulation> = {
 const VELOCITY_BY_ARTICULATION: Record<DrumArticulation, number> = {
   normal: 0.75,
   accent: 1,
-  ghost: 0.4,
+  ghost: 0.2,
   flam: 0.75,
   drag: 0.75,
   diddle: 0.75,

@@ -185,6 +185,7 @@ export type MeasureRepeat = 1;
 export const DEFAULT_TEMPO = 100;
 export const DEFAULT_TIME_SIGNATURE = "4/4";
 export const DEFAULT_REPEAT_COUNT = 1;
+export const MAX_MEASURE_REPEAT_COUNT = 99;
 export const DEFAULT_SHOW_CURSOR = false;
 export const DEFAULT_SHOW_HIGHLIGHT = true;
 export const DEFAULT_SHOW_RESTS = true;

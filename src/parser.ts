@@ -21,6 +21,7 @@ import {
   DrumSystem,
   GridResolution,
   LegendMode,
+  MAX_MEASURE_REPEAT_COUNT,
   MeasureRepeatInput,
   ParseResult,
   ParseWarning,
@@ -915,7 +916,7 @@ function parseMeasureRepeatCount(value: string | undefined): number {
     return 1;
   }
 
-  return Math.min(64, Math.max(1, count));
+  return Math.min(MAX_MEASURE_REPEAT_COUNT, Math.max(1, count));
 }
 
 function snapshotBars(rows: DrumRowInput[], sticking: DrumStickingInput | undefined): BarSnapshot[] {

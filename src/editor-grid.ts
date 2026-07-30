@@ -20,9 +20,11 @@ import {
   duplicateBar,
   findHit,
   findSticking,
+  getBarRepeatGroupCount,
   insertBarAfter,
   insertRepeatBarAfter,
   pasteBarClipboardPayload,
+  resizeBarRepeatGroup,
   setHit,
   setSticking,
   splitSystemAfterBar
@@ -56,10 +58,32 @@ export interface GridEditorOptions {
   onPreview: (block: DrumBlock, slotIndex: number) => void;
   onSelectBar?: (barIndex: number) => void;
   confirmAction?: (message: string) => boolean | Promise<boolean>;
+  requestRepeatAction?: (
+    request: RepeatBarDialogRequest
+  ) => RepeatBarDialogResult | null | Promise<RepeatBarDialogResult | null>;
   notifyAction?: (message: string) => void;
   barClipboard: DrumBarClipboardStore;
   writeClipboardText?: (text: string) => Promise<void>;
 }
+
+export type RepeatBarDialogRequest =
+  | {
+      mode: "insert";
+      initialCount: 1;
+    }
+  | {
+      mode: "edit";
+      initialCount: number;
+    };
+
+export type RepeatBarDialogResult =
+  | {
+      action: "set-count";
+      count: number;
+    }
+  | {
+      action: "make-editable";
+    };
 
 const ARTICULATION_CLASS: Record<DrumArticulation, string> = {
   normal: "is-normal",
@@ -220,6 +244,12 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     .map((id) => DRUM_KIT.find((instrument) => instrument.id === id))
     .filter((instrument): instrument is DrumInstrument => !!instrument);
   const confirmAction = options.confirmAction ?? (() => false);
+  const requestRepeatAction =
+    options.requestRepeatAction ??
+    ((request: RepeatBarDialogRequest): RepeatBarDialogResult => ({
+      action: "set-count",
+      count: request.initialCount
+    }));
   const notifyAction = options.notifyAction ?? (() => undefined);
   let pasteButton: HTMLButtonElement | null = null;
 
@@ -740,7 +770,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     applyChange(deleteBar(working, selectedBarIndex), undefined, Math.max(0, selectedBarIndex - 1));
   };
 
-  const toggleSelectedBarRepeat = () => {
+  const toggleSelectedBarRepeat = async () => {
     const bar = selectedBar();
 
     if (!bar) {
@@ -748,11 +778,27 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     }
 
     if (bar.measureRepeat) {
-      applyChange(clearBarRepeat(working, selectedBarIndex), undefined, selectedBarIndex);
+      const repeatCount = getBarRepeatGroupCount(working, selectedBarIndex);
+
+      const result = await requestRepeatAction({ mode: "edit", initialCount: repeatCount });
+      if (!result) {
+        return;
+      }
+
+      if (result.action === "make-editable") {
+        applyChange(clearBarRepeat(working, selectedBarIndex), undefined, selectedBarIndex);
+      } else {
+        applyChange(resizeBarRepeatGroup(working, selectedBarIndex, result.count), undefined, selectedBarIndex);
+      }
       return;
     }
 
-    applyChange(insertRepeatBarAfter(working, selectedBarIndex), undefined, selectedBarIndex + 1);
+    const result = await requestRepeatAction({ mode: "insert", initialCount: 1 });
+    if (!result || result.action !== "set-count") {
+      return;
+    }
+
+    applyChange(insertRepeatBarAfter(working, selectedBarIndex, result.count), undefined, selectedBarIndex + 1);
   };
 
   const previousTabIndex = options.container.getAttribute("tabindex");
@@ -922,12 +968,19 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     createBarAction(actions, "Duplicate", "duplicate", "Duplicate bar after", duplicateSelectedBar);
 
     const isRepeat = !!selectedBar()?.measureRepeat;
+    const repeatCount = isRepeat ? getBarRepeatGroupCount(working, selectedBarIndex) : 0;
     createBarAction(
       actions,
       isRepeat ? "Unrepeat" : "Repeat",
       isRepeat ? "unrepeat" : "repeat",
-      isRepeat ? "Make repeat bar editable" : "Add repeat bar after selected bar",
-      toggleSelectedBarRepeat
+      isRepeat && repeatCount > 1
+        ? `Edit repeat group (x${repeatCount})`
+        : isRepeat
+          ? "Edit repeat bar"
+          : "Add repeat bar after selected bar",
+      () => {
+        void toggleSelectedBarRepeat();
+      }
     );
     createBarAction(actions, "New line", "new-line", "Start new line after selected bar", addBarOnNewSystem);
 
