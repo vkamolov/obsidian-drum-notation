@@ -21,6 +21,7 @@ import {
   findHit,
   findSticking,
   getBarRepeatGroupCount,
+  getBarRepeatGroupRange,
   insertBarAfter,
   insertRepeatBarAfter,
   pasteBarClipboardPayload,
@@ -762,12 +763,21 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
       return;
     }
 
+    const repeatGroup = getBarRepeatGroupRange(working, selectedBarIndex);
     const hasHits = bar.slots.some((slot) => slot.hits.length > 0);
-    if (hasHits && !(await confirmAction(`Delete bar ${selectedBarIndex + 1}?`))) {
+    const confirmation =
+      repeatGroup && repeatGroup.count > 1
+        ? `Delete repeat group x${repeatGroup.count} starting at bar ${repeatGroup.startIndex + 1}?`
+        : `Delete bar ${selectedBarIndex + 1}?`;
+
+    if (hasHits && !(await confirmAction(confirmation))) {
       return;
     }
 
-    applyChange(deleteBar(working, selectedBarIndex), undefined, Math.max(0, selectedBarIndex - 1));
+    const nextSelection = repeatGroup
+      ? Math.max(0, repeatGroup.startIndex - 1)
+      : Math.max(0, selectedBarIndex - 1);
+    applyChange(deleteBar(working, selectedBarIndex), undefined, nextSelection);
   };
 
   const toggleSelectedBarRepeat = async () => {
@@ -992,7 +1002,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     pasteButton.disabled = options.barClipboard.get() === null;
 
     createBarActionSeparator(actions);
-    createBarAction(actions, "Delete", "delete", "Delete bar", () => {
+    createBarAction(actions, "Delete", "delete", repeatCount > 1 ? `Delete repeat group x${repeatCount}` : "Delete bar", () => {
       void deleteSelectedBar();
     }, "pg-grid-editor__bar-action--delete");
   };

@@ -557,13 +557,13 @@ export function deleteBar(block: DrumBlock, barIndex: number): DrumBlock {
   }
 
   const view = views[location.system];
-  view.bars.splice(location.bar, 1);
-  view.rows.forEach((row) => {
-    if (row.patterns.length > location.bar) {
-      row.patterns.splice(location.bar, 1);
-    }
-  });
-  view.rows = view.rows.filter((row) => row.patterns.length > 0);
+  const repeatGroup = locateRepeatGroup(view, location.bar);
+
+  if (repeatGroup) {
+    removeBarsFromSystem(view, repeatGroup.start, repeatGroup.count);
+  } else {
+    removeBarsFromSystem(view, location.bar, 1);
+  }
 
   if (view.bars.length === 0) {
     views.splice(location.system, 1);
@@ -628,14 +628,30 @@ export function insertRepeatBarAfter(block: DrumBlock, barIndex: number, count =
 }
 
 export function getBarRepeatGroupCount(block: DrumBlock, barIndex: number): number {
+  return getBarRepeatGroupRange(block, barIndex)?.count ?? 0;
+}
+
+export function getBarRepeatGroupRange(
+  block: DrumBlock,
+  barIndex: number
+): { startIndex: number; count: number } | null {
   const views = block.systems.map(toSystemView);
   const location = locateBar(views, barIndex);
 
   if (!location) {
-    return 0;
+    return null;
   }
 
-  return locateRepeatGroup(views[location.system], location.bar)?.count ?? 0;
+  const group = locateRepeatGroup(views[location.system], location.bar);
+
+  if (!group) {
+    return null;
+  }
+
+  return {
+    startIndex: barIndex - (location.bar - group.start),
+    count: group.count
+  };
 }
 
 export function resizeBarRepeatGroup(block: DrumBlock, barIndex: number, count: number): DrumBlock {

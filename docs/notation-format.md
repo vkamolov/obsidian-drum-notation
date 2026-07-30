@@ -551,7 +551,8 @@ To stay deterministic and diff-friendly, serialization **normalizes**:
     **Paste** replaces another selected bar only when `Time`, `Grid`, and slot
     width match. Pasted repeat content becomes normal editable row text.
   - **Delete** removes the selected bar and removes its system when no bars
-    remain.
+    remain. Deleting any member of compact `%xN` removes the complete counted
+    group; separately declared `%` bars remain independently deletable.
 
 This means a hand-authored block that uses `>` for accents or `.` for rests will
 come back from a serialize pass using `X`/`O` and `-`. That is expected. (A

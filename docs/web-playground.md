@@ -171,8 +171,9 @@ In the browser at `localhost:5173`:
    New line moves trailing bars to a new system or
    creates an empty system after a final bar. Copy must
    not mutate notation. Paste replaces the selected bar and asks before
-   overwriting existing musical content, and Delete removes the selected bar. The selected
-   bar follows the changed bar.
+   overwriting existing musical content. Delete removes a normal or single `%`
+   bar, while deleting any member of `%xN` removes the complete compact group.
+   The selected bar follows the changed bar.
    If playback is running, visual edits and debounced text-code edits restart the
    active play/loop mode against the updated notation so new hits are heard
    without a manual stop/start. Click **Undo** → the previous text/preview

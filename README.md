@@ -10,8 +10,9 @@ or see the
 
 ## Release Notes
 
-- `1.0.11` adds count dialogs for `%` and `%xN`, group-aware repeat resizing,
-  conversion to one editable bar, and quieter ghost-note playback.
+- `1.0.11` adds count dialogs for `%` and `%xN`, group-aware repeat resizing
+  and deletion, conversion to one editable bar, and quieter ghost-note
+  playback.
 - `1.0.10` makes Repeat insert a new one-bar repeat after the selected bar,
   keeps Unrepeat as a non-destructive conversion to editable notation, and
   refreshes the visual-editor repeat icons and toolbar order.
@@ -112,7 +113,8 @@ Copy · Paste | Delete**:
   empty next line.
 - **Copy** stores the selected bar without changing the notation. **Paste**
   replaces the selected bar with that copied content.
-- **Delete** removes the selected bar.
+- **Delete** removes the selected bar. For compact `%xN`, it removes the entire
+  counted repeat group at once; separate `%` lines remain independent.
 
 Copy/Paste uses a notation-only clipboard shared by visual editors for the
 current Obsidian session. Pasting over notes, sticking, or repeat notation asks

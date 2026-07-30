@@ -15,6 +15,7 @@ import {
   findHit,
   findSticking,
   getBarRepeatGroupCount,
+  getBarRepeatGroupRange,
   hitKey,
   insertBarAfter,
   insertRepeatBarAfter,
@@ -404,6 +405,31 @@ BD | o---`);
     expect(serializeDrumBlock(edited)).toBe("SD | --o-");
   });
 
+  it("deleteBar removes an entire compact counted repeat group from any member", () => {
+    const source = `HH | x---
+%x3
+SD | --o-`;
+
+    for (const selectedBar of [1, 2, 3]) {
+      const edited = deleteBar(parseDrumBlock(source), selectedBar);
+
+      expect(edited.bars).toHaveLength(2);
+      expect(serializeDrumBlock(edited)).toBe(`HH | x---
+SD | ---- | --o-`);
+      expect(findHit(edited, edited.bars[1].startSlot + 2, SD.id)).toBeTruthy();
+    }
+  });
+
+  it("deleteBar removes only one independently declared repeat bar", () => {
+    const block = parseDrumBlock(`HH | x---
+%
+%`);
+    const edited = deleteBar(block, 1);
+
+    expect(edited.bars).toHaveLength(2);
+    expect(serializeDrumBlock(edited)).toBe("HH | x---\n%");
+  });
+
   it("bar edits are no-ops for missing bar indexes", () => {
     const block = parseDrumBlock("HH | x---");
 
@@ -567,6 +593,8 @@ SD | oooo`);
     expect(getBarRepeatGroupCount(block, 1)).toBe(3);
     expect(getBarRepeatGroupCount(block, 2)).toBe(3);
     expect(getBarRepeatGroupCount(block, 0)).toBe(0);
+    expect(getBarRepeatGroupRange(block, 2)).toEqual({ startIndex: 1, count: 3 });
+    expect(getBarRepeatGroupRange(block, 0)).toBeNull();
   });
 
   it("resizeBarRepeatGroup increases and decreases one compact group", () => {
