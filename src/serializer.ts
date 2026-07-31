@@ -332,7 +332,9 @@ function serializeRhythmicPattern(bar: DrumBar, pattern: string): string {
     }
 
     const end = region.startPosition + region.positionCount;
-    const body = pattern.slice(region.startPosition, end).padEnd(region.positionCount, "-");
+    const sourceBody = pattern.slice(region.startPosition, end);
+    const body = sourceBody +
+      "-".repeat(Math.max(0, region.positionCount - sourceBody.length));
 
     result += region.kind === "tuplet"
       ? `${region.subdivisionCount}(${body})`
