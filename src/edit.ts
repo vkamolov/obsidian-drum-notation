@@ -73,11 +73,15 @@ export function setTimeSignature(block: DrumBlock, numerator: number, denominato
       }))
     }))
   }));
-  const nextBlock = {
+  const bars = systems.reduce<DrumBlock["bars"]>(
+    (result, system) => result.concat(system.bars),
+    []
+  );
+  const nextBlock: DrumBlock = {
     ...block,
     timeSignature,
     systems,
-    bars: systems.flatMap((system) => system.bars)
+    bars
   };
 
   if (nextBlock.beamGrouping && !isValidBeamGrouping(timeSignature, nextBlock.beamGrouping)) {
