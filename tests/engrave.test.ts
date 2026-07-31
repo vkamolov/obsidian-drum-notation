@@ -159,6 +159,74 @@ describe("compound-meter beaming", () => {
   });
 });
 
+describe("explicit tuplet engraving", () => {
+  it.each([
+    [3, 2],
+    [5, 4],
+    [6, 4],
+    [7, 4],
+    [9, 8],
+    [12, 8]
+  ] as const)("engraves %i positions in the space of %i", (count, occupied) => {
+    const block = parseDrumBlock(`HH | ${count}(${"x".repeat(count)})`);
+    const bar = block.bars[0];
+    const visualBar = buildGridVisualBarNotes(
+      bar.slots,
+      block.timeSignature,
+      block.gridResolution,
+      false,
+      block.beamGrouping,
+      bar.rhythmRegions
+    );
+
+    expect(visualBar.tuplets).toHaveLength(1);
+    expect(visualBar.tuplets[0].getNoteCount()).toBe(count);
+    expect(visualBar.tuplets[0].getNotesOccupied()).toBe(occupied);
+    expect(visualBar.noteSlots.map((slot) => slot.index)).toEqual(
+      Array.from({ length: count }, (_, index) => index)
+    );
+  });
+
+  it.each([4, 8] as const)(
+    "renders explicit %i-position subdivisions without a redundant tuplet",
+    (count) => {
+      const block = parseDrumBlock(`HH | ${count}(${"x".repeat(count)})`);
+      const bar = block.bars[0];
+      const visualBar = buildGridVisualBarNotes(
+        bar.slots,
+        block.timeSignature,
+        block.gridResolution,
+        false,
+        block.beamGrouping,
+        bar.rhythmRegions
+      );
+
+      expect(visualBar.tuplets).toEqual([]);
+      expect(visualBar.noteSlots).toHaveLength(count);
+    }
+  );
+
+  it("keeps explicit tuplet rests and breaks beams around them", () => {
+    const block = parseDrumBlock("HH | 3(x-x)");
+    const bar = block.bars[0];
+    const visualBar = buildGridVisualBarNotes(
+      bar.slots,
+      block.timeSignature,
+      block.gridResolution,
+      false,
+      block.beamGrouping,
+      bar.rhythmRegions
+    );
+
+    expect(visualBar.notes).toHaveLength(3);
+    expect(restSignatures(visualBar.notes)).toEqual([
+      { duration: "8", dots: 0, visible: true }
+    ]);
+    expect(visualBar.beams).toEqual([]);
+    expect(visualBar.tuplets).toHaveLength(1);
+  });
+});
+
 describe("rest engraving", () => {
   it("emits visible rests for silent beats and leading gaps", () => {
     const firstBar = buildBeams("4/4", 16, "x-x-x-x-x-------").visualBar;

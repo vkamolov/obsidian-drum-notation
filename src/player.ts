@@ -1,11 +1,18 @@
-import { getSecondsPerSlot, getSlotVisualDurationSeconds } from "./music";
+import {
+  getRangeDurationSeconds,
+  getSecondsPerQuarter,
+  getSlotBoundaryQuarter,
+  getSlotDurationSeconds,
+  getSlotIndexAtQuarter,
+  getSlotVisualDurationSeconds
+} from "./music";
 import {
   DrumPlaybackBackend,
   DrumPlaybackBackendFactory,
   createMetronomeHit,
   filterMutedHits,
+  getCountInDurationQuarter,
   getCountInPulses,
-  getCountInSlotCount,
   getMetronomePulses,
   normalizePlaybackSpeedPercent
 } from "./playback";
@@ -16,7 +23,7 @@ export class DrumPlayer {
   private backend: DrumPlaybackBackend | null = null;
   private timers: number[] = [];
   private stopped = false;
-  private secondsPerSlot = 0;
+  private secondsPerQuarter = 0;
   private playbackStartTime = 0;
   private rangeStartSlot = 0;
   private rangeEndSlot = 0;
@@ -56,11 +63,22 @@ export class DrumPlayer {
     );
     const speedPercent = normalizePlaybackSpeedPercent(this.options.speedPercent ?? 100);
 
-    this.secondsPerSlot = getSecondsPerSlot(this.block, speedPercent);
+    this.secondsPerQuarter = getSecondsPerQuarter(this.block, speedPercent);
     this.countInDurationSeconds =
-      getCountInSlotCount(this.block, this.options.countInMode ?? "off") * this.secondsPerSlot;
-    this.firstPassDurationSeconds = (this.rangeEndSlot - this.initialSlot) * this.secondsPerSlot;
-    this.fullPassDurationSeconds = (this.rangeEndSlot - this.rangeStartSlot) * this.secondsPerSlot;
+      getCountInDurationQuarter(this.block, this.options.countInMode ?? "off") *
+      this.secondsPerQuarter;
+    this.firstPassDurationSeconds = getRangeDurationSeconds(
+      this.block,
+      this.initialSlot,
+      this.rangeEndSlot,
+      speedPercent
+    );
+    this.fullPassDurationSeconds = getRangeDurationSeconds(
+      this.block,
+      this.rangeStartSlot,
+      this.rangeEndSlot,
+      speedPercent
+    );
     const transportStartTime = backend.currentTime + 0.08;
     this.playbackStartTime = transportStartTime + this.countInDurationSeconds;
 
@@ -80,9 +98,9 @@ export class DrumPlayer {
     countInPulses.forEach((pulse) => {
       backend.scheduleHits(
         [createMetronomeHit(pulse.isDownbeat)],
-        transportStartTime + pulse.slotIndex * this.secondsPerSlot,
-        this.secondsPerSlot,
-        this.secondsPerSlot
+        transportStartTime + pulse.quarterOffset * this.secondsPerQuarter,
+        pulseIntervalSeconds(this.block, this.secondsPerQuarter),
+        pulseIntervalSeconds(this.block, this.secondsPerQuarter)
       );
     });
   }
@@ -95,7 +113,13 @@ export class DrumPlayer {
     const repeatCount = this.options.loop ? Number.POSITIVE_INFINITY : this.options.repeatCount ?? DEFAULT_REPEAT_COUNT;
     const passStartSlot = passIndex === 0 ? this.initialSlot : this.rangeStartSlot;
     const passSlots = this.block.slots.slice(passStartSlot, this.rangeEndSlot);
-    const passDurationSeconds = passSlots.length * this.secondsPerSlot;
+    const passDurationSeconds = getRangeDurationSeconds(
+      this.block,
+      passStartSlot,
+      this.rangeEndSlot,
+      this.options.speedPercent ?? 100
+    );
+    const passStartQuarter = getSlotBoundaryQuarter(this.block, passStartSlot);
     const passStartTime =
       passIndex === 0
         ? this.playbackStartTime
@@ -119,7 +143,9 @@ export class DrumPlayer {
     this.scheduleBarChanges(passStartSlot, passStartTime, backend);
 
     passSlots.forEach((slot) => {
-      const slotTime = passStartTime + (slot.index - passStartSlot) * this.secondsPerSlot;
+      const slotTime =
+        passStartTime +
+        (slot.startQuarter - passStartQuarter) * this.secondsPerQuarter;
       const writtenHits =
         metronomeMode === "metronome-only"
           ? []
@@ -142,7 +168,11 @@ export class DrumPlayer {
       backend.scheduleHits(
         playbackHits,
         slotTime,
-        this.secondsPerSlot,
+        getSlotDurationSeconds(
+          this.block,
+          slot,
+          normalizePlaybackSpeedPercent(this.options.speedPercent ?? 100)
+        ),
         getSlotVisualDurationSeconds(
           this.block,
           slot,
@@ -204,7 +234,11 @@ export class DrumPlayer {
         continue;
       }
 
-      const barStartTime = passStartTime + (barStartSlot - passStartSlot) * this.secondsPerSlot;
+      const barStartTime =
+        passStartTime +
+        (this.block.bars[barIndex].startQuarter -
+          getSlotBoundaryQuarter(this.block, passStartSlot)) *
+          this.secondsPerQuarter;
 
       this.timers.push(
         window.setTimeout(() => {
@@ -221,16 +255,19 @@ export class DrumPlayer {
       return this.rangeStartSlot;
     }
 
-    if (!this.backend || this.backend.currentTime <= this.playbackStartTime || this.secondsPerSlot <= 0) {
+    if (!this.backend || this.backend.currentTime <= this.playbackStartTime || this.secondsPerQuarter <= 0) {
       return this.initialSlot;
     }
 
     const elapsed = this.backend.currentTime - this.playbackStartTime;
 
     if (elapsed < this.firstPassDurationSeconds) {
-      return Math.min(
-        this.rangeEndSlot - 1,
-        this.initialSlot + Math.floor(elapsed / this.secondsPerSlot)
+      return getSlotIndexAtQuarter(
+        this.block,
+        getSlotBoundaryQuarter(this.block, this.initialSlot) +
+          elapsed / this.secondsPerQuarter,
+        this.initialSlot,
+        this.rangeEndSlot
       );
     }
 
@@ -246,9 +283,12 @@ export class DrumPlayer {
 
     const elapsedInPass = elapsedAfterFirstPass % this.fullPassDurationSeconds;
 
-    return Math.min(
-      this.rangeEndSlot - 1,
-      this.rangeStartSlot + Math.floor(elapsedInPass / this.secondsPerSlot)
+    return getSlotIndexAtQuarter(
+      this.block,
+      getSlotBoundaryQuarter(this.block, this.rangeStartSlot) +
+        elapsedInPass / this.secondsPerQuarter,
+      this.rangeStartSlot,
+      this.rangeEndSlot
     );
   }
 
@@ -260,6 +300,15 @@ export class DrumPlayer {
     this.backend?.stop();
     this.backend = null;
   }
+}
+
+function pulseIntervalSeconds(block: DrumBlock, secondsPerQuarter: number): number {
+  const match = /^(\d+)\/(\d+)$/.exec(block.timeSignature);
+  const numerator = Number.parseInt(match?.[1] ?? "4", 10);
+  const denominator = Math.max(1, Number.parseInt(match?.[2] ?? "4", 10));
+  const compoundMultiplier = numerator >= 6 && numerator % 3 === 0 ? 3 : 1;
+
+  return (4 / denominator) * compoundMultiplier * secondsPerQuarter;
 }
 
 function clampSlotBoundary(slotIndex: number, slotCount: number): number {

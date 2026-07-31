@@ -371,9 +371,11 @@ export default class DrumNotationPlugin extends Plugin {
       root.classList.toggle("drum-notation--legend-color", block.legendMode !== "off");
       title.empty();
       title.createSpan({ text: getTitle(block) });
-      const gridSlotLabel = block.gridResolution === 32 ? "thirty-second" : "sixteenth";
+      const positionLabel = block.containsTupletSyntax
+        ? "rhythmic positions"
+        : `${block.gridResolution === 32 ? "thirty-second" : "sixteenth"} slots`;
       title.createEl("small", {
-        text: `${block.tempo} BPM · ${block.timeSignature} · ${block.bars.length} bar${block.bars.length === 1 ? "" : "s"} · ${block.slots.length} ${gridSlotLabel} slots${block.repeatCount > 1 ? ` · repeat ${block.repeatCount}x` : ""}`
+        text: `${block.tempo} BPM · ${block.timeSignature} · ${block.bars.length} bar${block.bars.length === 1 ? "" : "s"} · ${block.slots.length} ${positionLabel}${block.repeatCount > 1 ? ` · repeat ${block.repeatCount}x` : ""}`
       });
 
       const hasRows = block.rows.length > 0;
@@ -1503,6 +1505,13 @@ export default class DrumNotationPlugin extends Plugin {
   ): EditAvailability {
     if (block.rows.length === 0) {
       return { ok: false, reason: "Visual edit mode needs at least one parsed drum row." };
+    }
+
+    if (block.containsTupletSyntax) {
+      return {
+        ok: false,
+        reason: "Visual editing is not available for notation with tuplets. Edit the notation text directly."
+      };
     }
 
     if (!this.settings.enableVisualEditMode) {

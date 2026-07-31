@@ -16,6 +16,7 @@ export interface DrumBlock extends DrumBlockHeader {
   bars: DrumBar[];
   rows: DrumRow[];
   slots: DrumSlot[];
+  containsTupletSyntax: boolean;
 }
 
 export interface ParseResult {
@@ -39,6 +40,9 @@ export type ParseWarningCode =
   | "row-length-mismatch"
   | "unsupported-pattern-character"
   | "unsupported-sticking-character"
+  | "malformed-tuplet"
+  | "tuplet-mismatch"
+  | "unsupported-tuplet-span"
   | "removed-setting";
 
 // The pre-structure form of a row: a label, the instrument it resolved to,
@@ -70,9 +74,22 @@ export interface DrumBar {
   rows: DrumRow[];
   slots: DrumSlot[];
   startSlot: number;
+  startQuarter: number;
+  durationQuarter: number;
+  rhythmRegions: DrumRhythmRegion[];
   stickingPattern?: string;
   measureRepeat?: MeasureRepeat;
   measureRepeatCount?: number;
+}
+
+export interface DrumRhythmRegion {
+  kind: "plain" | "tuplet";
+  startPosition: number;
+  positionCount: number;
+  startQuarter: number;
+  durationQuarter: number;
+  spanWrittenBeats: number;
+  subdivisionCount: number;
 }
 
 export interface DrumBarClipboardPayload {
@@ -113,6 +130,9 @@ export interface DrumRow {
 export interface DrumSlot {
   index: number;
   hits: DrumHit[];
+  startQuarter: number;
+  durationQuarter: number;
+  regionIndex: number;
   sticking?: StickingHand;
 }
 

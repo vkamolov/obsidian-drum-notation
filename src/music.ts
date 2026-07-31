@@ -105,21 +105,102 @@ export function getSecondsPerSlot(block: DrumBlock, speedPercent = 100): number 
   return 60 / getEffectivePlaybackTempo(block.tempo, speedPercent) / (block.gridResolution / 4);
 }
 
+export function getSecondsPerQuarter(block: DrumBlock, speedPercent = 100): number {
+  return 60 / getEffectivePlaybackTempo(block.tempo, speedPercent);
+}
+
+export function getSlotStartSeconds(
+  block: DrumBlock,
+  slot: DrumSlot,
+  speedPercent = 100
+): number {
+  return slot.startQuarter * getSecondsPerQuarter(block, speedPercent);
+}
+
+export function getSlotDurationSeconds(
+  block: DrumBlock,
+  slot: DrumSlot,
+  speedPercent = 100
+): number {
+  return slot.durationQuarter * getSecondsPerQuarter(block, speedPercent);
+}
+
+export function getSlotBoundaryQuarter(block: DrumBlock, slotIndex: number): number {
+  if (block.slots.length === 0 || slotIndex <= 0) {
+    return 0;
+  }
+
+  if (slotIndex >= block.slots.length) {
+    const finalSlot = block.slots[block.slots.length - 1];
+
+    return finalSlot.startQuarter + finalSlot.durationQuarter;
+  }
+
+  return block.slots[slotIndex].startQuarter;
+}
+
+export function getRangeDurationSeconds(
+  block: DrumBlock,
+  startSlot: number,
+  endSlot: number,
+  speedPercent = 100
+): number {
+  const startQuarter = getSlotBoundaryQuarter(block, startSlot);
+  const endQuarter = getSlotBoundaryQuarter(block, endSlot);
+
+  return Math.max(0, endQuarter - startQuarter) * getSecondsPerQuarter(block, speedPercent);
+}
+
+export function getSlotIndexAtQuarter(
+  block: DrumBlock,
+  quarter: number,
+  startSlot = 0,
+  endSlot = block.slots.length
+): number {
+  const rangeStart = Math.max(0, Math.min(block.slots.length, Math.round(startSlot)));
+  const rangeEnd = Math.max(rangeStart, Math.min(block.slots.length, Math.round(endSlot)));
+
+  if (rangeEnd <= rangeStart) {
+    return rangeStart;
+  }
+
+  let low = rangeStart;
+  let high = rangeEnd;
+
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+
+    if (block.slots[middle].startQuarter <= quarter + Number.EPSILON) {
+      low = middle + 1;
+    } else {
+      high = middle;
+    }
+  }
+
+  return Math.min(rangeEnd - 1, Math.max(rangeStart, low - 1));
+}
+
 export function getSlotVisualDurationSeconds(block: DrumBlock, targetSlot: DrumSlot, speedPercent = 100): number {
   const bar = block.bars.find((candidate) => candidate.slots.some((slot) => slot.index === targetSlot.index));
 
   if (!bar) {
-    return getSecondsPerSlot(block, speedPercent);
+    return getSlotDurationSeconds(block, targetSlot, speedPercent);
   }
 
-  const slotsPerBeat = getSlotsPerBeat(block.timeSignature, block.gridResolution);
-  const localIndex = targetSlot.index - bar.startSlot;
-  const beatStart = Math.floor(localIndex / slotsPerBeat) * slotsPerBeat;
-  const beatSlots = bar.slots.slice(beatStart, beatStart + slotsPerBeat);
+  const region = bar.rhythmRegions[targetSlot.regionIndex];
+
+  if (!region || region.kind === "tuplet") {
+    return getSlotDurationSeconds(block, targetSlot, speedPercent);
+  }
+
+  const beatSlots = bar.slots.slice(
+    region.startPosition,
+    region.startPosition + region.positionCount
+  );
   const indexInBeat = beatSlots.findIndex((slot) => slot.index === targetSlot.index);
 
   if (indexInBeat < 0 || targetSlot.hits.length === 0) {
-    return getSecondsPerSlot(block, speedPercent);
+    return getSlotDurationSeconds(block, targetSlot, speedPercent);
   }
 
   const hitIndexes = beatSlots
@@ -128,7 +209,7 @@ export function getSlotVisualDurationSeconds(block: DrumBlock, targetSlot: DrumS
   const hitPosition = hitIndexes.indexOf(indexInBeat);
 
   if (hitPosition < 0) {
-    return getSecondsPerSlot(block, speedPercent);
+    return getSlotDurationSeconds(block, targetSlot, speedPercent);
   }
 
   const span = getGridSpanToNextHit(
@@ -139,8 +220,8 @@ export function getSlotVisualDurationSeconds(block: DrumBlock, targetSlot: DrumS
   ).supportedSpan;
 
   return Math.max(
-    getSecondsPerSlot(block, speedPercent),
-    span * getSecondsPerSlot(block, speedPercent)
+    getSlotDurationSeconds(block, targetSlot, speedPercent),
+    span * getSlotDurationSeconds(block, targetSlot, speedPercent)
   );
 }
 

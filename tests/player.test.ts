@@ -120,6 +120,36 @@ BD | o---`);
     expect(clearTimeoutMock).toHaveBeenCalledTimes(scheduledTimers.length);
   });
 
+  it("schedules tuplet positions on the quarter-note timeline", async () => {
+    const block = parseDrumBlock(`Tempo: 100
+HH | 3(xxx)`);
+    const backend = new FakePlaybackBackend();
+    const player = new DrumPlayer(
+      {} as AudioContext,
+      block,
+      vi.fn(),
+      vi.fn(),
+      { repeatCount: 1 },
+      (() => backend) as DrumPlaybackBackendFactory
+    );
+
+    await player.play();
+
+    expect(backend.scheduled.map((entry) => entry.time)).toEqual([
+      expect.closeTo(10.08, 8),
+      expect.closeTo(10.28, 8),
+      expect.closeTo(10.48, 8)
+    ]);
+    expect(backend.scheduled.map((entry) => entry.slotDuration)).toEqual([
+      expect.closeTo(0.2, 8),
+      expect.closeTo(0.2, 8),
+      expect.closeTo(0.2, 8)
+    ]);
+
+    backend.currentTime = 10.29;
+    expect(player.getCurrentSlotIndex()).toBe(1);
+  });
+
   it("normalizes speed and schedules scaled slot and note durations", async () => {
     const block = parseDrumBlock(`Tempo: 100
 SD | z---`);

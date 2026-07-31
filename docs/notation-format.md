@@ -40,6 +40,9 @@ flagged because they can silently change playback feel. Short shorthand sketches
 such as `HH | x---` remain valid and warning-free.
 Invalid `Grouping:` values are also advisory: the score falls back to its normal
 meter grouping and continues rendering.
+Malformed tuplets, unsupported future span forms, and tuplets whose ordered
+rhythm regions differ between rows are advisory too. The parser removes the
+wrapper syntax and uses a plain-grid fallback so rendering remains non-blocking.
 
 A minimal block:
 
@@ -186,6 +189,52 @@ span bars with ` | ` just like instrument rows. One-bar repeat symbols keep
 their `%`/`%xN` notation; the repeated bar inherits the previous bar's sticking
 in the model.
 
+### Explicit beat tuplets
+
+`N(body)` divides one written denominator beat into `N` equal rhythmic
+positions. `N` must be from 3 through 12, and `body` must contain exactly `N`
+normal row characters:
+
+```drums
+Time: 4/4
+ST | 3(RLR)3(LRL)3(RLR)3(LRL)
+SD | 3(ooo)3(ooo)3(ooo)3(ooo)
+```
+
+In `Time: 4/4`, each token above occupies one quarter-note beat. In
+`Time: 6/8`, the same token occupies one written eighth-note beat. A token must
+start at a written-beat boundary and may not extend past the bar.
+
+The body accepts normal hit, articulation, rest, and sticking characters. For
+example, `3(x-x)` is a triplet with a silent middle position, and `3(---)` is a
+completely silent tuplet beat. Explicit power-of-two forms such as `4(xxxx)`
+and `8(xxxxxxxx)` are valid and preserve the common rhythm structure across
+rows, but they engrave as ordinary subdivisions without a tuplet number.
+
+All present instrument and sticking rows in one inline bar must use the same
+ordered rhythm regions. A row that is silent during a tuplet beat must still
+write the matching wrapper:
+
+```drums
+Time: 4/4
+HH | x-x-3(x-x)x-x-x-x-
+SD | ----3(o--)----o---
+BD | o---3(---)o-------
+```
+
+Malformed wrappers, wrong body lengths, nested tuplets, and mismatched row
+structures produce advisory warnings. Their wrapper characters are removed and
+the contained positions are interpreted with the plain-grid fallback. The
+reserved `B/N(body)` form, such as `2/3(xxx)` for two written beats divided
+into three positions, also warns and falls back; it has no timing semantics
+yet.
+
+Tuplet rhythm regions are part of the model and survive canonical serialization
+and `%`/`%xN` expansion. A block containing tuplet syntax is read-only in the
+current fixed-grid visual editor so an unrelated visual edit cannot flatten the
+tuplets. Text editing remains available. Tuplet-aware bar-level editing is
+reserved for a future visual-editor model.
+
 ---
 
 ## 4. Hit characters (the alphabet)
@@ -207,7 +256,7 @@ Every pattern character is either a **rest** or a **hit with an articulation**.
 **The model stores the articulation, not the exact character.** `>`, `!`, `#`,
 `X`, and `O` all parse to `accent`; `x` and `o` both parse to a normal hit. This
 is intentional and is why round-tripping is defined at the model level, not as
-byte equality (see §7).
+byte equality (see §8).
 
 By convention, cymbal-style voices (cymbals, hats, cross-stick, ride bell) are
 written with `x`/`X` and drum voices with `o`/`O`. Ride bell renders as a diamond
@@ -344,12 +393,13 @@ hits rather than hitless rest slots.
 
 The grouping components count denominator beats and must add up to the meter
 numerator. Explicit grouping overrides automatic compound grouping for that
-block. It is not tuplet syntax and does not draw a triplet numeral.
+block. It controls beam boundaries only and is independent from `N(body)`
+tuplet timing.
 
-Three hits in one Grid-16 count are not implicit triplets. Use compound meters
-such as 6/8 or 12/8 for triplet-feel notation until explicit triplet syntax is
-added. Slots-per-bar is `beats × (grid ÷ beat-value)`; e.g. 4/4 at grid 16 =
-16 slots per bar.
+Three plain hits in one Grid-16 count are not implicit triplets. Use explicit
+`N(body)` syntax to divide one written beat into equal positions, such as
+`3(xxx)`. Outside tuplets, slots-per-bar is
+`beats × (grid ÷ beat-value)`; e.g. 4/4 at grid 16 = 16 slots per bar.
 
 ```drums
 Grid: 32
@@ -526,6 +576,9 @@ To stay deterministic and diff-friendly, serialization **normalizes**:
 - Rests collapse to `-`.
 - Settings left at their default are **omitted** (they re-parse to the default).
 - Explicit beam grouping normalizes to `Grouping: n+n+…`.
+- Valid tuplets normalize to `N(body)` at their original rhythmic region.
+  Explicit power-of-two regions retain their wrappers even though they do not
+  draw a tuplet number.
 - Unknown/metadata lines are preserved verbatim and in order.
 - Bar separators normalize to `Bar`; row patterns are joined with ` | `.
 - System subtitles normalize to `Subtitle: text` before each system's rows.

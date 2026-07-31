@@ -71,6 +71,35 @@ RD | x-x-x-x-x-x-x-x-x-x-x-x-
 SD | ------o-----------o-----
 BD | o-----------o-----------`,
 
+  "Triplet fill": `Title: Triplet fill
+Tempo: 100
+Time: 4/4
+Grid: 16
+Subtitle: Straight groove ending with one beat of triplets
+HH | x-x-x-x-x-x-3(xxx)
+SD | ----o-------3(ooo)
+BD | o-------o---3(---)`,
+
+  "Triplet shuffle": `Title: Triplet shuffle
+Tempo: 92
+Time: 4/4
+Grid: 16
+Subtitle: Each written quarter-note beat is divided into three
+HH | 3(x-x)3(x-x)3(x-x)3(x-x)
+SD | 3(---)3(o--)3(---)3(o--)
+BD | 3(o--)3(---)3(o--)3(---)`,
+
+  "Mixed tuplets": `Title: Mixed tuplets
+Tempo: 84
+Time: 4/4
+Grid: 16
+Subtitle: Plain beat, triplet, explicit four, and quintuplet
+ST | R-L-3(RLR)4(LRLR)5(RLRLR)
+HH | x-x-3(x-x)4(x-x-)5(x-x-x)
+SD | ----3(o--)4(--o-)5(o-o-o)
+BD | o---3(---)4(o---)5(-----)
+%x2`,
+
   "Sticking lane": `Title: Sticking lane
 Tempo: 100
 Time: 4/4

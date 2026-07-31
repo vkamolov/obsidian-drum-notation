@@ -271,7 +271,12 @@ function renderPreview(): void {
   speedSelect.disabled = !hasRows;
   metronomeBtn.disabled = block.slots.length === 0;
   muteBtn.disabled = !hasRows;
-  editBtn.disabled = !hasRows;
+  editBtn.disabled = !hasRows || block.containsTupletSyntax;
+  const editDescription = block.containsTupletSyntax
+    ? "Visual editing is not available for notation with tuplets. Edit the notation text directly."
+    : "Edit notation visually";
+  editBtn.title = editDescription;
+  editBtn.setAttribute("aria-label", editDescription);
   syncPlaybackControls(block);
 
   if (!hasRows) {
@@ -289,6 +294,11 @@ function renderPreview(): void {
 
   syncControls(block);
   updateDiagnostics(block, editor.value);
+  if (gridEditor && block.containsTupletSyntax) {
+    exitEditMode();
+    gridEditorMessage =
+      "Visual editing is not available for notation with tuplets. Edit the notation text directly.";
+  }
   if (gridEditor && !isApplyingGridEdit) {
     gridEditor.syncBlock(block, selectedBarIndex);
   }
@@ -1246,6 +1256,12 @@ function enterEditMode(): void {
   if (gridEditor || !currentBlock || currentBlock.slots.length === 0) {
     return;
   }
+  if (currentBlock.containsTupletSyntax) {
+    gridEditorMessage =
+      "Visual editing is not available for notation with tuplets. Edit the notation text directly.";
+    renderNotes(currentBlock, editor.value);
+    return;
+  }
   stopPlayback();
   stopPreview();
   selectedBarIndex = barIndexForSlot(currentBlock, currentSlotIndex);
@@ -1304,7 +1320,7 @@ function updateDiagnostics(block: DrumBlock, raw: string): void {
     ["systems", String(block.systems.length)],
     ["bars", String(block.bars.length)],
     ["rows", String(block.rows.length)],
-    ["slots", String(block.slots.length)],
+    [block.containsTupletSyntax ? "rhythmic positions" : "slots", String(block.slots.length)],
     ["repeat", `${block.repeatCount}×`],
     ["metadata", `${block.metadata.length} line(s)`]
   ];

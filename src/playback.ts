@@ -27,6 +27,7 @@ export const COUNT_IN_MODE_OPTIONS: ReadonlyArray<{
 
 export interface MetronomePulse {
   slotIndex: number;
+  quarterOffset: number;
   isDownbeat: boolean;
 }
 
@@ -72,24 +73,40 @@ export function getMetronomePulses(
 ): MetronomePulse[] {
   const rangeStart = Math.max(0, Math.round(startSlot));
   const rangeEnd = Math.min(block.slots.length, Math.max(rangeStart, Math.round(endSlot)));
-  const pulseIntervalSlots = getMetronomePulseIntervalSlots(
-    block.timeSignature,
-    block.gridResolution
-  );
+  const rangeStartQuarter = slotBoundaryQuarter(block, rangeStart);
+  const rangeEndQuarter = slotBoundaryQuarter(block, rangeEnd);
+  const pulseIntervalQuarter = getMetronomePulseIntervalQuarter(block.timeSignature);
   const pulses: MetronomePulse[] = [];
 
   block.bars.forEach((bar) => {
-    const barEndSlot = bar.startSlot + bar.slots.length;
+    const barEndQuarter = bar.startQuarter + bar.durationQuarter;
 
-    if (barEndSlot <= rangeStart || bar.startSlot >= rangeEnd) {
+    if (barEndQuarter <= rangeStartQuarter || bar.startQuarter >= rangeEndQuarter) {
       return;
     }
 
-    for (let localSlot = 0; localSlot < bar.slots.length; localSlot += pulseIntervalSlots) {
-      const slotIndex = bar.startSlot + localSlot;
+    for (
+      let localQuarter = 0;
+      localQuarter < bar.durationQuarter - Number.EPSILON;
+      localQuarter += pulseIntervalQuarter
+    ) {
+      const quarterOffset = bar.startQuarter + localQuarter;
+      const slot = bar.slots.find(
+        (candidate) => Math.abs(candidate.startQuarter - quarterOffset) < 1e-8
+      );
 
-      if (slotIndex >= rangeStart && slotIndex < rangeEnd) {
-        pulses.push({ slotIndex, isDownbeat: localSlot === 0 });
+      if (
+        slot &&
+        slot.index >= rangeStart &&
+        slot.index < rangeEnd &&
+        quarterOffset >= rangeStartQuarter &&
+        quarterOffset < rangeEndQuarter
+      ) {
+        pulses.push({
+          slotIndex: slot.index,
+          quarterOffset,
+          isDownbeat: localQuarter === 0
+        });
       }
     }
   });
@@ -113,10 +130,15 @@ export function getCountInPulses(block: DrumBlock, mode: CountInMode = DEFAULT_C
   }
 
   const pulseIntervalSlots = getMetronomePulseIntervalSlots(block.timeSignature, block.gridResolution);
+  const pulseIntervalQuarter = getMetronomePulseIntervalQuarter(block.timeSignature);
   const pulses: MetronomePulse[] = [];
 
   for (let slotIndex = 0; slotIndex < countInSlots; slotIndex += pulseIntervalSlots) {
-    pulses.push({ slotIndex, isDownbeat: slotIndex === 0 });
+    pulses.push({
+      slotIndex,
+      quarterOffset: (slotIndex / pulseIntervalSlots) * pulseIntervalQuarter,
+      isDownbeat: slotIndex === 0
+    });
   }
 
   return pulses;
@@ -195,6 +217,30 @@ export function getMetronomePulseIntervalSlots(
   return Math.max(1, writtenBeatSlots * compoundMultiplier);
 }
 
+export function getMetronomePulseIntervalQuarter(timeSignature: string): number {
+  const match = /^(\d+)\/(\d+)$/.exec(timeSignature);
+  const numerator = Number.parseInt(match?.[1] ?? "4", 10);
+  const beatValue = Math.max(1, Number.parseInt(match?.[2] ?? "4", 10));
+  const compoundMultiplier = numerator >= 6 && numerator % 3 === 0 ? 3 : 1;
+
+  return (4 / beatValue) * compoundMultiplier;
+}
+
+export function getCountInDurationQuarter(
+  block: DrumBlock,
+  mode: CountInMode = DEFAULT_COUNT_IN_MODE
+): number {
+  if (mode === "off") {
+    return 0;
+  }
+
+  const match = /^(\d+)\/(\d+)$/.exec(block.timeSignature);
+  const beats = Number.parseInt(match?.[1] ?? "4", 10);
+  const beatValue = Math.max(1, Number.parseInt(match?.[2] ?? "4", 10));
+
+  return beats * (4 / beatValue);
+}
+
 function getExpectedSlotsPerBar(
   timeSignature: string,
   gridResolution: DrumBlock["gridResolution"]
@@ -204,6 +250,20 @@ function getExpectedSlotsPerBar(
   const beatValue = Math.max(1, Number.parseInt(match?.[2] ?? "4", 10));
 
   return Math.max(1, Math.round(beats * (gridResolution / beatValue)));
+}
+
+function slotBoundaryQuarter(block: DrumBlock, slotIndex: number): number {
+  if (block.slots.length === 0 || slotIndex <= 0) {
+    return 0;
+  }
+
+  if (slotIndex >= block.slots.length) {
+    const finalSlot = block.slots[block.slots.length - 1];
+
+    return finalSlot.startQuarter + finalSlot.durationQuarter;
+  }
+
+  return block.slots[slotIndex].startQuarter;
 }
 
 export interface DrumPlaybackBackend {

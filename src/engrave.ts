@@ -12,7 +12,7 @@ import {
 } from "./music";
 import { MeasureRepeatProgress } from "./repeat-progress";
 import { allocateBarWidths } from "./spacing";
-import { CursorPosition, DrumBar, DrumBlock, DrumHit, DrumInstrument, DrumSlot, GridResolution, MeasureRepeat, ScoreRenderResult, StickingHand } from "./types";
+import { CursorPosition, DrumBar, DrumBlock, DrumHit, DrumInstrument, DrumRhythmRegion, DrumSlot, GridResolution, MeasureRepeat, ScoreRenderResult, StickingHand } from "./types";
 
 export type LegendHighlightSource = "playback" | "preview";
 
@@ -172,7 +172,7 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
     const headerProbe = createScoreStave(0, staveWidth, true, block, systemIndex, layout);
     const firstBarHeaderWidth = headerProbe.getModifierXShift();
     const barWidths = allocateBarWidths(
-      visualBars.map((entry) => entry.bar.slots.length),
+      visualBars.map((entry) => entry.bar.durationQuarter),
       staveWidth,
       firstBarHeaderWidth,
       layout.barMinWidth
@@ -211,7 +211,7 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
       }
 
       const visualBar = buildVisualBarNotes(
-        bar.slots,
+        bar,
         bar.measureRepeat,
         block.timeSignature,
         block.gridResolution,
@@ -246,14 +246,22 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
         }
       });
       const voice = new Voice({
-        numBeats: Math.max(1, Math.ceil(bar.slots.length / getSlotsPerBeat(block.timeSignature, block.gridResolution))),
+        numBeats: Math.max(
+          1,
+          bar.durationQuarter / (4 / getBeatValue(block.timeSignature))
+        ),
         beatValue: getBeatValue(block.timeSignature)
       }).setStrict(false);
 
       voice.addTickables(notes);
       const barHeaderWidth = isFirstBarInSystem ? firstBarHeaderWidth : 0;
       const availableFormatWidth = Math.max(24, barWidth - barHeaderWidth - layout.formatPadding - layout.noteStartPadding - layout.noteEndPadding);
-      const slotScaledFormatWidth = Math.max(24, bar.slots.length * layout.maxSlotFormatWidth);
+      const equivalentGridSlots =
+        bar.durationQuarter * (block.gridResolution / 4);
+      const slotScaledFormatWidth = Math.max(
+        24,
+        equivalentGridSlots * layout.maxSlotFormatWidth
+      );
       const formatWidth = Math.min(availableFormatWidth, slotScaledFormatWidth);
       new Formatter().joinVoices([voice]).format([voice], formatWidth);
       voice.draw(context, stave);
@@ -1231,7 +1239,7 @@ function slimTimeSignature(timeSignature: TimeSignature, timeSpec: string, fontS
 }
 
 function buildVisualBarNotes(
-  slots: DrumSlot[],
+  bar: DrumBar,
   measureRepeat: MeasureRepeat | undefined,
   timeSignature: string,
   gridResolution: GridResolution,
@@ -1242,7 +1250,14 @@ function buildVisualBarNotes(
     return buildMeasureRepeatVisualBarNotes(measureRepeat);
   }
 
-  return buildGridVisualBarNotes(slots, timeSignature, gridResolution, colorNoteheads, beamGrouping);
+  return buildGridVisualBarNotes(
+    bar.slots,
+    timeSignature,
+    gridResolution,
+    colorNoteheads,
+    beamGrouping,
+    bar.rhythmRegions
+  );
 }
 
 function buildMeasureRepeatVisualBarNotes(measureRepeat: MeasureRepeat): VisualBarNotes {
@@ -1297,8 +1312,19 @@ export function buildGridVisualBarNotes(
   timeSignature: string,
   gridResolution: GridResolution,
   colorNoteheads: boolean,
-  beamGrouping?: readonly number[]
+  beamGrouping?: readonly number[],
+  rhythmRegions?: readonly DrumRhythmRegion[]
 ): VisualBarNotes {
+  if (rhythmRegions?.some((region) => region.kind === "tuplet")) {
+    return buildRhythmicVisualBarNotes(
+      slots,
+      timeSignature,
+      gridResolution,
+      colorNoteheads,
+      rhythmRegions
+    );
+  }
+
   const notes: Tickable[] = [];
   const hitNotes: StaveNote[] = [];
   const noteSlots: DrumSlot[] = [];
@@ -1395,13 +1421,118 @@ export function buildGridVisualBarNotes(
   return { notes, hitNotes, noteSlots, cursorNotes: hitNotes, cursorSlots: noteSlots, beams, tuplets };
 }
 
+function buildRhythmicVisualBarNotes(
+  slots: DrumSlot[],
+  timeSignature: string,
+  gridResolution: GridResolution,
+  colorNoteheads: boolean,
+  rhythmRegions: readonly DrumRhythmRegion[]
+): VisualBarNotes {
+  const result: VisualBarNotes = {
+    notes: [],
+    hitNotes: [],
+    noteSlots: [],
+    cursorNotes: [],
+    cursorSlots: [],
+    beams: [],
+    tuplets: []
+  };
+  const beatValue = getBeatValue(timeSignature);
+
+  for (const region of rhythmRegions) {
+    const regionSlots = slots.slice(
+      region.startPosition,
+      region.startPosition + region.positionCount
+    );
+
+    if (region.kind === "plain") {
+      const plain = buildGridVisualBarNotes(
+        regionSlots,
+        timeSignature,
+        gridResolution,
+        colorNoteheads
+      );
+
+      mergeVisualBarNotes(result, plain);
+      continue;
+    }
+
+    const occupied = largestPowerOfTwoAtMost(region.subdivisionCount);
+    const duration = String(beatValue * occupied);
+    const regionNotes = regionSlots.map((slot) =>
+      makeStaveNote(slot, duration, colorNoteheads)
+    );
+    let beamRun: StaveNote[] = [];
+
+    const finishBeamRun = () => {
+      if (beamRun.length > 1 && Number.parseInt(duration, 10) >= 8) {
+        result.beams.push(new Beam(beamRun));
+      }
+      beamRun = [];
+    };
+
+    regionNotes.forEach((note, index) => {
+      const slot = regionSlots[index];
+
+      result.notes.push(note);
+      if (slot.hits.length === 0) {
+        finishBeamRun();
+        return;
+      }
+
+      result.hitNotes.push(note);
+      result.noteSlots.push(slot);
+      result.cursorNotes.push(note);
+      result.cursorSlots.push(slot);
+      beamRun.push(note);
+    });
+    finishBeamRun();
+
+    if (!isPowerOfTwoValue(region.subdivisionCount)) {
+      result.tuplets.push(
+        new Tuplet(regionNotes, {
+          numNotes: region.subdivisionCount,
+          notesOccupied: occupied,
+          ratioed: false
+        })
+      );
+    }
+  }
+
+  return result;
+}
+
+function mergeVisualBarNotes(target: VisualBarNotes, source: VisualBarNotes): void {
+  target.notes.push(...source.notes);
+  target.hitNotes.push(...source.hitNotes);
+  target.noteSlots.push(...source.noteSlots);
+  target.cursorNotes.push(...source.cursorNotes);
+  target.cursorSlots.push(...source.cursorSlots);
+  target.beams.push(...source.beams);
+  target.tuplets.push(...source.tuplets);
+}
+
+function isPowerOfTwoValue(value: number): boolean {
+  return value > 0 && (value & (value - 1)) === 0;
+}
+
+function makeRestSlot(): DrumSlot {
+  return {
+    index: -1,
+    hits: [],
+    startQuarter: 0,
+    durationQuarter: 0,
+    regionIndex: 0
+  };
+}
+
 function appendGridRests(notes: Tickable[], span: number, gridResolution: GridResolution): void {
   let remaining = span;
 
   while (remaining > 0) {
     const restSpan = largestPowerOfTwoAtMost(remaining);
 
-    notes.push(makeStaveNote({ index: -1, hits: [] }, durationForGridSpan(gridResolution, restSpan)));
+    notes.push(makeStaveNote(makeRestSlot(), durationForGridSpan(gridResolution, restSpan)));
     remaining -= restSpan;
   }
 }
@@ -1434,13 +1565,13 @@ function appendGroupedGridRests(notes: Tickable[], span: number, gridResolution:
     const exactSpan = getGridSpanToNextHit(0, remaining, remaining, gridResolution);
 
     if (exactSpan.supportedSpan === remaining) {
-      notes.push(makeStaveNote({ index: -1, hits: [] }, exactSpan.duration, false, exactSpan.dots));
+      notes.push(makeStaveNote(makeRestSlot(), exactSpan.duration, false, exactSpan.dots));
       return;
     }
 
     const restSpan = largestPowerOfTwoAtMost(remaining);
 
-    notes.push(makeStaveNote({ index: -1, hits: [] }, durationForGridSpan(gridResolution, restSpan)));
+    notes.push(makeStaveNote(makeRestSlot(), durationForGridSpan(gridResolution, restSpan)));
     remaining -= restSpan;
   }
 }

@@ -276,7 +276,12 @@ function toStickingRow(bars: DrumBar[]): SystemRow | null {
 
   return {
     label: "ST",
-    patterns: bars.map((bar) => normalizeStickingPattern(bar.stickingPattern ?? "-".repeat(bar.slots.length)))
+    patterns: bars.map((bar) =>
+      serializeRhythmicPattern(
+        bar,
+        normalizeStickingPattern(bar.stickingPattern ?? "-".repeat(bar.slots.length))
+      )
+    )
   };
 }
 
@@ -300,7 +305,9 @@ function toSystemRows(bars: DrumBar[]): SystemRow[] {
         patterns.set(id, []);
       }
 
-      patterns.get(id)!.push(normalizePattern(row.instrument, row.pattern));
+      patterns.get(id)!.push(
+        serializeRhythmicPattern(bar, normalizePattern(row.instrument, row.pattern))
+      );
     }
   }
 
@@ -309,6 +316,31 @@ function toSystemRows(bars: DrumBar[]): SystemRow[] {
     instrument,
     patterns: patterns.get(instrument.id)!
   }));
+}
+
+function serializeRhythmicPattern(bar: DrumBar, pattern: string): string {
+  if (!bar.rhythmRegions.some((region) => region.kind === "tuplet")) {
+    return pattern;
+  }
+
+  let result = "";
+  let cursor = 0;
+
+  for (const region of bar.rhythmRegions) {
+    if (region.startPosition > cursor) {
+      result += pattern.slice(cursor, region.startPosition);
+    }
+
+    const end = region.startPosition + region.positionCount;
+    const body = pattern.slice(region.startPosition, end).padEnd(region.positionCount, "-");
+
+    result += region.kind === "tuplet"
+      ? `${region.subdivisionCount}(${body})`
+      : body;
+    cursor = end;
+  }
+
+  return result + pattern.slice(cursor);
 }
 
 function normalizeStickingPattern(pattern: string): string {

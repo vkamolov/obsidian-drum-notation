@@ -10,6 +10,9 @@ or see the
 
 ## Release Notes
 
+- `1.1.0` adds explicit one-written-beat tuplets with `N(...)` syntax,
+  synchronized playback and engraving, text-safe repeat support, and clear
+  advisory warnings for malformed or mismatched tuplet rows.
 - `1.0.11` adds count dialogs for `%` and `%xN`, group-aware repeat resizing
   and deletion, conversion to one editable bar, and quieter ghost-note
   playback.
@@ -125,6 +128,10 @@ to the system clipboard when the platform permits it.
 Visual edit mode is intentionally limited in v1:
 
 - It is available in reading view only. Live Preview/source-mode visual editing is planned, but remains read-only for now to avoid conflicts with Obsidian's active editor buffer.
+- A block containing explicit tuplet syntax is read-only in the visual editor.
+  Edit its fenced notation text directly. This block-level guard prevents the
+  fixed-grid editor from accidentally removing or flattening tuplet regions;
+  bar-level locking and tuplet-aware visual controls can be added later.
 - It edits only top-level `drums` fences. Blocks nested inside callouts, lists, or indented Markdown are rendered and playable, but visual editing is disabled.
 - Embedded drums blocks are rendered and playable, but visual editing and first-bar creation are disabled. Open the source note to edit the groove.
 - The first visual edit serializes the whole block in the plugin's canonical authoring form. This keeps the model safe and deterministic, but it may normalize spacing, labels, header order, and equivalent hit characters.
@@ -361,8 +368,48 @@ asymmetric `/8` and `/16` meters, add a block-level setting such as
 `Grouping: 2+2+3` to control beam boundaries. Grouping changes engraving only;
 it does not change playback timing, metronome/count-in pulses, or create
 tuplets. Three hits in a Grid-16 count are not treated as an implicit triplet;
-use meters such as 6/8 or 12/8 for triplet-feel notation until explicit triplet
-syntax exists.
+write an explicit tuplet when equal subdivisions must occupy one written beat.
+
+### Explicit beat tuplets
+
+Use `N(...)` to divide exactly one written denominator beat into `N` equal
+rhythmic positions:
+
+```drums
+Title: Triplet fill
+Time: 4/4
+ST | 3(RLR)3(LRL)3(RLR)3(LRL)
+SD | 3(ooo)3(ooo)3(ooo)3(ooo)
+```
+
+`N` may be 3–12, and the body must contain exactly `N` hit, rest, or sticking
+characters. The token must begin on a written-beat boundary. In 4/4,
+`3(x-x)` is one quarter-note beat divided into three equal positions; in 6/8,
+it is one eighth-note beat divided into three. Explicit `4(...)` and `8(...)`
+subdivisions are accepted for structural consistency but use ordinary
+power-of-two notation without a tuplet number.
+
+Every present drum and sticking row in the same inline bar must describe the
+same ordered plain/tuplet rhythm structure. Use explicit rest bodies such as
+`3(---)` on a silent row:
+
+```drums
+Time: 4/4
+HH | x-x-3(x-x)x-x-x-x-
+SD | ----3(o--)----o---
+BD | o---3(---)o-------
+```
+
+Tuplet bodies support the normal hit and articulation characters. Rests inside
+a tuplet remain explicit rhythmic positions and break beams. `%` and `%xN`
+repeat the resulting timing normally, and playback, metronome, cursor, and
+highlight timing follow the expanded quarter-note timeline.
+
+Malformed tuplets, row-structure mismatches, and unsupported forms produce
+advisory parser warnings and fall back to plain-grid text so the block remains
+renderable. `B/N(...)`, such as `2/3(xxx)` for two written beats divided into
+three positions, is reserved but not implemented yet. Nested tuplets are also
+deferred.
 
 ## Hit Characters
 

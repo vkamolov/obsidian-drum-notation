@@ -1,6 +1,14 @@
 import { getArticulation, getVelocity, INSTRUMENTS_BY_ALIAS, isRest, isSupportedHitChar } from "./kit";
 import { getSlotsPerBar } from "./music";
 import {
+  analyzeTupletPattern,
+  buildPlainRhythmRegions,
+  containsTupletLikeSyntax,
+  flattenTupletSyntax,
+  getRegionEndQuarter,
+  rhythmSignature
+} from "./rhythm";
+import {
   DEFAULT_GRID_RESOLUTION,
   DEFAULT_LEGEND_MODE,
   DEFAULT_REPEAT_COUNT,
@@ -16,6 +24,7 @@ import {
   DrumInstrument,
   DrumRow,
   DrumRowInput,
+  DrumRhythmRegion,
   DrumSlot,
   DrumStickingInput,
   DrumSystem,
@@ -61,6 +70,12 @@ interface RowLengthWarningEntry {
   kind: "row" | "sticking";
   generatedSegments?: ReadonlySet<number>;
   segmentLineNumbers?: ReadonlyMap<number, number>;
+}
+
+interface PreparedRhythmSections {
+  rhythmSections: Array<Array<DrumRhythmRegion[] | undefined>>;
+  tupletSourceSegments: Array<ReadonlySet<number>>;
+  containsTupletSyntax: boolean;
 }
 
 const STICKING_LABELS = new Set(["st", "stick", "sticking", "hands"]);
@@ -359,7 +374,22 @@ function parseDrumBlockInternal(source: string, collectWarnings: boolean): Parse
     );
   }
 
-  warnForRowLengthMismatches(rowSections, stickingSections, timeSignature, gridResolution, warn);
+  const preparedRhythms = prepareTupletRhythms(
+    rowSections,
+    stickingSections,
+    timeSignature,
+    gridResolution,
+    warn
+  );
+
+  warnForRowLengthMismatches(
+    rowSections,
+    stickingSections,
+    timeSignature,
+    gridResolution,
+    warn,
+    preparedRhythms.tupletSourceSegments
+  );
 
   const block = finalizeDrumBlock(
     {
@@ -377,7 +407,9 @@ function parseDrumBlockInternal(source: string, collectWarnings: boolean): Parse
     rowSections,
     repeatSections,
     stickingSections,
-    subtitleSections
+    subtitleSections,
+    preparedRhythms.rhythmSections,
+    preparedRhythms.containsTupletSyntax
   );
 
   return { block, warnings };
@@ -392,9 +424,18 @@ export function finalizeDrumBlock(
   rowSections: DrumRowInput[][],
   repeatSections: Array<Array<MeasureRepeatInput | undefined>> = [],
   stickingSections: Array<DrumStickingInput | undefined> = [],
-  subtitleSections: Array<string | undefined> = []
+  subtitleSections: Array<string | undefined> = [],
+  rhythmSections: Array<Array<DrumRhythmRegion[] | undefined>> = [],
+  containsTupletSyntax = false
 ): DrumBlock {
-  const systems = buildSystems(rowSections, repeatSections, stickingSections, subtitleSections);
+  const systems = buildSystems(
+    header,
+    rowSections,
+    repeatSections,
+    stickingSections,
+    subtitleSections,
+    rhythmSections
+  );
   const bars: DrumBar[] = [];
   const rows: DrumRow[] = [];
   const slots: DrumSlot[] = [];
@@ -412,7 +453,8 @@ export function finalizeDrumBlock(
     systems,
     bars,
     rows,
-    slots
+    slots,
+    containsTupletSyntax
   };
 }
 
@@ -531,8 +573,7 @@ function parseStickingRowInput(line: string): DrumStickingInput | null {
     .slice(dividerIndex + 1)
     .split("|")
     .map((pattern) => pattern.replace(/\s+/g, "").trim())
-    .filter((pattern) => pattern.length > 0)
-    .map(normalizeStickingPattern);
+    .filter((pattern) => pattern.length > 0);
 
   if (!label || patterns.length === 0) {
     return null;
@@ -611,9 +652,14 @@ function warnForUnsupportedRowCharacters(
   }
 
   const seen = new Set<string>();
+  const containsTupletSyntax = containsTupletLikeSyntax(line.slice(dividerIndex + 1));
 
   for (let index = dividerIndex + 1; index < line.length; index++) {
     const char = line[index];
+
+    if (containsTupletSyntax && /[0-9()/]/.test(char)) {
+      continue;
+    }
 
     if (char === "|" || /\s/.test(char) || seen.has(char) || !isUnsupported(char)) {
       continue;
@@ -622,6 +668,128 @@ function warnForUnsupportedRowCharacters(
     seen.add(char);
     emit(char, index + 1);
   }
+}
+
+function prepareTupletRhythms(
+  rowSections: ParsedDrumRowInput[][],
+  stickingSections: Array<ParsedDrumStickingInput | undefined>,
+  timeSignature: string,
+  gridResolution: GridResolution,
+  warn: (line: number, code: ParseWarningCode, message: string, column?: number) => void
+): PreparedRhythmSections {
+  const rhythmSections: Array<Array<DrumRhythmRegion[] | undefined>> = [];
+  const tupletSourceSegments: Array<ReadonlySet<number>> = [];
+  let containsTupletSyntax = false;
+
+  rowSections.forEach((rows, systemIndex) => {
+    const sticking = stickingSections[systemIndex];
+    const segmentCount = Math.max(
+      0,
+      ...rows.map((row) => row.patterns.length),
+      sticking?.patterns.length ?? 0
+    );
+    const systemRhythms: Array<DrumRhythmRegion[] | undefined> = [];
+    const sourceSegments = new Set<number>();
+
+    for (let segmentIndex = 0; segmentIndex < segmentCount; segmentIndex++) {
+      const entries = [
+        ...rows
+          .filter((row) => row.patterns[segmentIndex] !== undefined)
+          .map((row) => ({
+            kind: "row" as const,
+            pattern: row.patterns[segmentIndex],
+            line: row.segmentLineNumbers?.get(segmentIndex) ?? row.lineNumber,
+            assign: (pattern: string) => {
+              row.patterns[segmentIndex] = pattern;
+            }
+          })),
+        ...(sticking?.patterns[segmentIndex] !== undefined
+          ? [{
+              kind: "sticking" as const,
+              pattern: sticking.patterns[segmentIndex],
+              line: sticking.segmentLineNumbers?.get(segmentIndex) ?? sticking.lineNumber,
+              assign: (pattern: string) => {
+                sticking.patterns[segmentIndex] = pattern;
+              }
+            }]
+          : [])
+      ];
+      const analyses = entries.map((entry) => ({
+        entry,
+        analysis: analyzeTupletPattern(entry.pattern, timeSignature, gridResolution)
+      }));
+      const segmentContainsTupletSyntax = analyses.some(({ analysis }) => analysis.containsTupletSyntax);
+
+      if (!segmentContainsTupletSyntax) {
+        analyses.forEach(({ entry }) => {
+          if (entry.kind === "sticking") {
+            entry.assign(normalizeStickingPattern(entry.pattern));
+          }
+        });
+        continue;
+      }
+
+      containsTupletSyntax = true;
+      sourceSegments.add(segmentIndex);
+      analyses.forEach(({ entry, analysis }) => {
+        analysis.issues.forEach((issue) => {
+          warn(
+            entry.line,
+            issue.code,
+            `${entry.kind === "sticking" ? "Sticking row" : "Row"} bar ${segmentIndex + 1}: ${issue.message}`
+          );
+        });
+      });
+
+      const validAnalyses = analyses.filter(({ analysis }) => analysis.issues.length === 0);
+      const expectedSignature = validAnalyses[0]
+        ? rhythmSignature(validAnalyses[0].analysis.regions)
+        : null;
+      const mismatches = expectedSignature === null
+        ? []
+        : validAnalyses.filter(
+            ({ analysis }) => rhythmSignature(analysis.regions) !== expectedSignature
+          );
+
+      mismatches.forEach(({ entry }) => {
+        warn(
+          entry.line,
+          "tuplet-mismatch",
+          `${entry.kind === "sticking" ? "Sticking row" : "Row"} bar ${segmentIndex + 1} does not match the tuplet beat structure declared by the other rows; using plain-grid fallback for this bar.`
+        );
+      });
+
+      const invalid = validAnalyses.length !== analyses.length || mismatches.length > 0;
+
+      if (invalid) {
+        analyses.forEach(({ entry }) => {
+          const flattened = flattenTupletSyntax(entry.pattern);
+          entry.assign(entry.kind === "sticking" ? normalizeStickingPattern(flattened) : flattened);
+        });
+        continue;
+      }
+
+      analyses.forEach(({ entry, analysis }) => {
+        entry.assign(
+          entry.kind === "sticking"
+            ? normalizeStickingPattern(analysis.decodedPattern)
+            : analysis.decodedPattern
+        );
+      });
+      systemRhythms[segmentIndex] = validAnalyses[0].analysis.regions.map((region) => ({
+        ...region
+      }));
+    }
+
+    rhythmSections[systemIndex] = systemRhythms;
+    tupletSourceSegments[systemIndex] = sourceSegments;
+  });
+
+  return {
+    rhythmSections,
+    tupletSourceSegments,
+    containsTupletSyntax
+  };
 }
 
 function isUnsupportedStickingChar(char: string): boolean {
@@ -633,7 +801,8 @@ function warnForRowLengthMismatches(
   stickingSections: Array<ParsedDrumStickingInput | undefined>,
   timeSignature: string,
   gridResolution: GridResolution,
-  warn: (line: number, code: ParseWarningCode, message: string, column?: number) => void
+  warn: (line: number, code: ParseWarningCode, message: string, column?: number) => void,
+  skippedSegments: Array<ReadonlySet<number>> = []
 ): void {
   const expectedSlots = getSlotsPerBar(timeSignature, gridResolution);
   const nearFullThreshold = Math.floor(expectedSlots * 0.75);
@@ -663,6 +832,10 @@ function warnForRowLengthMismatches(
     const segmentCount = Math.max(0, ...entries.map((entry) => entry.patterns.length));
 
     for (let segmentIndex = 0; segmentIndex < segmentCount; segmentIndex++) {
+      if (skippedSegments[systemIndex]?.has(segmentIndex)) {
+        continue;
+      }
+
       const presentEntries = entries
         .map((entry) => {
           const pattern = entry.patterns[segmentIndex];
@@ -706,12 +879,15 @@ function warnForRowLengthMismatches(
 }
 
 function buildSystems(
+  header: DrumBlockHeader,
   rowSections: DrumRowInput[][],
   repeatSections: Array<Array<MeasureRepeatInput | undefined>>,
   stickingSections: Array<DrumStickingInput | undefined>,
-  subtitleSections: Array<string | undefined>
+  subtitleSections: Array<string | undefined>,
+  rhythmSections: Array<Array<DrumRhythmRegion[] | undefined>>
 ): DrumSystem[] {
   let startSlot = 0;
+  let startQuarter = 0;
 
   return rowSections.map((rowInputs, systemIndex) => {
     const stickingInput = stickingSections[systemIndex];
@@ -719,17 +895,32 @@ function buildSystems(
     const bars = Array.from({ length: segmentCount }, (_, segmentIndex) => {
       const rows = buildRowsForSegment(rowInputs, segmentIndex);
       const stickingPattern = stickingInput?.patterns[segmentIndex];
-      const slots = buildSlots(rows, startSlot, stickingPattern);
+      const positionCount = Math.max(
+        0,
+        ...rows.map((row) => row.pattern.length),
+        stickingPattern?.length ?? 0
+      );
+      const rhythmRegions =
+        rhythmSections[systemIndex]?.[segmentIndex]?.map((region) => ({ ...region })) ??
+        buildPlainRhythmRegions(positionCount, header.timeSignature, header.gridResolution);
+      const durationQuarter = rhythmRegions.length > 0
+        ? Math.max(...rhythmRegions.map(getRegionEndQuarter))
+        : 0;
+      const slots = buildSlots(rows, startSlot, startQuarter, rhythmRegions, stickingPattern);
       const measureRepeat = repeatSections[systemIndex]?.[segmentIndex];
       const bar = {
         rows,
         slots,
         startSlot,
+        startQuarter,
+        durationQuarter,
+        rhythmRegions,
         ...(stickingPattern !== undefined ? { stickingPattern } : {}),
         ...(measureRepeat ? { measureRepeat: measureRepeat.type } : {}),
         ...(measureRepeat && measureRepeat.count > 1 ? { measureRepeatCount: measureRepeat.count } : {})
       };
       startSlot += slots.length;
+      startQuarter += durationQuarter;
 
       return bar;
     });
@@ -792,7 +983,14 @@ function appendRowAfterRepeat(
   }
 
   while (target.patterns.length < targetBarIndex) {
-    target.patterns.push("-".repeat(widths[target.patterns.length] ?? source.patterns[0]?.length ?? 0));
+    const segmentIndex = target.patterns.length;
+    const reference = getReferencePattern(currentRows, currentSticking, segmentIndex);
+
+    target.patterns.push(
+      reference
+        ? makeRestPattern(reference)
+        : "-".repeat(widths[segmentIndex] ?? patternPositionCount(source.patterns[0] ?? ""))
+    );
     markGeneratedSegment(target, target.patterns.length - 1);
   }
 
@@ -818,7 +1016,14 @@ function appendStickingAfterRepeat(
   };
 
   while (target.patterns.length < targetBarIndex) {
-    target.patterns.push("-".repeat(widths[target.patterns.length] ?? source.patterns[0]?.length ?? 0));
+    const segmentIndex = target.patterns.length;
+    const reference = getReferencePattern(currentRows, currentSticking, segmentIndex);
+
+    target.patterns.push(
+      reference
+        ? makeRestPattern(reference)
+        : "-".repeat(widths[segmentIndex] ?? patternPositionCount(source.patterns[0] ?? ""))
+    );
     markGeneratedSegment(target, target.patterns.length - 1);
   }
 
@@ -854,7 +1059,14 @@ function appendSnapshotBar(
     }
 
     while (row.patterns.length < targetBarIndex) {
-      row.patterns.push("-".repeat(widths[row.patterns.length] ?? snapshotRow.pattern.length));
+      const segmentIndex = row.patterns.length;
+      const reference = getReferencePattern(currentRows, currentSticking, segmentIndex);
+
+      row.patterns.push(
+        reference
+          ? makeRestPattern(reference)
+          : "-".repeat(widths[segmentIndex] ?? snapshot.width)
+      );
       markGeneratedSegment(row, row.patterns.length - 1);
     }
 
@@ -866,7 +1078,14 @@ function appendSnapshotBar(
     const nextSticking = currentSticking ?? { label: "ST", patterns: [], lineNumber: 0 };
 
     while (nextSticking.patterns.length < targetBarIndex) {
-      nextSticking.patterns.push("-".repeat(widths[nextSticking.patterns.length] ?? snapshot.width));
+      const segmentIndex = nextSticking.patterns.length;
+      const reference = getReferencePattern(currentRows, nextSticking, segmentIndex);
+
+      nextSticking.patterns.push(
+        reference
+          ? makeRestPattern(reference)
+          : "-".repeat(widths[segmentIndex] ?? snapshot.width)
+      );
       markGeneratedSegment(nextSticking, nextSticking.patterns.length - 1);
     }
 
@@ -948,8 +1167,31 @@ function getBarWidths(rows: DrumRowInput[], sticking?: DrumStickingInput): numbe
   const segmentCount = getSegmentCount(rows, sticking);
 
   return Array.from({ length: segmentCount }, (_, segmentIndex) =>
-    Math.max(0, ...rows.map((row) => row.patterns[segmentIndex]?.length ?? 0), sticking?.patterns[segmentIndex]?.length ?? 0)
+    Math.max(
+      0,
+      ...rows.map((row) => patternPositionCount(row.patterns[segmentIndex] ?? "")),
+      patternPositionCount(sticking?.patterns[segmentIndex] ?? "")
+    )
   );
+}
+
+function patternPositionCount(pattern: string): number {
+  return Array.from(flattenTupletSyntax(pattern)).length;
+}
+
+function getReferencePattern(
+  rows: DrumRowInput[],
+  sticking: DrumStickingInput | undefined,
+  segmentIndex: number
+): string | undefined {
+  return rows.find((row) => row.patterns[segmentIndex] !== undefined)?.patterns[segmentIndex] ??
+    sticking?.patterns[segmentIndex];
+}
+
+function makeRestPattern(pattern: string): string {
+  return Array.from(pattern)
+    .map((char) => /[0-9()/]/.test(char) ? char : "-")
+    .join("");
 }
 
 function buildRowsForSegment(rowInputs: DrumRowInput[], segmentIndex: number): DrumRow[] {
@@ -970,7 +1212,13 @@ function buildRowsForSegment(rowInputs: DrumRowInput[], segmentIndex: number): D
     .filter((row): row is DrumRow => row !== null);
 }
 
-function buildSlots(rows: DrumRow[], startSlot: number, stickingPattern?: string): DrumSlot[] {
+function buildSlots(
+  rows: DrumRow[],
+  startSlot: number,
+  barStartQuarter: number,
+  rhythmRegions: DrumRhythmRegion[],
+  stickingPattern?: string
+): DrumSlot[] {
   const slotCount = Math.max(0, ...rows.map((row) => row.pattern.length), stickingPattern?.length ?? 0);
 
   return Array.from({ length: slotCount }, (_, index) => {
@@ -990,10 +1238,26 @@ function buildSlots(rows: DrumRow[], startSlot: number, stickingPattern?: string
       })
       .filter((hit): hit is DrumHit => hit !== null);
     const sticking = getSticking(stickingPattern?.[index] ?? "-");
+    const regionIndex = rhythmRegions.findIndex(
+      (region) =>
+        index >= region.startPosition &&
+        index < region.startPosition + region.positionCount
+    );
+    const region = rhythmRegions[Math.max(0, regionIndex)];
+    const positionInRegion = region ? index - region.startPosition : 0;
+    const positionDuration = region && region.positionCount > 0
+      ? region.durationQuarter / region.positionCount
+      : 4 / 16;
 
     return {
       index: startSlot + index,
       hits,
+      startQuarter:
+        barStartQuarter +
+        (region?.startQuarter ?? index * positionDuration) +
+        positionInRegion * positionDuration,
+      durationQuarter: positionDuration,
+      regionIndex: Math.max(0, regionIndex),
       ...(sticking ? { sticking } : {})
     };
   });
