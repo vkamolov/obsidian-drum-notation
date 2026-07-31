@@ -225,6 +225,72 @@ describe("explicit tuplet engraving", () => {
     expect(visualBar.beams).toEqual([]);
     expect(visualBar.tuplets).toHaveLength(1);
   });
+
+  it.each([
+    ["3@8(xxx)", "16", 3, 2],
+    ["5@4(xxxxx)", "16", 5, 4],
+    ["7@32(xxxxxxx)", "128", 7, 4],
+    ["3@2(xxx)", "4", 3, 2]
+  ] as const)(
+    "engraves %s with %s-note tickables",
+    (token, duration, count, occupied) => {
+      const block = parseDrumBlock(`HH | ${token}`);
+      const bar = block.bars[0];
+      const visualBar = buildGridVisualBarNotes(
+        bar.slots,
+        block.timeSignature,
+        block.gridResolution,
+        false,
+        block.beamGrouping,
+        bar.rhythmRegions
+      );
+      const staveNotes = visualBar.notes.filter(
+        (note): note is StaveNote => note instanceof StaveNote
+      );
+
+      expect(staveNotes.map((note) => note.getDuration())).toEqual(
+        Array.from({ length: count }, () => duration)
+      );
+      expect(visualBar.tuplets).toHaveLength(1);
+      expect(visualBar.tuplets[0].getNotesOccupied()).toBe(occupied);
+    }
+  );
+
+  it("supports visible rests at the 128th-note tickable limit", () => {
+    const block = parseDrumBlock("HH | 7@32(x-x-x-x)");
+    const bar = block.bars[0];
+    const visualBar = buildGridVisualBarNotes(
+      bar.slots,
+      block.timeSignature,
+      block.gridResolution,
+      false,
+      block.beamGrouping,
+      bar.rhythmRegions
+    );
+
+    expect(restSignatures(visualBar.notes)).toEqual([
+      { duration: "128", dots: 0, visible: true },
+      { duration: "128", dots: 0, visible: true },
+      { duration: "128", dots: 0, visible: true }
+    ]);
+    expect(visualBar.tuplets).toHaveLength(1);
+  });
+
+  it("keeps adjacent explicit tuplets in separate beam groups", () => {
+    const block = parseDrumBlock("HH | 3@8(xxx)3@8(xxx)");
+    const bar = block.bars[0];
+    const visualBar = buildGridVisualBarNotes(
+      bar.slots,
+      block.timeSignature,
+      block.gridResolution,
+      false,
+      block.beamGrouping,
+      bar.rhythmRegions
+    );
+
+    expect(beamNoteCounts(visualBar.beams)).toEqual([3, 3]);
+    expect(visualBar.tuplets).toHaveLength(2);
+  });
 });
 
 describe("rest engraving", () => {

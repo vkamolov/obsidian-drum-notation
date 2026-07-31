@@ -91,19 +91,18 @@ export function getMetronomePulses(
       localQuarter += pulseIntervalQuarter
     ) {
       const quarterOffset = bar.startQuarter + localQuarter;
-      const slot = bar.slots.find(
-        (candidate) => Math.abs(candidate.startQuarter - quarterOffset) < 1e-8
-      );
 
       if (
-        slot &&
-        slot.index >= rangeStart &&
-        slot.index < rangeEnd &&
         quarterOffset >= rangeStartQuarter &&
         quarterOffset < rangeEndQuarter
       ) {
         pulses.push({
-          slotIndex: slot.index,
+          slotIndex: slotIndexAtQuarter(
+            block,
+            quarterOffset,
+            rangeStart,
+            rangeEnd
+          ),
           quarterOffset,
           isDownbeat: localQuarter === 0
         });
@@ -264,6 +263,32 @@ function slotBoundaryQuarter(block: DrumBlock, slotIndex: number): number {
   }
 
   return block.slots[slotIndex].startQuarter;
+}
+
+function slotIndexAtQuarter(
+  block: DrumBlock,
+  quarter: number,
+  startSlot: number,
+  endSlot: number
+): number {
+  if (endSlot <= startSlot) {
+    return startSlot;
+  }
+
+  let low = startSlot;
+  let high = endSlot;
+
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+
+    if (block.slots[middle].startQuarter <= quarter + Number.EPSILON) {
+      low = middle + 1;
+    } else {
+      high = middle;
+    }
+  }
+
+  return Math.min(endSlot - 1, Math.max(startSlot, low - 1));
 }
 
 export interface DrumPlaybackBackend {

@@ -657,7 +657,7 @@ function warnForUnsupportedRowCharacters(
   for (let index = dividerIndex + 1; index < line.length; index++) {
     const char = line[index];
 
-    if (containsTupletSyntax && /[0-9()/]/.test(char)) {
+    if (containsTupletSyntax && /[0-9()/@]/.test(char)) {
       continue;
     }
 

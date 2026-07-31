@@ -40,9 +40,10 @@ flagged because they can silently change playback feel. Short shorthand sketches
 such as `HH | x---` remain valid and warning-free.
 Invalid `Grouping:` values are also advisory: the score falls back to its normal
 meter grouping and continues rendering.
-Malformed tuplets, unsupported future span forms, and tuplets whose ordered
-rhythm regions differ between rows are advisory too. The parser removes the
-wrapper syntax and uses a plain-grid fallback so rendering remains non-blocking.
+Malformed tuplets, unsupported durations or future span forms, and tuplets
+whose ordered rhythm regions differ between rows are advisory too. The parser
+removes the wrapper syntax and uses a plain-grid fallback so rendering remains
+non-blocking.
 
 A minimal block:
 
@@ -189,7 +190,7 @@ span bars with ` | ` just like instrument rows. One-bar repeat symbols keep
 their `%`/`%xN` notation; the repeated bar inherits the previous bar's sticking
 in the model.
 
-### Explicit beat tuplets
+### Explicit tuplets
 
 `N(body)` divides one written denominator beat into `N` equal rhythmic
 positions. `N` must be from 3 through 12, and `body` must contain exactly `N`
@@ -204,6 +205,28 @@ SD | 3(ooo)3(ooo)3(ooo)3(ooo)
 In `Time: 4/4`, each token above occupies one quarter-note beat. In
 `Time: 6/8`, the same token occupies one written eighth-note beat. A token must
 start at a written-beat boundary and may not extend past the bar.
+
+`N@D(body)` instead gives the complete tuplet an explicit note-value duration.
+`D` may be `2`, `4`, `8`, `16`, or `32`:
+
+```drums
+Time: 4/4
+HH | 3@8(xxx)--3@8(xxx)--3@8(xxx)--3@8(xxx)--
+SD | 3@8(o--)--3@8(---)--3@8(o--)--3@8(---)--
+BD | 3@8(---)o-3@8(---)o-3@8(---)o-3@8(---)o-
+```
+
+`3@8(xxx)` divides one eighth-note duration into three equal positions, so it
+engraves as a sixteenth-note triplet. The `@` duration is independent of the
+meter: `3@4(xxx)` always occupies one quarter note, while `3(xxx)` follows the
+written denominator beat. Explicit-duration tuplets may begin after any
+completed plain-grid position or preceding tuplet, but may not extend beyond
+the current bar.
+
+The engraver supports tuplet tickables through 128th notes. A combination for
+which `D × largestPowerOfTwoAtMost(N)` exceeds `128` produces an advisory
+`unsupported-tuplet-duration` warning and uses the plain-grid fallback.
+Adjacent tuplet wrappers remain separate beam and tuplet groups.
 
 The body accepts normal hit, articulation, rest, and sticking characters. For
 example, `3(x-x)` is a triplet with a silent middle position, and `3(---)` is a
@@ -576,9 +599,9 @@ To stay deterministic and diff-friendly, serialization **normalizes**:
 - Rests collapse to `-`.
 - Settings left at their default are **omitted** (they re-parse to the default).
 - Explicit beam grouping normalizes to `Grouping: n+n+…`.
-- Valid tuplets normalize to `N(body)` at their original rhythmic region.
-  Explicit power-of-two regions retain their wrappers even though they do not
-  draw a tuplet number.
+- Valid tuplets normalize to `N(body)` when they occupy one written beat and
+  to `N@D(body)` for other note-value durations. Explicit power-of-two regions
+  retain their wrappers even though they do not draw a tuplet number.
 - Unknown/metadata lines are preserved verbatim and in order.
 - Bar separators normalize to `Bar`; row patterns are joined with ` | `.
 - System subtitles normalize to `Subtitle: text` before each system's rows.

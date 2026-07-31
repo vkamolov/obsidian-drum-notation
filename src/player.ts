@@ -126,12 +126,6 @@ export class DrumPlayer {
         : this.playbackStartTime + this.firstPassDurationSeconds + (passIndex - 1) * this.fullPassDurationSeconds;
     const backend = this.backend;
     const metronomeMode = this.options.metronomeMode ?? "off";
-    const metronomePulses = new Map(
-      getMetronomePulses(this.block, passStartSlot, this.rangeEndSlot).map((pulse) => [
-        pulse.slotIndex,
-        pulse
-      ])
-    );
 
     this.timers.push(
       window.setTimeout(() => {
@@ -150,11 +144,6 @@ export class DrumPlayer {
         metronomeMode === "metronome-only"
           ? []
           : filterMutedHits(slot.hits, this.options.mutedInstrumentIds);
-      const metronomePulse = metronomePulses.get(slot.index);
-      const playbackHits =
-        metronomeMode !== "off" && metronomePulse
-          ? [...writtenHits, createMetronomeHit(metronomePulse.isDownbeat)]
-          : writtenHits;
 
       if (slot.hits.length > 0) {
         this.timers.push(
@@ -166,7 +155,7 @@ export class DrumPlayer {
         );
       }
       backend.scheduleHits(
-        playbackHits,
+        writtenHits,
         slotTime,
         getSlotDurationSeconds(
           this.block,
@@ -180,6 +169,30 @@ export class DrumPlayer {
         )
       );
     });
+
+    if (metronomeMode !== "off") {
+      const pulseDuration = pulseIntervalSeconds(
+        this.block,
+        this.secondsPerQuarter
+      );
+
+      getMetronomePulses(
+        this.block,
+        passStartSlot,
+        this.rangeEndSlot
+      ).forEach((pulse) => {
+        const pulseTime =
+          passStartTime +
+          (pulse.quarterOffset - passStartQuarter) * this.secondsPerQuarter;
+
+        backend.scheduleHits(
+          [createMetronomeHit(pulse.isDownbeat)],
+          pulseTime,
+          pulseDuration,
+          pulseDuration
+        );
+      });
+    }
 
     this.timers.push(
       window.setTimeout(() => {

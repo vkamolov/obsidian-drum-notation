@@ -42,6 +42,7 @@ export type ParseWarningCode =
   | "unsupported-sticking-character"
   | "malformed-tuplet"
   | "tuplet-mismatch"
+  | "unsupported-tuplet-duration"
   | "unsupported-tuplet-span"
   | "removed-setting";
 

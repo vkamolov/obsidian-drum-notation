@@ -89,6 +89,15 @@ HH | 3(x-x)3(x-x)3(x-x)3(x-x)
 SD | 3(---)3(o--)3(---)3(o--)
 BD | 3(o--)3(---)3(o--)3(---)`,
 
+  "Partial-beat tuplets": `Title: Partial-beat tuplets
+Tempo: 92
+Time: 4/4
+Grid: 16
+Subtitle: Three equal notes in the first eighth-note duration of each beat
+HH | 3@8(xxx)--3@8(xxx)--3@8(xxx)--3@8(xxx)--
+SD | 3@8(o--)--3@8(---)--3@8(o--)--3@8(---)--
+BD | 3@8(---)o-3@8(---)o-3@8(---)o-3@8(---)o-`,
+
   "Mixed tuplets": `Title: Mixed tuplets
 Tempo: 84
 Time: 4/4

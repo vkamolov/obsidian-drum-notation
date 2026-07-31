@@ -11,6 +11,10 @@ import {
   largestPowerOfTwoAtMost
 } from "./music";
 import { MeasureRepeatProgress } from "./repeat-progress";
+import {
+  getTupletDurationDenominator,
+  getTupletTickableDenominator
+} from "./rhythm";
 import { allocateBarWidths } from "./spacing";
 import { CursorPosition, DrumBar, DrumBlock, DrumHit, DrumInstrument, DrumRhythmRegion, DrumSlot, GridResolution, MeasureRepeat, ScoreRenderResult, StickingHand } from "./types";
 
@@ -1437,8 +1441,6 @@ function buildRhythmicVisualBarNotes(
     beams: [],
     tuplets: []
   };
-  const beatValue = getBeatValue(timeSignature);
-
   for (const region of rhythmRegions) {
     const regionSlots = slots.slice(
       region.startPosition,
@@ -1458,7 +1460,13 @@ function buildRhythmicVisualBarNotes(
     }
 
     const occupied = largestPowerOfTwoAtMost(region.subdivisionCount);
-    const duration = String(beatValue * occupied);
+    const durationDenominator = getTupletDurationDenominator(region);
+    const duration = String(
+      getTupletTickableDenominator(
+        region.subdivisionCount,
+        durationDenominator
+      )
+    );
     const regionNotes = regionSlots.map((slot) =>
       makeStaveNote(slot, duration, colorNoteheads)
     );

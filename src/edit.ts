@@ -1,6 +1,7 @@
 import { DRUM_KIT, getHitChar, normalizePattern } from "./kit";
 import { getSlotsPerBar, isValidBeamGrouping } from "./music";
 import { finalizeDrumBlock } from "./parser";
+import { getWrittenBeatQuarter } from "./rhythm";
 import {
   DrumArticulation,
   DrumBarClipboardPayload,
@@ -61,7 +62,23 @@ export function setGrid(block: DrumBlock, grid: GridResolution): DrumBlock {
 
 export function setTimeSignature(block: DrumBlock, numerator: number, denominator: number): DrumBlock {
   const timeSignature = `${Math.max(1, Math.round(numerator))}/${Math.max(1, Math.round(denominator))}`;
-  const nextBlock = { ...block, timeSignature };
+  const writtenBeatQuarter = getWrittenBeatQuarter(timeSignature);
+  const systems = block.systems.map((system) => ({
+    ...system,
+    bars: system.bars.map((bar) => ({
+      ...bar,
+      rhythmRegions: bar.rhythmRegions.map((region) => ({
+        ...region,
+        spanWrittenBeats: region.durationQuarter / writtenBeatQuarter
+      }))
+    }))
+  }));
+  const nextBlock = {
+    ...block,
+    timeSignature,
+    systems,
+    bars: systems.flatMap((system) => system.bars)
+  };
 
   if (nextBlock.beamGrouping && !isValidBeamGrouping(timeSignature, nextBlock.beamGrouping)) {
     delete nextBlock.beamGrouping;

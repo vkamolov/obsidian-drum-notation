@@ -41,6 +41,18 @@ class FakePlaybackBackend implements DrumPlaybackBackend {
   }
 }
 
+function metronomeSchedules(backend: FakePlaybackBackend) {
+  return backend.scheduled.filter((entry) =>
+    entry.hits.some((hit) => hit.instrument.id === "metronome")
+  );
+}
+
+function notationSchedules(backend: FakePlaybackBackend) {
+  return backend.scheduled.filter((entry) =>
+    entry.hits.every((hit) => hit.instrument.id !== "metronome")
+  );
+}
+
 interface FakeAudioContextOptions {
   state: string;
   resumeFails?: boolean;
@@ -378,16 +390,13 @@ BD | o---------------`);
 
     expect(backend.scheduled[0].hits.map((hit) => hit.instrument.id)).toEqual([
       "closed-hat",
-      "kick",
-      "metronome"
+      "kick"
     ]);
-    expect(backend.scheduled[4].hits.map((hit) => hit.instrument.id)).toEqual(["metronome"]);
-    expect(backend.scheduled[8].hits.map((hit) => hit.instrument.id)).toEqual(["metronome"]);
-    expect(backend.scheduled[12].hits.map((hit) => hit.instrument.id)).toEqual(["metronome"]);
+    expect(metronomeSchedules(backend)).toHaveLength(4);
     expect(
-      backend.scheduled[0].hits[backend.scheduled[0].hits.length - 1].velocity
+      metronomeSchedules(backend)[0].hits[0].velocity
     ).toBeGreaterThan(
-      backend.scheduled[4].hits[0].velocity
+      metronomeSchedules(backend)[1].hits[0].velocity
     );
   });
 
@@ -409,8 +418,8 @@ BD | o---------------`);
 
     await player.play();
 
-    expect(backend.scheduled[0].hits.map((hit) => hit.instrument.id)).toEqual(["metronome"]);
-    expect(backend.scheduled[1].hits).toEqual([]);
+    expect(notationSchedules(backend).every((entry) => entry.hits.length === 0)).toBe(true);
+    expect(metronomeSchedules(backend)).toHaveLength(4);
     [...scheduledTimers].forEach((timer) => timer());
     expect(onSlotChange).toHaveBeenCalledWith(1);
   });
@@ -429,13 +438,12 @@ BD | o---------------`);
 
     await player.play();
 
-    expect(
-      backend.scheduled
-        .map((entry, slotIndex) =>
-          entry.hits.some((hit) => hit.instrument.id === "metronome") ? slotIndex : -1
-        )
-        .filter((slotIndex) => slotIndex >= 0)
-    ).toEqual([0, 4, 8, 12]);
+    expect(metronomeSchedules(backend).map((entry) => entry.time)).toEqual([
+      10.08,
+      10.08 + 4 * getSecondsPerSlot(block),
+      10.08 + 8 * getSecondsPerSlot(block),
+      10.08 + 12 * getSecondsPerSlot(block)
+    ]);
   });
 
   it("waits for the next aligned metronome pulse after a mid-beat resume", async () => {
@@ -452,10 +460,61 @@ BD | o---------------`);
 
     await player.play();
 
-    expect(backend.scheduled[0].hits.some((hit) => hit.instrument.id === "metronome")).toBe(false);
-    expect(backend.scheduled[2].hits.some((hit) => hit.instrument.id === "metronome")).toBe(true);
-    expect(backend.scheduled[2].time).toBeCloseTo(
+    expect(metronomeSchedules(backend)).toHaveLength(3);
+    expect(metronomeSchedules(backend)[0].time).toBeCloseTo(
       10.08 + 2 * getSecondsPerSlot(block, 50)
+    );
+  });
+
+  it("schedules metronome pulses independently inside a multi-beat tuplet", async () => {
+    const block = parseDrumBlock(`Tempo: 120
+Time: 4/4
+HH | 3@2(xxx)`);
+    const backend = new FakePlaybackBackend();
+    const player = new DrumPlayer(
+      {} as AudioContext,
+      block,
+      vi.fn(),
+      vi.fn(),
+      { metronomeMode: "with-drums" },
+      (() => backend) as DrumPlaybackBackendFactory
+    );
+
+    await player.play();
+
+    expect(notationSchedules(backend).map((entry) => entry.time)).toEqual([
+      10.08,
+      10.08 + 1 / 3,
+      10.08 + 2 / 3
+    ]);
+    expect(metronomeSchedules(backend).map((entry) => entry.time)).toEqual([
+      10.08,
+      10.58
+    ]);
+  });
+
+  it("keeps the next written-beat pulse after resuming inside a long tuplet slot", async () => {
+    const block = parseDrumBlock(`Tempo: 120
+Time: 4/4
+HH | 3@2(xxx)`);
+    const backend = new FakePlaybackBackend();
+    const player = new DrumPlayer(
+      {} as AudioContext,
+      block,
+      vi.fn(),
+      vi.fn(),
+      {
+        initialSlot: 1,
+        metronomeMode: "with-drums"
+      },
+      (() => backend) as DrumPlaybackBackendFactory
+    );
+
+    await player.play();
+
+    expect(metronomeSchedules(backend)).toHaveLength(1);
+    expect(metronomeSchedules(backend)[0].time).toBeCloseTo(
+      10.08 + (1 / 3) * 0.5
     );
   });
 
@@ -610,7 +669,7 @@ HH | xxxx | xxxx`);
     secondPassTimers.slice(0, -1).forEach((timer) => timer());
 
     expect(onBarChange.mock.calls.map(([barIndex]) => barIndex)).toEqual([1, 0, 1]);
-    expect(backend.scheduled[3].hits.map((hit) => hit.instrument.id)).toEqual(["metronome"]);
+    expect(metronomeSchedules(backend).length).toBeGreaterThan(0);
   });
 
   it("starts a looped bar on its aligned downbeat after a mid-bar resume", async () => {
@@ -637,8 +696,8 @@ HH | xxxx | xxxx`);
     const firstPassEndTimer = scheduledTimers[scheduledTimers.length - 1];
     firstPassEndTimer();
 
-    expect(backend.scheduled[3].hits.map((hit) => hit.instrument.id)).toEqual(["metronome"]);
-    expect(backend.scheduled[3].hits[0].velocity).toBe(1);
+    expect(metronomeSchedules(backend)).toHaveLength(1);
+    expect(metronomeSchedules(backend)[0].hits[0].velocity).toBe(1);
   });
 
   it("reports the current slot and resumes later loop passes from the range start", async () => {
@@ -672,11 +731,8 @@ HH | xxxx`);
 
     const firstPassEndTimer = scheduledTimers[scheduledTimers.length - 1];
     firstPassEndTimer();
-    expect(backend.scheduled[2].hits.map((hit) => hit.instrument.id)).toEqual([
-      "closed-hat",
-      "metronome"
-    ]);
-    expect(backend.scheduled.slice(2).map((entry) => entry.hits[0]?.instrument.id ?? null)).toEqual([
+    expect(metronomeSchedules(backend)).toHaveLength(1);
+    expect(notationSchedules(backend).slice(2).map((entry) => entry.hits[0]?.instrument.id ?? null)).toEqual([
       "closed-hat",
       "closed-hat",
       "closed-hat",

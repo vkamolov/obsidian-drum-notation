@@ -10,6 +10,8 @@ or see the
 
 ## Release Notes
 
+- `1.2.0` extends tuplets with explicit note-value spans such as
+  `3@8(xxx)` for three equal positions in one eighth-note duration.
 - `1.1.0` adds explicit one-written-beat tuplets with `N(...)` syntax,
   synchronized playback and engraving, text-safe repeat support, and clear
   advisory warnings for malformed or mismatched tuplet rows.
@@ -370,7 +372,7 @@ it does not change playback timing, metronome/count-in pulses, or create
 tuplets. Three hits in a Grid-16 count are not treated as an implicit triplet;
 write an explicit tuplet when equal subdivisions must occupy one written beat.
 
-### Explicit beat tuplets
+### Explicit tuplets
 
 Use `N(...)` to divide exactly one written denominator beat into `N` equal
 rhythmic positions:
@@ -388,6 +390,22 @@ characters. The token must begin on a written-beat boundary. In 4/4,
 it is one eighth-note beat divided into three. Explicit `4(...)` and `8(...)`
 subdivisions are accepted for structural consistency but use ordinary
 power-of-two notation without a tuplet number.
+
+Use `N@D(...)` when the tuplet should occupy an explicit note-value duration
+instead of one written beat. `D` may be `2`, `4`, `8`, `16`, or `32`:
+
+```drums
+Time: 4/4
+HH | 3@8(xxx)--3@8(xxx)--3@8(xxx)--3@8(xxx)--
+SD | 3@8(o--)--3@8(---)--3@8(o--)--3@8(---)--
+BD | 3@8(---)o-3@8(---)o-3@8(---)o-3@8(---)o-
+```
+
+Here `3@8(xxx)` is three equal positions within one eighth note: a
+sixteenth-note triplet. Explicit-duration tuplets may begin after any completed
+plain-grid position or another tuplet. They may not extend beyond the current
+bar. Combinations requiring tickables shorter than a 128th note are rejected
+with an advisory warning.
 
 Every present drum and sticking row in the same inline bar must describe the
 same ordered plain/tuplet rhythm structure. Use explicit rest bodies such as
@@ -409,7 +427,7 @@ Malformed tuplets, row-structure mismatches, and unsupported forms produce
 advisory parser warnings and fall back to plain-grid text so the block remains
 renderable. `B/N(...)`, such as `2/3(xxx)` for two written beats divided into
 three positions, is reserved but not implemented yet. Nested tuplets are also
-deferred.
+deferred. Adjacent explicit wrappers remain separate engraving and beam groups.
 
 ## Hit Characters
 

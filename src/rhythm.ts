@@ -4,7 +4,10 @@ import {
 } from "./types";
 
 export interface TupletPatternIssue {
-  code: "malformed-tuplet" | "unsupported-tuplet-span";
+  code:
+    | "malformed-tuplet"
+    | "unsupported-tuplet-duration"
+    | "unsupported-tuplet-span";
   message: string;
   beat: number;
 }
@@ -16,8 +19,10 @@ export interface TupletPatternAnalysis {
   issues: TupletPatternIssue[];
 }
 
-const TUPLET_START = /^(\d+)(?:\/(\d+))?\(/;
-const TUPLET_LIKE = /\d+(?:\/\d+)?\(/;
+const TUPLET_START = /^(\d+)(?:([/@])(\d+))?\(/;
+const TUPLET_LIKE = /\d+(?:[/@]\d+)?\(/;
+const EXPLICIT_TUPLET_DURATION_DENOMINATORS = new Set([2, 4, 8, 16, 32]);
+export const MAX_TUPLET_TICKABLE_DENOMINATOR = 128;
 
 export function analyzeTupletPattern(
   pattern: string,
@@ -72,11 +77,21 @@ export function analyzeTupletPattern(
 
     flushPlain();
     const firstCount = Number.parseInt(tokenStart[1], 10);
-    const subdivisionText = tokenStart[2];
-    const spanWrittenBeats = subdivisionText === undefined ? 1 : firstCount;
-    const subdivisionCount = subdivisionText === undefined
+    const modifier = tokenStart[2];
+    const modifierValue = tokenStart[3] === undefined
+      ? undefined
+      : Number.parseInt(tokenStart[3], 10);
+    const isReservedBeatSpan = modifier === "/";
+    const explicitDurationDenominator = modifier === "@" ? modifierValue : undefined;
+    const subdivisionCount = isReservedBeatSpan
+      ? modifierValue ?? firstCount
+      : firstCount;
+    const durationQuarter = explicitDurationDenominator === undefined
+      ? beatQuarter
+      : 4 / explicitDurationDenominator;
+    const spanWrittenBeats = isReservedBeatSpan
       ? firstCount
-      : Number.parseInt(subdivisionText, 10);
+      : durationQuarter / beatQuarter;
     const bodyStart = sourceCursor + tokenStart[0].length;
     const closeIndex = pattern.indexOf(")", bodyStart);
     const beat = Math.floor(quarterCursor / beatQuarter) + 1;
@@ -95,14 +110,11 @@ export function analyzeTupletPattern(
     const startsAtBeatBoundary =
       Math.abs(quarterCursor / beatQuarter - Math.round(quarterCursor / beatQuarter)) <
       1e-8;
+    const tickableDenominator = explicitDurationDenominator === undefined
+      ? null
+      : getTupletTickableDenominator(subdivisionCount, explicitDurationDenominator);
 
-    if (!startsAtBeatBoundary) {
-      issues.push({
-        code: "malformed-tuplet",
-        message: `Tuplet at beat ${beat} must begin on a written-beat boundary.`,
-        beat
-      });
-    } else if (subdivisionText !== undefined) {
+    if (isReservedBeatSpan) {
       issues.push({
         code: "unsupported-tuplet-span",
         message: `Tuplet ${spanWrittenBeats}/${subdivisionCount}(...) at beat ${beat} uses a reserved multi-beat form that is not supported yet.`,
@@ -112,6 +124,31 @@ export function analyzeTupletPattern(
       issues.push({
         code: "malformed-tuplet",
         message: `Tuplet at beat ${beat} uses ${subdivisionCount} subdivisions; supported values are 3–12.`,
+        beat
+      });
+    } else if (
+      explicitDurationDenominator !== undefined &&
+      !EXPLICIT_TUPLET_DURATION_DENOMINATORS.has(explicitDurationDenominator)
+    ) {
+      issues.push({
+        code: "unsupported-tuplet-duration",
+        message: `Tuplet ${subdivisionCount}@${explicitDurationDenominator}(...) at beat ${beat} uses an unsupported duration; supported denominators are 2, 4, 8, 16, and 32.`,
+        beat
+      });
+    } else if (
+      explicitDurationDenominator !== undefined &&
+      tickableDenominator !== null &&
+      tickableDenominator > MAX_TUPLET_TICKABLE_DENOMINATOR
+    ) {
+      issues.push({
+        code: "unsupported-tuplet-duration",
+        message: `Tuplet ${subdivisionCount}@${explicitDurationDenominator}(...) at beat ${beat} requires ${tickableDenominator}th-note tickables; the supported limit is ${MAX_TUPLET_TICKABLE_DENOMINATOR}.`,
+        beat
+      });
+    } else if (explicitDurationDenominator === undefined && !startsAtBeatBoundary) {
+      issues.push({
+        code: "malformed-tuplet",
+        message: `Tuplet at beat ${beat} must begin on a written-beat boundary unless it declares an explicit @ duration.`,
         beat
       });
     } else if (body.includes("(") || body.includes(")")) {
@@ -126,7 +163,7 @@ export function analyzeTupletPattern(
         message: `Tuplet at beat ${beat} declares ${subdivisionCount} subdivisions but contains ${Array.from(body).length} positions.`,
         beat
       });
-    } else if (quarterCursor + beatQuarter > barQuarter + Number.EPSILON) {
+    } else if (quarterCursor + durationQuarter > barQuarter + Number.EPSILON) {
       issues.push({
         code: "malformed-tuplet",
         message: `Tuplet at beat ${beat} extends beyond the ${timeSignature} bar.`,
@@ -138,13 +175,13 @@ export function analyzeTupletPattern(
         startPosition: positionCursor,
         positionCount: subdivisionCount,
         startQuarter: quarterCursor,
-        durationQuarter: beatQuarter,
-        spanWrittenBeats: 1,
+        durationQuarter,
+        spanWrittenBeats,
         subdivisionCount
       });
       decodedPattern += body;
       positionCursor += subdivisionCount;
-      quarterCursor += beatQuarter;
+      quarterCursor += durationQuarter;
     }
 
     sourceCursor = closeIndex + 1;
@@ -193,7 +230,7 @@ export function buildPlainRhythmRegions(
 
 export function flattenTupletSyntax(pattern: string): string {
   return pattern
-    .replace(/\d+(?:\/\d+)?\(/g, "")
+    .replace(/\d+(?:[/@]\d+)?\(/g, "")
     .replace(/[()]/g, "");
 }
 
@@ -231,8 +268,29 @@ export function getRegionEndQuarter(region: DrumRhythmRegion): number {
   return region.startQuarter + region.durationQuarter;
 }
 
+export function getTupletTickableDenominator(
+  subdivisionCount: number,
+  durationDenominator: number
+): number {
+  return durationDenominator * largestPowerOfTwoAtMost(subdivisionCount);
+}
+
+export function getTupletDurationDenominator(region: DrumRhythmRegion): number {
+  return Math.round(4 / region.durationQuarter);
+}
+
 function normalizeNumber(value: number): string {
   return String(Math.round(value * 1_000_000_000) / 1_000_000_000);
+}
+
+function largestPowerOfTwoAtMost(value: number): number {
+  let power = 1;
+
+  while (power * 2 <= value) {
+    power *= 2;
+  }
+
+  return power;
 }
 
 function getSlotsPerBeat(
