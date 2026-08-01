@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { parseDrumBlockWithWarnings } from "../src/parser";
 import {
   DEFAULT_PLAYGROUND_EXAMPLE_ID,
   getPlaygroundExample,
@@ -39,6 +40,21 @@ describe("playground examples", () => {
         names: ["Triplet fill", "Triplet shuffle", "Partial-beat tuplets", "Mixed tuplets", "Multi-beat tuplets"]
       },
       {
+        label: "Rudiments",
+        names: [
+          "Single-stroke roll",
+          "Double-stroke roll",
+          "Single paradiddle",
+          "Double paradiddle",
+          "Paradiddle-diddle",
+          "Five-stroke roll",
+          "Flam accent",
+          "Flam tap",
+          "Drag",
+          "Buzz roll"
+        ]
+      },
+      {
         label: "Notation features",
         names: [
           "Sticking lane",
@@ -59,5 +75,18 @@ describe("playground examples", () => {
   it("resolves the default example by stable id", () => {
     expect(getPlaygroundExample(DEFAULT_PLAYGROUND_EXAMPLE_ID)?.name).toBe("Basic rock groove");
     expect(getPlaygroundExample("missing-example")).toBeUndefined();
+  });
+
+  it("keeps every rudiment example parseable without advisory warnings", () => {
+    const rudiments = PLAYGROUND_EXAMPLES.filter((example) => example.category === "rudiments");
+
+    expect(rudiments).toHaveLength(10);
+    for (const example of rudiments) {
+      const parsed = parseDrumBlockWithWarnings(example.source);
+
+      expect(parsed.warnings, example.name).toEqual([]);
+      expect(parsed.block.bars.some((bar) => bar.stickingPattern !== undefined), example.name).toBe(true);
+      expect(parsed.block.rows.some((row) => row.instrument.id === "snare"), example.name).toBe(true);
+    }
   });
 });

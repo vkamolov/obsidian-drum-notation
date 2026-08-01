@@ -3,6 +3,7 @@ export const PLAYGROUND_EXAMPLE_CATEGORIES = [
   { id: "getting-started", label: "Getting started" },
   { id: "meters-and-feels", label: "Meters and feels" },
   { id: "tuplets", label: "Tuplets" },
+  { id: "rudiments", label: "Rudiments" },
   { id: "notation-features", label: "Notation features" },
   { id: "sounds-and-advanced", label: "Sounds and advanced examples" }
 ] as const;
@@ -201,6 +202,136 @@ ST | 2/3(RLR)2/3(LRL)
 HH | 2/3(xxx)2/3(xxx)
 SD | 2/3(o--)2/3(o--)
 BD | 2/3(-o-)2/3(-o-)`
+  },
+
+  {
+    id: "rudiment-single-stroke-roll",
+    name: "Single-stroke roll",
+    category: "rudiments",
+    source: `Title: Single-stroke roll
+Tempo: 80
+Time: 4/4
+Grid: 16
+Subtitle: Alternating singles with accents on each beat
+ST | RLRLRLRLRLRLRLRL
+SD | OoooOoooOoooOooo`
+  },
+
+  {
+    id: "rudiment-double-stroke-roll",
+    name: "Double-stroke roll",
+    category: "rudiments",
+    source: `Title: Double-stroke roll
+Tempo: 72
+Time: 4/4
+Grid: 16
+Subtitle: Diddle shorthand; ST marks the hand leading each double
+ST | R-L-R-L-R-L-R-L-
+SD | d-d-d-d-d-d-d-d-`
+  },
+
+  {
+    id: "rudiment-single-paradiddle",
+    name: "Single paradiddle",
+    category: "rudiments",
+    source: `Title: Single paradiddle
+Tempo: 80
+Time: 4/4
+Grid: 16
+Subtitle: R L R R · L R L L
+ST | RLRRLRLLRLRRLRLL
+SD | OoooOoooOoooOooo`
+  },
+
+  {
+    id: "rudiment-double-paradiddle",
+    name: "Double paradiddle",
+    category: "rudiments",
+    source: `Title: Double paradiddle
+Tempo: 72
+Time: 4/4
+Grid: 16
+Subtitle: R L R L R R · L R L R L L
+ST | 3(RLR)3(LRR)3(LRL)3(RLL)
+SD | 3(Ooo)3(ooo)3(Ooo)3(ooo)`
+  },
+
+  {
+    id: "rudiment-paradiddle-diddle",
+    name: "Paradiddle-diddle",
+    category: "rudiments",
+    source: `Title: Paradiddle-diddle
+Tempo: 72
+Time: 4/4
+Grid: 16
+Subtitle: R L R R L L · L R L L R R
+ST | 3(RLR)3(RLL)3(LRL)3(LRR)
+SD | 3(Ooo)3(ooo)3(Ooo)3(ooo)`
+  },
+
+  {
+    id: "rudiment-five-stroke-roll",
+    name: "Five-stroke roll",
+    category: "rudiments",
+    source: `Title: Five-stroke roll
+Tempo: 72
+Time: 4/4
+Grid: 16
+Subtitle: Two diddles followed by an accented release
+ST | R-L-R---L-R-L---
+SD | d-d-O---d-d-O---`
+  },
+
+  {
+    id: "rudiment-flam-accent",
+    name: "Flam accent",
+    category: "rudiments",
+    source: `Title: Flam accent
+Tempo: 72
+Time: 4/4
+Grid: 16
+Subtitle: Alternating flam accents in triplets
+ST | 3(RLR)3(LRL)3(RLR)3(LRL)
+SD | 3(foo)3(foo)3(foo)3(foo)`
+  },
+
+  {
+    id: "rudiment-flam-tap",
+    name: "Flam tap",
+    category: "rudiments",
+    source: `Title: Flam tap
+Tempo: 72
+Time: 4/4
+Grid: 16
+Subtitle: Alternating flam and same-hand tap pairs
+ST | R-R-L-L-R-R-L-L-
+SD | f-o-f-o-f-o-f-o-`
+  },
+
+  {
+    id: "rudiment-drag",
+    name: "Drag",
+    category: "rudiments",
+    source: `Title: Drag
+Tempo: 68
+Time: 4/4
+Grid: 16
+Subtitle: Alternating drags and taps
+ST | R-L-R-L-R-L-R-L-
+SD | r-o-r-o-r-o-r-o-`
+  },
+
+  {
+    id: "rudiment-buzz-roll",
+    name: "Buzz roll",
+    category: "rudiments",
+    source: `Title: Buzz roll
+Tempo: 68
+Time: 4/4
+Grid: 16
+Subtitle: Alternating buzz strokes ending with a clean release
+ST | R-L-R-L-R-L-R-L-
+SD | z-z-z-z-z-z-z-o-`
   },
 
   {

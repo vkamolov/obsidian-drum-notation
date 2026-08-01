@@ -8,6 +8,11 @@ Try the [interactive web playground](https://vkamolov.github.io/obsidian-drum-no
 or see the
 [full notation format reference](https://github.com/vkamolov/obsidian-drum-notation/blob/main/docs/notation-format.md).
 
+The playground example picker includes a **Rudiments** group with ten core
+exercises covering rolls, paradiddles, flams, drags, and buzz strokes. In these
+examples, `ST` identifies the main hand; grace-note hands and the second stroke
+of compact diddles remain implicit.
+
 ## Release Notes
 
 - `1.2.0` extends tuplets with explicit note-value spans such as
