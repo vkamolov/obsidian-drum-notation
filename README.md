@@ -15,6 +15,8 @@ of compact diddles remain implicit.
 
 ## Release Notes
 
+- `1.3.0` adds written-beat-span tuplets such as `2/3(xxx)`, groups the
+  playground examples by purpose, and adds ten core rudiment exercises.
 - `1.2.0` extends tuplets with explicit note-value spans such as
   `3@8(xxx)` for three equal positions in one eighth-note duration.
 - `1.1.0` adds explicit one-written-beat tuplets with `N(...)` syntax,
