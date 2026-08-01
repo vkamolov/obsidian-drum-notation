@@ -52,7 +52,12 @@ import {
   ScoreBarRegion
 } from "../../src/types";
 import { normalizeLabel } from "../../src/util";
-import { EXAMPLES } from "./examples";
+import {
+  DEFAULT_PLAYGROUND_EXAMPLE_ID,
+  getPlaygroundExample,
+  PLAYGROUND_EXAMPLE_CATEGORIES,
+  PLAYGROUND_EXAMPLES
+} from "./examples";
 import {
   GridEditorHandle,
   mountGridEditor,
@@ -1388,19 +1393,25 @@ function persist(): void {
 
 function populateExamples(): void {
   exampleSelect.createEl("option", { text: "Custom notation", value: "" });
-  for (const name of Object.keys(EXAMPLES)) {
-    exampleSelect.createEl("option", { text: name, value: name });
+
+  for (const category of PLAYGROUND_EXAMPLE_CATEGORIES) {
+    const group = exampleSelect.createEl("optgroup", { attr: { label: category.label } });
+    for (const example of PLAYGROUND_EXAMPLES) {
+      if (example.category === category.id) {
+        group.createEl("option", { text: example.name, value: example.id });
+      }
+    }
   }
 }
 
 function syncExampleSelection(raw: string): void {
-  const matchingExample = Object.entries(EXAMPLES).find(([, text]) => {
+  const matchingExample = PLAYGROUND_EXAMPLES.find((example) => {
     const trimmed = raw.trim();
 
-    return text.trim() === trimmed || toAuthoringText(text).trim() === trimmed;
+    return example.source.trim() === trimmed || toAuthoringText(example.source).trim() === trimmed;
   });
 
-  exampleSelect.value = matchingExample?.[0] ?? "";
+  exampleSelect.value = matchingExample?.id ?? "";
 }
 
 function toAuthoringText(raw: string): string {
@@ -1633,7 +1644,8 @@ function init(): void {
   const stored = (() => {
     return loadPlaygroundValue(STORAGE_KEY);
   })();
-  editor.value = toAuthoringText(stored ?? EXAMPLES["Basic rock groove"]);
+  const defaultExample = getPlaygroundExample(DEFAULT_PLAYGROUND_EXAMPLE_ID);
+  editor.value = toAuthoringText(stored ?? defaultExample?.source ?? "");
 
   if (loadPlaygroundValue(THEME_KEY) === "dark") {
     activeDocument.body.classList.add("theme-dark");
@@ -1655,12 +1667,12 @@ function init(): void {
       return;
     }
 
-    const text = EXAMPLES[exampleSelect.value];
-    if (text === undefined) {
+    const example = getPlaygroundExample(exampleSelect.value);
+    if (example === undefined) {
       return;
     }
     dismissManualCopyText();
-    editor.value = toAuthoringText(text);
+    editor.value = toAuthoringText(example.source);
     persist();
     renderPreview();
   });

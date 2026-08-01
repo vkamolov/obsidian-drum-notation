@@ -112,7 +112,7 @@ the **first** import in `app.ts`. `engrave.ts` itself was **not** changed.
 - Advanced diagnostics: parsed-model summary and live `serializeDrumBlock`
   normalized output are still available behind a collapsed details panel. Parser
   or render warnings remain visible only when there is something to fix.
-- Example picker (`examples.ts`), Copy for Obsidian, Copy normalized in
+- Grouped native example picker (`examples.ts`) organized by purpose, Copy for Obsidian, Copy normalized in
   diagnostics, and light/dark theme toggle (persisted). If the browser blocks
   programmatic clipboard writes, Copy for Obsidian opens a selected fallback
   textarea containing the fenced block.
