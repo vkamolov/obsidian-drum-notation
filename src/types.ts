@@ -91,7 +91,12 @@ export interface DrumRhythmRegion {
   durationQuarter: number;
   spanWrittenBeats: number;
   subdivisionCount: number;
+  tupletSpan?: DrumTupletSpan;
 }
+
+export type DrumTupletSpan =
+  | { kind: "written-beats"; beats: number }
+  | { kind: "note-value"; denominator: 2 | 4 | 8 | 16 | 32 };
 
 export interface DrumBarClipboardPayload {
   kind: "drum-notation-bar";

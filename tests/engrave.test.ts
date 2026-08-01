@@ -164,7 +164,7 @@ describe("explicit tuplet engraving", () => {
     [3, 2],
     [5, 4],
     [6, 4],
-    [7, 4],
+    [7, 8],
     [9, 8],
     [12, 8]
   ] as const)("engraves %i positions in the space of %i", (count, occupied) => {
@@ -230,7 +230,10 @@ describe("explicit tuplet engraving", () => {
     ["3@8(xxx)", "16", 3, 2],
     ["5@4(xxxxx)", "16", 5, 4],
     ["7@32(xxxxxxx)", "128", 7, 4],
-    ["3@2(xxx)", "4", 3, 2]
+    ["3@2(xxx)", "4", 3, 2],
+    ["2/3(xxx)", "4", 3, 2],
+    ["2/7(xxxxxxx)", "16", 7, 8],
+    ["8@32(xxxxxxxx)", "128", 8, 4]
   ] as const)(
     "engraves %s with %s-note tickables",
     (token, duration, count, occupied) => {

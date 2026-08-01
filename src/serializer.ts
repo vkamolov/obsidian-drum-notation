@@ -13,10 +13,7 @@ import {
   DrumInstrument,
   DrumSystem
 } from "./types";
-import {
-  getTupletDurationDenominator,
-  getWrittenBeatQuarter
-} from "./rhythm";
+import { getTupletDurationDenominator } from "./rhythm";
 import { normalizeLabel } from "./util";
 
 export type SerializationMode = "minimal" | "authoring";
@@ -51,7 +48,7 @@ function serializeMinimalBlock(block: DrumBlock): string {
       lines.push(`Subtitle: ${system.subtitle}`);
     }
 
-    lines.push(...serializeSystem(system, block.timeSignature));
+    lines.push(...serializeSystem(system));
   });
 
   return lines.join("\n");
@@ -166,7 +163,7 @@ function isManagedAuthoringLine(line: string): boolean {
   ]).has(normalizeLabel(line.slice(0, divider)));
 }
 
-function serializeSystem(system: DrumSystem, timeSignature: string): string[] {
+function serializeSystem(system: DrumSystem): string[] {
   const lines: string[] = [];
   let normalBars: DrumBar[] = [];
 
@@ -175,7 +172,7 @@ function serializeSystem(system: DrumSystem, timeSignature: string): string[] {
       return;
     }
 
-    lines.push(...serializeNormalBars(normalBars, timeSignature));
+    lines.push(...serializeNormalBars(normalBars));
     normalBars = [];
   };
 
@@ -218,15 +215,15 @@ function formatMeasureRepeat(count: number): string {
   return count > 1 ? `%x${count}` : "%";
 }
 
-function serializeNormalBars(bars: DrumBar[], timeSignature: string): string[] {
+function serializeNormalBars(bars: DrumBar[]): string[] {
   const rows: SystemRow[] = [];
-  const stickingRow = toStickingRow(bars, timeSignature);
+  const stickingRow = toStickingRow(bars);
 
   if (stickingRow) {
     rows.push(stickingRow);
   }
 
-  for (const row of toSystemRows(bars, timeSignature)) {
+  for (const row of toSystemRows(bars)) {
     rows.push(row);
   }
 
@@ -273,7 +270,7 @@ function joinPatterns(patterns: string[]): string {
   return result;
 }
 
-function toStickingRow(bars: DrumBar[], timeSignature: string): SystemRow | null {
+function toStickingRow(bars: DrumBar[]): SystemRow | null {
   if (!bars.some((bar) => bar.stickingPattern !== undefined)) {
     return null;
   }
@@ -283,8 +280,7 @@ function toStickingRow(bars: DrumBar[], timeSignature: string): SystemRow | null
     patterns: bars.map((bar) =>
       serializeRhythmicPattern(
         bar,
-        normalizeStickingPattern(bar.stickingPattern ?? "-".repeat(bar.slots.length)),
-        timeSignature
+        normalizeStickingPattern(bar.stickingPattern ?? "-".repeat(bar.slots.length))
       )
     )
   };
@@ -295,7 +291,7 @@ function toStickingRow(bars: DrumBar[], timeSignature: string): SystemRow | null
 // spans. An instrument that is absent from a trailing bar simply contributes
 // fewer patterns — which is exactly how the parser represents a row that spans
 // fewer bar segments than its neighbours.
-function toSystemRows(bars: DrumBar[], timeSignature: string): SystemRow[] {
+function toSystemRows(bars: DrumBar[]): SystemRow[] {
   const order: DrumInstrument[] = [];
   const labels = new Map<string, string>();
   const patterns = new Map<string, string[]>();
@@ -313,8 +309,7 @@ function toSystemRows(bars: DrumBar[], timeSignature: string): SystemRow[] {
       patterns.get(id)!.push(
         serializeRhythmicPattern(
           bar,
-          normalizePattern(row.instrument, row.pattern),
-          timeSignature
+          normalizePattern(row.instrument, row.pattern)
         )
       );
     }
@@ -329,8 +324,7 @@ function toSystemRows(bars: DrumBar[], timeSignature: string): SystemRow[] {
 
 function serializeRhythmicPattern(
   bar: DrumBar,
-  pattern: string,
-  timeSignature: string
+  pattern: string
 ): string {
   if (!bar.rhythmRegions.some((region) => region.kind === "tuplet")) {
     return pattern;
@@ -350,14 +344,21 @@ function serializeRhythmicPattern(
       "-".repeat(Math.max(0, region.positionCount - sourceBody.length));
 
     if (region.kind === "tuplet") {
-      const writtenBeatQuarter = getWrittenBeatQuarter(timeSignature);
-      const isOneWrittenBeat =
-        Math.abs(region.durationQuarter - writtenBeatQuarter) < 1e-8;
-      const durationSuffix = isOneWrittenBeat
-        ? ""
-        : `@${getTupletDurationDenominator(region)}`;
+      const span = region.tupletSpan;
 
-      result += `${region.subdivisionCount}${durationSuffix}(${body})`;
+      if (span?.kind === "written-beats") {
+        const prefix = span.beats === 1
+          ? String(region.subdivisionCount)
+          : `${span.beats}/${region.subdivisionCount}`;
+
+        result += `${prefix}(${body})`;
+      } else {
+        const denominator = span?.kind === "note-value"
+          ? span.denominator
+          : getTupletDurationDenominator(region);
+
+        result += `${region.subdivisionCount}@${denominator}(${body})`;
+      }
     } else {
       result += body;
     }

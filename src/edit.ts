@@ -1,7 +1,8 @@
 import { DRUM_KIT, getHitChar, normalizePattern } from "./kit";
 import { getSlotsPerBar, isValidBeamGrouping } from "./music";
-import { finalizeDrumBlock } from "./parser";
-import { getWrittenBeatQuarter } from "./rhythm";
+import { finalizeDrumBlock, parseDrumBlock } from "./parser";
+import { getBarDurationQuarter, getWrittenBeatQuarter } from "./rhythm";
+import { serializeDrumBlock } from "./serializer";
 import {
   DrumArticulation,
   DrumBarClipboardPayload,
@@ -45,8 +46,8 @@ export function findSticking(block: DrumBlock, slotIndex: number): StickingHand 
 
 // --- Header / setting edits -------------------------------------------------
 // These mirror the parser's own clamping so an edited value re-parses to the
-// same thing. They only swap a header field; slots are unaffected because the
-// model already treats tempo/grid/meter as render-time metadata, not structure.
+// same thing. Tempo and grid remain header-only edits. Meter changes rebuild
+// the timeline because written-beat tuplets are deliberately meter-relative.
 
 export function setTempo(block: DrumBlock, tempo: number): DrumBlock {
   return { ...block, tempo: Math.min(260, Math.max(30, Math.round(tempo))) };
@@ -60,19 +61,64 @@ export function setGrid(block: DrumBlock, grid: GridResolution): DrumBlock {
   return { ...block, gridResolution: grid === 32 ? 32 : 16 };
 }
 
-export function setTimeSignature(block: DrumBlock, numerator: number, denominator: number): DrumBlock {
+export type TimeSignatureEditResult =
+  | { ok: true; block: DrumBlock }
+  | { ok: false; block: DrumBlock; message: string };
+
+export function setTimeSignature(
+  block: DrumBlock,
+  numerator: number,
+  denominator: number
+): TimeSignatureEditResult {
   const timeSignature = `${Math.max(1, Math.round(numerator))}/${Math.max(1, Math.round(denominator))}`;
   const writtenBeatQuarter = getWrittenBeatQuarter(timeSignature);
+  const barDurationQuarter = getBarDurationQuarter(timeSignature);
+  let relativeTupletOverflow = false;
   const systems = block.systems.map((system) => ({
     ...system,
-    bars: system.bars.map((bar) => ({
-      ...bar,
-      rhythmRegions: bar.rhythmRegions.map((region) => ({
-        ...region,
-        spanWrittenBeats: region.durationQuarter / writtenBeatQuarter
-      }))
-    }))
+    bars: system.bars.map((bar) => {
+      let startQuarter = 0;
+      let containsRelativeTuplet = false;
+      const rhythmRegions = bar.rhythmRegions.map((region) => {
+        const relativeSpan = region.kind === "tuplet" &&
+          region.tupletSpan?.kind === "written-beats"
+          ? region.tupletSpan
+          : undefined;
+        const durationQuarter = relativeSpan
+          ? relativeSpan.beats * writtenBeatQuarter
+          : region.durationQuarter;
+        const nextRegion = {
+          ...region,
+          startQuarter,
+          durationQuarter,
+          spanWrittenBeats: durationQuarter / writtenBeatQuarter
+        };
+
+        containsRelativeTuplet ||= relativeSpan !== undefined;
+        startQuarter += durationQuarter;
+        return nextRegion;
+      });
+
+      if (containsRelativeTuplet && startQuarter > barDurationQuarter + Number.EPSILON) {
+        relativeTupletOverflow = true;
+      }
+
+      return {
+        ...bar,
+        durationQuarter: startQuarter,
+        rhythmRegions
+      };
+    })
   }));
+
+  if (relativeTupletOverflow) {
+    return {
+      ok: false,
+      block,
+      message: `Cannot change Time to ${timeSignature}: a written-beat tuplet would extend beyond the bar.`
+    };
+  }
+
   const bars = systems.reduce<DrumBlock["bars"]>(
     (result, system) => result.concat(system.bars),
     []
@@ -88,7 +134,10 @@ export function setTimeSignature(block: DrumBlock, numerator: number, denominato
     delete nextBlock.beamGrouping;
   }
 
-  return nextBlock;
+  return {
+    ok: true,
+    block: parseDrumBlock(serializeDrumBlock(nextBlock))
+  };
 }
 
 // --- Hit edits --------------------------------------------------------------

@@ -223,7 +223,10 @@ describe("setting edits", () => {
   });
 
   it("setTimeSignature formats the meter", () => {
-    expect(setTimeSignature(block, 6, 8).timeSignature).toBe("6/8");
+    const result = setTimeSignature(block, 6, 8);
+
+    expect(result.ok).toBe(true);
+    expect(result.block.timeSignature).toBe("6/8");
   });
 
   it("preserves compatible grouping and clears it when the meter becomes incompatible", () => {
@@ -231,8 +234,11 @@ describe("setting edits", () => {
 Grouping: 2+2+3
 HH | x-x-x-x-x-x-x-`);
 
-    expect(setTimeSignature(grouped, 7, 8).beamGrouping).toEqual([2, 2, 3]);
-    expect(setTimeSignature(grouped, 4, 4).beamGrouping).toBeUndefined();
+    const compatible = setTimeSignature(grouped, 7, 8);
+    const incompatible = setTimeSignature(grouped, 4, 4);
+
+    expect(compatible.block.beamGrouping).toEqual([2, 2, 3]);
+    expect(incompatible.block.beamGrouping).toBeUndefined();
   });
 
   it("preserves grouping through structural visual edits", () => {

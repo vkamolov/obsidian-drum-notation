@@ -391,6 +391,24 @@ it is one eighth-note beat divided into three. Explicit `4(...)` and `8(...)`
 subdivisions are accepted for structural consistency but use ordinary
 power-of-two notation without a tuplet number.
 
+Use `B/N(...)` to divide `B` complete written beats into `N` equal positions.
+For example, two `2/3(...)` regions fill a 4/4 bar with quarter-note triplets:
+
+```drums
+Title: Multi-beat tuplets
+Tempo: 84
+Time: 4/4
+ST | 2/3(RLR)2/3(LRL)
+HH | 2/3(xxx)2/3(xxx)
+SD | 2/3(o--)2/3(o--)
+BD | 2/3(-o-)2/3(-o-)
+```
+
+`B` must be positive, the wrapper must begin on a written-beat boundary, and
+the complete region must fit in the bar. `1/N(...)` normalizes to `N(...)`.
+Forms where `B` equals `N` are ordinary subdivisions and should be written on
+the plain grid instead.
+
 Use `N@D(...)` when the tuplet should occupy an explicit note-value duration
 instead of one written beat. `D` may be `2`, `4`, `8`, `16`, or `32`:
 
@@ -404,12 +422,15 @@ BD | 3@8(---)o-3@8(---)o-3@8(---)o-3@8(---)o-
 Here `3@8(xxx)` is three equal positions within one eighth note: a
 sixteenth-note triplet. Explicit-duration tuplets may begin after any completed
 plain-grid position or another tuplet. They may not extend beyond the current
-bar. Combinations requiring tickables shorter than a 128th note are rejected
-with an advisory warning.
+bar. The engraver selects an exact power-of-two note value through 128th notes;
+combinations that cannot be represented within that limit produce an advisory
+warning.
 
 Every present drum and sticking row in the same inline bar must describe the
-same ordered plain/tuplet rhythm structure. Use explicit rest bodies such as
-`3(---)` on a silent row:
+same ordered plain/tuplet rhythm structure and the same duration form. For
+example, do not mix meter-relative `2/3(...)` and absolute `3@2(...)` across
+rows even though they occupy the same duration in 4/4. Use explicit rest bodies
+such as `3(---)` on a silent row:
 
 ```drums
 Time: 4/4
@@ -425,9 +446,10 @@ highlight timing follow the expanded quarter-note timeline.
 
 Malformed tuplets, row-structure mismatches, and unsupported forms produce
 advisory parser warnings and fall back to plain-grid text so the block remains
-renderable. `B/N(...)`, such as `2/3(xxx)` for two written beats divided into
-three positions, is reserved but not implemented yet. Nested tuplets are also
-deferred. Adjacent explicit wrappers remain separate engraving and beam groups.
+renderable. `N(...)` and `B/N(...)` remain relative to the written beat if the
+meter is changed through the playground controls; `N@D(...)` retains its
+absolute note-value duration. Nested tuplets remain deferred. Adjacent explicit
+wrappers remain separate engraving and beam groups.
 
 ## Hit Characters
 

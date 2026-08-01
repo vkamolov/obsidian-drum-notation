@@ -40,7 +40,7 @@ flagged because they can silently change playback feel. Short shorthand sketches
 such as `HH | x---` remain valid and warning-free.
 Invalid `Grouping:` values are also advisory: the score falls back to its normal
 meter grouping and continues rendering.
-Malformed tuplets, unsupported durations or future span forms, and tuplets
+Malformed tuplets, unsupported durations or unrepresentable written-beat spans, and tuplets
 whose ordered rhythm regions differ between rows are advisory too. The parser
 removes the wrapper syntax and uses a plain-grid fallback so rendering remains
 non-blocking.
@@ -206,6 +206,22 @@ In `Time: 4/4`, each token above occupies one quarter-note beat. In
 `Time: 6/8`, the same token occupies one written eighth-note beat. A token must
 start at a written-beat boundary and may not extend past the bar.
 
+`B/N(body)` divides `B` complete written beats into `N` equal positions:
+
+```drums
+Time: 4/4
+ST | 2/3(RLR)2/3(LRL)
+HH | 2/3(xxx)2/3(xxx)
+SD | 2/3(o--)2/3(o--)
+BD | 2/3(-o-)2/3(-o-)
+```
+
+Here each `2/3(...)` is a quarter-note triplet spanning two written beats. `B`
+must be a positive integer, the token must begin on a written-beat boundary,
+and it must fit in the current bar. `1/N(body)` is accepted and serializes as
+`N(body)`. `B = N` is rejected as an ordinary subdivision that should use the
+plain grid.
+
 `N@D(body)` instead gives the complete tuplet an explicit note-value duration.
 `D` may be `2`, `4`, `8`, `16`, or `32`:
 
@@ -223,10 +239,12 @@ written denominator beat. Explicit-duration tuplets may begin after any
 completed plain-grid position or preceding tuplet, but may not extend beyond
 the current bar.
 
-The engraver supports tuplet tickables through 128th notes. A combination for
-which `D × largestPowerOfTwoAtMost(N)` exceeds `128` produces an advisory
-`unsupported-tuplet-duration` warning and uses the plain-grid fallback.
-Adjacent tuplet wrappers remain separate beam and tuplet groups.
+The engraver searches for an exact power-of-two tickable representation through
+128th notes and selects the `notesOccupied` value closest to `N`, preferring the
+lower value on a tie. An unsupported `@D` duration produces
+`unsupported-tuplet-duration`; an unrepresentable written-beat span produces
+`unsupported-tuplet-span`. Both use the plain-grid fallback. Adjacent tuplet
+wrappers remain separate beam and tuplet groups.
 
 The body accepts normal hit, articulation, rest, and sticking characters. For
 example, `3(x-x)` is a triplet with a silent middle position, and `3(---)` is a
@@ -235,8 +253,10 @@ and `8(xxxxxxxx)` are valid and preserve the common rhythm structure across
 rows, but they engrave as ordinary subdivisions without a tuplet number.
 
 All present instrument and sticking rows in one inline bar must use the same
-ordered rhythm regions. A row that is silent during a tuplet beat must still
-write the matching wrapper:
+ordered rhythm regions and duration form. Meter-relative `2/3(...)` and
+absolute `3@2(...)` cannot be mixed across rows even when their current duration
+is equal. A row that is silent during a tuplet beat must still write the
+matching wrapper:
 
 ```drums
 Time: 4/4
@@ -245,12 +265,16 @@ SD | ----3(o--)----o---
 BD | o---3(---)o-------
 ```
 
-Malformed wrappers, wrong body lengths, nested tuplets, and mismatched row
-structures produce advisory warnings. Their wrapper characters are removed and
-the contained positions are interpreted with the plain-grid fallback. The
-reserved `B/N(body)` form, such as `2/3(xxx)` for two written beats divided
-into three positions, also warns and falls back; it has no timing semantics
-yet.
+Malformed wrappers, wrong body lengths, nested tuplets, unsupported spans, and
+mismatched row structures produce advisory warnings. Their wrapper characters
+are removed and the contained positions are interpreted with the plain-grid
+fallback.
+
+`N(body)` and `B/N(body)` are meter-relative model regions. A model-level meter
+change keeps them at one or `B` written beats and rebuilds the bar timeline;
+`N@D(body)` remains an absolute note-value duration. An overflowing relative
+tuplet rejects the model-level meter edit. Directly editing `Time:` in source
+text reparses all meter-relative tuplets under the new meter.
 
 Tuplet rhythm regions are part of the model and survive canonical serialization
 and `%`/`%xN` expansion. A block containing tuplet syntax is read-only in the
@@ -599,9 +623,11 @@ To stay deterministic and diff-friendly, serialization **normalizes**:
 - Rests collapse to `-`.
 - Settings left at their default are **omitted** (they re-parse to the default).
 - Explicit beam grouping normalizes to `Grouping: n+n+…`.
-- Valid tuplets normalize to `N(body)` when they occupy one written beat and
-  to `N@D(body)` for other note-value durations. Explicit power-of-two regions
-  retain their wrappers even though they do not draw a tuplet number.
+- Meter-relative tuplets normalize to `N(body)` for one written beat and
+  `B/N(body)` for multiple written beats. Absolute tuplets always retain
+  `N@D(body)`, even when that duration equals one written beat in the current
+  meter. Explicit power-of-two regions retain their wrappers even though they
+  do not draw a tuplet number.
 - Unknown/metadata lines are preserved verbatim and in order.
 - Bar separators normalize to `Bar`; row patterns are joined with ` | `.
 - System subtitles normalize to `Subtitle: text` before each system's rows.

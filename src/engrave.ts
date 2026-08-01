@@ -12,8 +12,7 @@ import {
 } from "./music";
 import { MeasureRepeatProgress } from "./repeat-progress";
 import {
-  getTupletDurationDenominator,
-  getTupletTickableDenominator
+  getTupletRenderRatio
 } from "./rhythm";
 import { allocateBarWidths } from "./spacing";
 import { CursorPosition, DrumBar, DrumBlock, DrumHit, DrumInstrument, DrumRhythmRegion, DrumSlot, GridResolution, MeasureRepeat, ScoreRenderResult, StickingHand } from "./types";
@@ -1459,14 +1458,24 @@ function buildRhythmicVisualBarNotes(
       continue;
     }
 
-    const occupied = largestPowerOfTwoAtMost(region.subdivisionCount);
-    const durationDenominator = getTupletDurationDenominator(region);
-    const duration = String(
-      getTupletTickableDenominator(
-        region.subdivisionCount,
-        durationDenominator
-      )
+    const renderRatio = getTupletRenderRatio(
+      region.subdivisionCount,
+      region.durationQuarter
     );
+
+    if (!renderRatio) {
+      const plain = buildGridVisualBarNotes(
+        regionSlots,
+        timeSignature,
+        gridResolution,
+        colorNoteheads
+      );
+
+      mergeVisualBarNotes(result, plain);
+      continue;
+    }
+
+    const duration = String(renderRatio.tickableDenominator);
     const regionNotes = regionSlots.map((slot) =>
       makeStaveNote(slot, duration, colorNoteheads)
     );
@@ -1496,11 +1505,11 @@ function buildRhythmicVisualBarNotes(
     });
     finishBeamRun();
 
-    if (!isPowerOfTwoValue(region.subdivisionCount)) {
+    if (region.subdivisionCount !== renderRatio.notesOccupied) {
       result.tuplets.push(
         new Tuplet(regionNotes, {
           numNotes: region.subdivisionCount,
-          notesOccupied: occupied,
+          notesOccupied: renderRatio.notesOccupied,
           ratioed: false
         })
       );
@@ -1518,10 +1527,6 @@ function mergeVisualBarNotes(target: VisualBarNotes, source: VisualBarNotes): vo
   target.cursorSlots.push(...source.cursorSlots);
   target.beams.push(...source.beams);
   target.tuplets.push(...source.tuplets);
-}
-
-function isPowerOfTwoValue(value: number): boolean {
-  return value > 0 && (value & (value - 1)) === 0;
 }
 
 function makeRestSlot(): DrumSlot {

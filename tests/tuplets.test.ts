@@ -58,7 +58,7 @@ SD | ----3(o--)4(--o-)5(o-o-o)`;
 
   it.each([
     [2, 2, "3@2(xxx)"],
-    [4, 1, "3(xxx)"],
+    [4, 1, "3@4(xxx)"],
     [8, 0.5, "3@8(xxx)"],
     [16, 0.25, "3@16(xxx)"],
     [32, 0.125, "3@32(xxx)"]
@@ -89,6 +89,57 @@ SD | ----3(o--)4(--o-)5(o-o-o)`;
     ]);
   });
 
+  it("parses written-beat spans and canonicalizes a one-beat fraction", () => {
+    const oneBeat = parseDrumBlock("HH | 1/3(xxx)");
+    const twoBeats = parseDrumBlock("HH | 2/3(xxx)2/7(xxxxxxx)");
+
+    expect(oneBeat.bars[0].rhythmRegions[0].tupletSpan).toEqual({
+      kind: "written-beats",
+      beats: 1
+    });
+    expect(serializeDrumBlock(oneBeat)).toBe("HH | 3(xxx)");
+    expect(twoBeats.bars[0].rhythmRegions.map((region) => [
+      region.durationQuarter,
+      region.subdivisionCount,
+      region.tupletSpan
+    ])).toEqual([
+      [2, 3, { kind: "written-beats", beats: 2 }],
+      [2, 7, { kind: "written-beats", beats: 2 }]
+    ]);
+    expect(serializeDrumBlock(twoBeats)).toBe("HH | 2/3(xxx)2/7(xxxxxxx)");
+    expect(parseDrumBlock(serializeDrumBlock(twoBeats))).toEqual(twoBeats);
+  });
+
+  it("supports written-beat tuplets in compound meter", () => {
+    const block = parseDrumBlock(`Time: 6/8
+HH | 2/3(xxx)`);
+
+    expect(block.bars[0].durationQuarter).toBeCloseTo(1);
+    expect(block.slots.map((slot) => slot.startQuarter)).toEqual([0, 1 / 3, 2 / 3]);
+  });
+
+  it("allows written-beat spans after complete plain beats and tuplets", () => {
+    const block = parseDrumBlock("HH | x---3(xxx)2/3(xxx)");
+
+    expect(block.bars[0].rhythmRegions.map((region) => [
+      region.startQuarter,
+      region.durationQuarter,
+      region.tupletSpan
+    ])).toEqual([
+      [0, 1, undefined],
+      [1, 1, { kind: "written-beats", beats: 1 }],
+      [2, 2, { kind: "written-beats", beats: 2 }]
+    ]);
+  });
+
+  it("rejects written-beat spans that start off the beat", () => {
+    const parsed = parseDrumBlockWithWarnings("HH | x2/3(xxx)");
+
+    expect(parsed.warnings).toEqual([
+      expect.objectContaining({ code: "malformed-tuplet" })
+    ]);
+  });
+
   it("keeps shorthand tuplets restricted to written-beat boundaries", () => {
     const parsed = parseDrumBlockWithWarnings("HH | x3(xxx)");
 
@@ -104,6 +155,20 @@ SD | 3(xxx)`);
 
     expect(parsed.warnings).toEqual([
       expect.objectContaining({ code: "tuplet-mismatch", line: 3 })
+    ]);
+  });
+
+  it("requires rows to use the same relative or absolute tuplet form", () => {
+    const parsed = parseDrumBlockWithWarnings(`Time: 4/4
+HH | 2/3(xxx)
+SD | 3@2(xxx)`);
+
+    expect(parsed.warnings).toEqual([
+      expect.objectContaining({
+        code: "tuplet-mismatch",
+        line: 3,
+        message: expect.stringContaining("written-beat or @ duration syntax")
+      })
     ]);
   });
 
@@ -129,9 +194,9 @@ SD | o-------`);
     ["HH | 3(xx)", "malformed-tuplet"],
     ["HH | 3(x3(x))", "malformed-tuplet"],
     ["HH | 3@7(xxx)", "unsupported-tuplet-duration"],
-    ["HH | 8@32(xxxxxxxx)", "unsupported-tuplet-duration"],
     ["HH | xxxxxxxxxxxxxxx3@2(xxx)", "malformed-tuplet"],
-    ["HH | 2/3(xxx)", "unsupported-tuplet-span"]
+    ["HH | 0/3(xxx)", "malformed-tuplet"],
+    ["HH | 3/3(xxx)", "malformed-tuplet"]
   ] as const)("warns safely for %s", (source, code) => {
     const parsed = parseDrumBlockWithWarnings(source);
 
@@ -144,6 +209,21 @@ SD | o-------`);
     const parsed = parseDrumBlockWithWarnings("HH | 3@8(xxx)");
 
     expect(parsed.warnings).toEqual([]);
+  });
+
+  it("does not report the written-beat span marker as unsupported", () => {
+    const parsed = parseDrumBlockWithWarnings("HH | 2/3(xxx)");
+
+    expect(parsed.warnings).toEqual([]);
+  });
+
+  it("warns when a meter cannot provide a supported written-beat render ratio", () => {
+    const parsed = parseDrumBlockWithWarnings(`Time: 4/3
+HH | 1/3(xxx)`);
+
+    expect(parsed.warnings).toEqual([
+      expect.objectContaining({ code: "unsupported-tuplet-span" })
+    ]);
   });
 
   it("copies rhythmic regions through compact repeats", () => {
@@ -173,6 +253,20 @@ SD | o-------`);
     expect(serializeDrumBlock(block)).toBe(source);
   });
 
+  it("preserves written-beat spans through compact repeats", () => {
+    const source = `HH | 2/3(xxx)2/3(x-x)
+%x2`;
+    const block = parseDrumBlock(source);
+
+    expect(block.bars).toHaveLength(3);
+    expect(block.bars.every((bar) =>
+      bar.rhythmRegions.every((region) =>
+        region.tupletSpan?.kind === "written-beats" && region.tupletSpan.beats === 2
+      )
+    )).toBe(true);
+    expect(serializeDrumBlock(block)).toBe(source);
+  });
+
   it("uses quarter-note timeline offsets and inverts them at boundaries", () => {
     const block = parseDrumBlock(`Tempo: 100
 HH | 3(xxx)`);
@@ -188,18 +282,54 @@ HH | 3(xxx)`);
     expect(getSlotIndexAtQuarter(block, 2 / 3)).toBe(2);
   });
 
-  it("preserves absolute tuplet timing through model-level meter changes", () => {
+  it("keeps shorthand tuplets relative through model-level meter changes", () => {
     const block = parseDrumBlock(`Time: 4/4
 HH | 3(xxx)`);
-    const changed = setTimeSignature(block, 6, 8);
+    const result = setTimeSignature(block, 6, 8);
+    const changed = result.block;
     const serialized = serializeDrumBlock(changed);
     const reparsed = parseDrumBlock(serialized);
 
-    expect(changed.bars[0].rhythmRegions[0].spanWrittenBeats).toBeCloseTo(2);
+    expect(result.ok).toBe(true);
+    expect(changed.bars[0].rhythmRegions[0].spanWrittenBeats).toBeCloseTo(1);
     expect(serialized).toBe(`Time: 6/8
+HH | 3(xxx)`);
+    expect(reparsed.bars[0].durationQuarter).toBeCloseTo(0.5);
+    expect(reparsed.bars[0].rhythmRegions[0].spanWrittenBeats).toBeCloseTo(1);
+  });
+
+  it("keeps multi-beat tuplets relative through model-level meter changes", () => {
+    const block = parseDrumBlock(`Time: 4/4
+HH | 2/3(xxx)`);
+    const result = setTimeSignature(block, 6, 8);
+
+    expect(result.ok).toBe(true);
+    expect(result.block.bars[0].durationQuarter).toBeCloseTo(1);
+    expect(serializeDrumBlock(result.block)).toBe(`Time: 6/8
+HH | 2/3(xxx)`);
+  });
+
+  it("keeps @ tuplets absolute and explicit through model-level meter changes", () => {
+    const block = parseDrumBlock(`Time: 4/4
 HH | 3@4(xxx)`);
-    expect(reparsed.bars[0].durationQuarter).toBeCloseTo(1);
-    expect(reparsed.bars[0].rhythmRegions[0].spanWrittenBeats).toBeCloseTo(2);
+    const result = setTimeSignature(block, 6, 8);
+
+    expect(result.ok).toBe(true);
+    expect(result.block.bars[0].durationQuarter).toBeCloseTo(1);
+    expect(serializeDrumBlock(result.block)).toBe(`Time: 6/8
+HH | 3@4(xxx)`);
+  });
+
+  it("rejects meter edits that would overflow a relative tuplet", () => {
+    const block = parseDrumBlock(`Time: 4/4
+HH | 4/3(xxx)`);
+    const result = setTimeSignature(block, 3, 4);
+
+    expect(result.ok).toBe(false);
+    expect(result.block).toBe(block);
+    if (!result.ok) {
+      expect(result.message).toContain("would extend beyond the bar");
+    }
   });
 
   it("keeps metronome pulses on written beats rather than tuplet positions", () => {
@@ -227,6 +357,18 @@ HH | 3@2(xxx)`);
     ])).toEqual([
       [0, 0],
       [1, 1]
+    ]);
+  });
+
+  it("keeps metronome pulses inside a written-beat-span tuplet", () => {
+    const block = parseDrumBlock(`Time: 4/4
+HH | 2/3(xxx)2/3(xxx)`);
+
+    expect(getMetronomePulses(block).map((pulse) => pulse.quarterOffset)).toEqual([
+      0,
+      1,
+      2,
+      3
     ]);
   });
 });

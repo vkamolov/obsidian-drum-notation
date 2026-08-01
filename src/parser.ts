@@ -755,7 +755,7 @@ function prepareTupletRhythms(
         warn(
           entry.line,
           "tuplet-mismatch",
-          `${entry.kind === "sticking" ? "Sticking row" : "Row"} bar ${segmentIndex + 1} does not match the tuplet beat structure declared by the other rows; using plain-grid fallback for this bar.`
+          `${entry.kind === "sticking" ? "Sticking row" : "Row"} bar ${segmentIndex + 1} does not match the tuplet structure or duration form declared by the other rows; use the same written-beat or @ duration syntax across rows. Using plain-grid fallback for this bar.`
         );
       });
 

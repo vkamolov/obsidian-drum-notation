@@ -1684,7 +1684,21 @@ function init(): void {
       return;
     }
 
-    applyEditedBlock(setTimeSignature(currentBlock, Number(timeTopInput.value), Number(timeBottomInput.value)));
+    const result = setTimeSignature(
+      currentBlock,
+      Number(timeTopInput.value),
+      Number(timeBottomInput.value)
+    );
+
+    if (!result.ok) {
+      gridEditorMessage = result.message;
+      syncControls(result.block);
+      renderNotes(result.block, editor.value);
+      return;
+    }
+
+    gridEditorMessage = null;
+    applyEditedBlock(result.block);
   };
   timeTopInput.addEventListener("change", applyTimeSignature);
   timeBottomInput.addEventListener("change", applyTimeSignature);

@@ -22,7 +22,13 @@ export interface TupletPatternAnalysis {
 const TUPLET_START = /^(\d+)(?:([/@])(\d+))?\(/;
 const TUPLET_LIKE = /\d+(?:[/@]\d+)?\(/;
 const EXPLICIT_TUPLET_DURATION_DENOMINATORS = new Set([2, 4, 8, 16, 32]);
+type ExplicitTupletDurationDenominator = 2 | 4 | 8 | 16 | 32;
 export const MAX_TUPLET_TICKABLE_DENOMINATOR = 128;
+
+export interface TupletRenderRatio {
+  tickableDenominator: number;
+  notesOccupied: number;
+}
 
 export function analyzeTupletPattern(
   pattern: string,
@@ -81,16 +87,19 @@ export function analyzeTupletPattern(
     const modifierValue = tokenStart[3] === undefined
       ? undefined
       : Number.parseInt(tokenStart[3], 10);
-    const isReservedBeatSpan = modifier === "/";
+    const isWrittenBeatSpan = modifier !== "@";
     const explicitDurationDenominator = modifier === "@" ? modifierValue : undefined;
-    const subdivisionCount = isReservedBeatSpan
+    const normalizedExplicitDurationDenominator =
+      toExplicitTupletDurationDenominator(explicitDurationDenominator);
+    const writtenBeatCount = modifier === "/" ? firstCount : 1;
+    const subdivisionCount = modifier === "/"
       ? modifierValue ?? firstCount
       : firstCount;
-    const durationQuarter = explicitDurationDenominator === undefined
-      ? beatQuarter
-      : 4 / explicitDurationDenominator;
-    const spanWrittenBeats = isReservedBeatSpan
-      ? firstCount
+    const durationQuarter = isWrittenBeatSpan
+      ? writtenBeatCount * beatQuarter
+      : 4 / (explicitDurationDenominator ?? 1);
+    const spanWrittenBeats = isWrittenBeatSpan
+      ? writtenBeatCount
       : durationQuarter / beatQuarter;
     const bodyStart = sourceCursor + tokenStart[0].length;
     const closeIndex = pattern.indexOf(")", bodyStart);
@@ -110,20 +119,28 @@ export function analyzeTupletPattern(
     const startsAtBeatBoundary =
       Math.abs(quarterCursor / beatQuarter - Math.round(quarterCursor / beatQuarter)) <
       1e-8;
-    const tickableDenominator = explicitDurationDenominator === undefined
-      ? null
-      : getTupletTickableDenominator(subdivisionCount, explicitDurationDenominator);
+    const hasSupportedExplicitDuration = explicitDurationDenominator === undefined ||
+      normalizedExplicitDurationDenominator !== null;
+    const renderRatio = hasSupportedExplicitDuration
+      ? getTupletRenderRatio(subdivisionCount, durationQuarter)
+      : null;
 
-    if (isReservedBeatSpan) {
-      issues.push({
-        code: "unsupported-tuplet-span",
-        message: `Tuplet ${spanWrittenBeats}/${subdivisionCount}(...) at beat ${beat} uses a reserved multi-beat form that is not supported yet.`,
-        beat
-      });
-    } else if (subdivisionCount < 3 || subdivisionCount > 12) {
+    if (subdivisionCount < 3 || subdivisionCount > 12) {
       issues.push({
         code: "malformed-tuplet",
         message: `Tuplet at beat ${beat} uses ${subdivisionCount} subdivisions; supported values are 3–12.`,
+        beat
+      });
+    } else if (modifier === "/" && writtenBeatCount < 1) {
+      issues.push({
+        code: "malformed-tuplet",
+        message: `Tuplet at beat ${beat} must span at least one written beat.`,
+        beat
+      });
+    } else if (modifier === "/" && writtenBeatCount === subdivisionCount) {
+      issues.push({
+        code: "malformed-tuplet",
+        message: `Tuplet ${writtenBeatCount}/${subdivisionCount}(...) at beat ${beat} is an ordinary subdivision; use plain-grid notation instead.`,
         beat
       });
     } else if (
@@ -136,16 +153,18 @@ export function analyzeTupletPattern(
         beat
       });
     } else if (
-      explicitDurationDenominator !== undefined &&
-      tickableDenominator !== null &&
-      tickableDenominator > MAX_TUPLET_TICKABLE_DENOMINATOR
+      renderRatio === null
     ) {
       issues.push({
-        code: "unsupported-tuplet-duration",
-        message: `Tuplet ${subdivisionCount}@${explicitDurationDenominator}(...) at beat ${beat} requires ${tickableDenominator}th-note tickables; the supported limit is ${MAX_TUPLET_TICKABLE_DENOMINATOR}.`,
+        code: explicitDurationDenominator === undefined
+          ? "unsupported-tuplet-span"
+          : "unsupported-tuplet-duration",
+        message: explicitDurationDenominator === undefined
+          ? `Tuplet ${writtenBeatCount}/${subdivisionCount}(...) at beat ${beat} cannot be engraved with supported note values through 128th notes.`
+          : `Tuplet ${subdivisionCount}@${explicitDurationDenominator}(...) at beat ${beat} cannot be engraved with supported note values through 128th notes.`,
         beat
       });
-    } else if (explicitDurationDenominator === undefined && !startsAtBeatBoundary) {
+    } else if (isWrittenBeatSpan && !startsAtBeatBoundary) {
       issues.push({
         code: "malformed-tuplet",
         message: `Tuplet at beat ${beat} must begin on a written-beat boundary unless it declares an explicit @ duration.`,
@@ -177,7 +196,13 @@ export function analyzeTupletPattern(
         startQuarter: quarterCursor,
         durationQuarter,
         spanWrittenBeats,
-        subdivisionCount
+        subdivisionCount,
+        tupletSpan: isWrittenBeatSpan
+          ? { kind: "written-beats", beats: writtenBeatCount }
+          : {
+              kind: "note-value",
+              denominator: normalizedExplicitDurationDenominator ?? 4
+            }
       });
       decodedPattern += body;
       positionCursor += subdivisionCount;
@@ -246,7 +271,11 @@ export function rhythmSignature(regions: readonly DrumRhythmRegion[]): string {
         region.positionCount,
         normalizeNumber(region.startQuarter),
         normalizeNumber(region.durationQuarter),
-        normalizeNumber(region.spanWrittenBeats)
+        normalizeNumber(region.spanWrittenBeats),
+        region.tupletSpan?.kind ?? "plain",
+        region.tupletSpan?.kind === "written-beats"
+          ? normalizeNumber(region.tupletSpan.beats)
+          : region.tupletSpan?.denominator ?? ""
       ].join(":")
     )
     .join("|");
@@ -268,11 +297,40 @@ export function getRegionEndQuarter(region: DrumRhythmRegion): number {
   return region.startQuarter + region.durationQuarter;
 }
 
-export function getTupletTickableDenominator(
+export function getTupletRenderRatio(
   subdivisionCount: number,
-  durationDenominator: number
-): number {
-  return durationDenominator * largestPowerOfTwoAtMost(subdivisionCount);
+  durationQuarter: number
+): TupletRenderRatio | null {
+  const candidates: TupletRenderRatio[] = [];
+
+  for (
+    let tickableDenominator = 1;
+    tickableDenominator <= MAX_TUPLET_TICKABLE_DENOMINATOR;
+    tickableDenominator *= 2
+  ) {
+    const rawNotesOccupied = durationQuarter * tickableDenominator / 4;
+    const notesOccupied = Math.round(rawNotesOccupied);
+
+    if (notesOccupied < 1 || Math.abs(rawNotesOccupied - notesOccupied) > 1e-8) {
+      continue;
+    }
+
+    candidates.push({ tickableDenominator, notesOccupied });
+  }
+
+  return candidates.sort((left, right) => {
+    const distance = Math.abs(left.notesOccupied - subdivisionCount) -
+      Math.abs(right.notesOccupied - subdivisionCount);
+
+    if (distance !== 0) {
+      return distance;
+    }
+
+    const leftBelow = left.notesOccupied < subdivisionCount ? 0 : 1;
+    const rightBelow = right.notesOccupied < subdivisionCount ? 0 : 1;
+
+    return leftBelow - rightBelow || left.tickableDenominator - right.tickableDenominator;
+  })[0] ?? null;
 }
 
 export function getTupletDurationDenominator(region: DrumRhythmRegion): number {
@@ -283,14 +341,16 @@ function normalizeNumber(value: number): string {
   return String(Math.round(value * 1_000_000_000) / 1_000_000_000);
 }
 
-function largestPowerOfTwoAtMost(value: number): number {
-  let power = 1;
-
-  while (power * 2 <= value) {
-    power *= 2;
+function toExplicitTupletDurationDenominator(
+  value: number | undefined
+): ExplicitTupletDurationDenominator | null {
+  if (value === undefined || !EXPLICIT_TUPLET_DURATION_DENOMINATORS.has(value)) {
+    return null;
   }
 
-  return power;
+  return value === 2 || value === 4 || value === 8 || value === 16 || value === 32
+    ? value
+    : null;
 }
 
 function getSlotsPerBeat(

@@ -98,6 +98,16 @@ HH | 3@8(xxx)--3@8(xxx)--3@8(xxx)--3@8(xxx)--
 SD | 3@8(o--)--3@8(---)--3@8(o--)--3@8(---)--
 BD | 3@8(---)o-3@8(---)o-3@8(---)o-3@8(---)o-`,
 
+  "Multi-beat tuplets": `Title: Multi-beat tuplets
+Tempo: 84
+Time: 4/4
+Grid: 16
+Subtitle: Quarter-note triplets spanning two written beats
+ST | 2/3(RLR)2/3(LRL)
+HH | 2/3(xxx)2/3(xxx)
+SD | 2/3(o--)2/3(o--)
+BD | 2/3(-o-)2/3(-o-)`,
+
   "Mixed tuplets": `Title: Mixed tuplets
 Tempo: 84
 Time: 4/4
