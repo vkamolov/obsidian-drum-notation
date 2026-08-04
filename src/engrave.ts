@@ -148,7 +148,7 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
   const width = cssWidth / baseLayout.renderScale;
   const systemHeights = getScoreSystemHeights(block);
   const systemLayouts = block.systems.map((scoreSystem, systemIndex) => {
-    const layout = getSystemNotationLayout(block, scoreSystem.bars.flatMap((bar) => bar.slots));
+    const layout = getSystemNotationLayout(block, collectSystemSlots(scoreSystem.bars));
 
     return { ...layout, systemHeight: systemHeights[systemIndex] ?? layout.systemHeight };
   });
@@ -1302,9 +1302,19 @@ function getSystemNotationLayout(block: DrumBlock, slots: readonly DrumSlot[]): 
   };
 }
 
+function collectSystemSlots(bars: readonly DrumBar[]): DrumSlot[] {
+  const slots: DrumSlot[] = [];
+
+  for (const bar of bars) {
+    slots.push(...bar.slots);
+  }
+
+  return slots;
+}
+
 export function getScoreSystemHeights(block: DrumBlock): number[] {
   return block.systems.map((scoreSystem) =>
-    getSystemNotationLayout(block, scoreSystem.bars.flatMap((bar) => bar.slots)).systemHeight
+    getSystemNotationLayout(block, collectSystemSlots(scoreSystem.bars)).systemHeight
   );
 }
 
@@ -1498,20 +1508,31 @@ function chooseSplitTuplets(
   upper: readonly VisualTupletEntry[],
   lower: readonly VisualTupletEntry[]
 ): Tuplet[] {
-  const regionIndexes = new Set([
-    ...upper.map((entry) => entry.regionIndex),
-    ...lower.map((entry) => entry.regionIndex)
-  ]);
+  const regionIndexes = new Set<number>();
 
-  return Array.from(regionIndexes)
-    .sort((left, right) => left - right)
-    .flatMap((regionIndex) => {
-      const upperEntry = upper.find((entry) => entry.regionIndex === regionIndex);
-      const lowerEntry = lower.find((entry) => entry.regionIndex === regionIndex);
-      const selected = upperEntry?.hasHits ? upperEntry : lowerEntry?.hasHits ? lowerEntry : upperEntry ?? lowerEntry;
+  for (const entry of upper) {
+    regionIndexes.add(entry.regionIndex);
+  }
+  for (const entry of lower) {
+    regionIndexes.add(entry.regionIndex);
+  }
 
-      return selected ? [selected.tuplet] : [];
-    });
+  const sortedRegionIndexes = [...regionIndexes];
+  sortedRegionIndexes.sort((left, right) => left - right);
+
+  const tuplets: Tuplet[] = [];
+
+  for (const regionIndex of sortedRegionIndexes) {
+    const upperEntry = upper.find((entry) => entry.regionIndex === regionIndex);
+    const lowerEntry = lower.find((entry) => entry.regionIndex === regionIndex);
+    const selected = upperEntry?.hasHits ? upperEntry : lowerEntry?.hasHits ? lowerEntry : upperEntry ?? lowerEntry;
+
+    if (selected) {
+      tuplets.push(selected.tuplet);
+    }
+  }
+
+  return tuplets;
 }
 
 function buildMeasureRepeatVisualBarNotes(measureRepeat: MeasureRepeat): VisualBarNotes {
