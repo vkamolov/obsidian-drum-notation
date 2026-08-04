@@ -28,6 +28,7 @@ export const COUNT_IN_MODE_OPTIONS: ReadonlyArray<{
 export interface MetronomePulse {
   slotIndex: number;
   quarterOffset: number;
+  intervalQuarter: number;
   isDownbeat: boolean;
 }
 
@@ -75,10 +76,10 @@ export function getMetronomePulses(
   const rangeEnd = Math.min(block.slots.length, Math.max(rangeStart, Math.round(endSlot)));
   const rangeStartQuarter = slotBoundaryQuarter(block, rangeStart);
   const rangeEndQuarter = slotBoundaryQuarter(block, rangeEnd);
-  const pulseIntervalQuarter = getMetronomePulseIntervalQuarter(block.timeSignature);
   const pulses: MetronomePulse[] = [];
 
   block.bars.forEach((bar) => {
+    const pulseIntervalQuarter = getMetronomePulseIntervalQuarter(bar.timeSignature);
     const barEndQuarter = bar.startQuarter + bar.durationQuarter;
 
     if (barEndQuarter <= rangeStartQuarter || bar.startQuarter >= rangeEndQuarter) {
@@ -104,6 +105,7 @@ export function getMetronomePulses(
             rangeEnd
           ),
           quarterOffset,
+          intervalQuarter: pulseIntervalQuarter,
           isDownbeat: localQuarter === 0
         });
       }
@@ -113,29 +115,39 @@ export function getMetronomePulses(
   return pulses;
 }
 
-export function getCountInSlotCount(block: DrumBlock, mode: CountInMode = DEFAULT_COUNT_IN_MODE): number {
+export function getCountInSlotCount(
+  block: DrumBlock,
+  mode: CountInMode = DEFAULT_COUNT_IN_MODE,
+  startSlot = 0
+): number {
   if (mode === "off") {
     return 0;
   }
 
-  return getExpectedSlotsPerBar(block.timeSignature, block.gridResolution);
+  return getExpectedSlotsPerBar(getPlaybackStartMeter(block, startSlot), block.gridResolution);
 }
 
-export function getCountInPulses(block: DrumBlock, mode: CountInMode = DEFAULT_COUNT_IN_MODE): MetronomePulse[] {
-  const countInSlots = getCountInSlotCount(block, mode);
+export function getCountInPulses(
+  block: DrumBlock,
+  mode: CountInMode = DEFAULT_COUNT_IN_MODE,
+  startSlot = 0
+): MetronomePulse[] {
+  const timeSignature = getPlaybackStartMeter(block, startSlot);
+  const countInSlots = getCountInSlotCount(block, mode, startSlot);
 
   if (countInSlots === 0) {
     return [];
   }
 
-  const pulseIntervalSlots = getMetronomePulseIntervalSlots(block.timeSignature, block.gridResolution);
-  const pulseIntervalQuarter = getMetronomePulseIntervalQuarter(block.timeSignature);
+  const pulseIntervalSlots = getMetronomePulseIntervalSlots(timeSignature, block.gridResolution);
+  const pulseIntervalQuarter = getMetronomePulseIntervalQuarter(timeSignature);
   const pulses: MetronomePulse[] = [];
 
   for (let slotIndex = 0; slotIndex < countInSlots; slotIndex += pulseIntervalSlots) {
     pulses.push({
       slotIndex,
       quarterOffset: (slotIndex / pulseIntervalSlots) * pulseIntervalQuarter,
+      intervalQuarter: pulseIntervalQuarter,
       isDownbeat: slotIndex === 0
     });
   }
@@ -227,17 +239,36 @@ export function getMetronomePulseIntervalQuarter(timeSignature: string): number 
 
 export function getCountInDurationQuarter(
   block: DrumBlock,
-  mode: CountInMode = DEFAULT_COUNT_IN_MODE
+  mode: CountInMode = DEFAULT_COUNT_IN_MODE,
+  startSlot = 0
 ): number {
   if (mode === "off") {
     return 0;
   }
 
-  const match = /^(\d+)\/(\d+)$/.exec(block.timeSignature);
+  const match = /^(\d+)\/(\d+)$/.exec(getPlaybackStartMeter(block, startSlot));
   const beats = Number.parseInt(match?.[1] ?? "4", 10);
   const beatValue = Math.max(1, Number.parseInt(match?.[2] ?? "4", 10));
 
   return beats * (4 / beatValue);
+}
+
+function getPlaybackStartMeter(block: DrumBlock, startSlot: number): string {
+  const containingBar = block.bars.find(
+    (bar) => startSlot >= bar.startSlot && startSlot < bar.startSlot + bar.slots.length
+  );
+
+  if (containingBar) {
+    return containingBar.timeSignature;
+  }
+
+  if (block.bars.length === 0) {
+    return block.timeSignature;
+  }
+
+  return startSlot < block.bars[0].startSlot
+    ? block.bars[0].timeSignature
+    : block.bars[block.bars.length - 1].timeSignature;
 }
 
 function getExpectedSlotsPerBar(

@@ -11,13 +11,46 @@ export function getBarRange(block: DrumBlock, slotIndex: number): { startSlot: n
     };
   }
 
-  const slotsPerBar = getSlotsPerBar(block.timeSignature, block.gridResolution);
-  const startSlot = Math.floor(slotIndex / slotsPerBar) * slotsPerBar;
+  if (block.bars.length === 0) {
+    return { startSlot: 0, endSlot: 0 };
+  }
+
+  const bar = slotIndex < block.bars[0].startSlot
+    ? block.bars[0]
+    : block.bars[block.bars.length - 1];
 
   return {
-    startSlot,
-    endSlot: Math.min(block.slots.length, startSlot + slotsPerBar)
+    startSlot: bar.startSlot,
+    endSlot: bar.startSlot + bar.slots.length
   };
+}
+
+export function hasSystemRhythmOverrides(block: DrumBlock): boolean {
+  return block.systems.some(
+    (system) =>
+      system.timeSignature !== block.timeSignature ||
+      !sameGrouping(system.beamGrouping, block.beamGrouping)
+  );
+}
+
+export function getTimeSignatureSequence(block: DrumBlock): string[] {
+  const result: string[] = [];
+
+  block.systems.forEach((system) => {
+    if (result[result.length - 1] !== system.timeSignature) {
+      result.push(system.timeSignature);
+    }
+  });
+
+  return result.length > 0 ? result : [block.timeSignature];
+}
+
+function sameGrouping(left: number[] | undefined, right: number[] | undefined): boolean {
+  if (!left || !right) {
+    return left === right;
+  }
+
+  return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
 export function getSlotsPerBar(timeSignature: string, gridResolution: GridResolution = DEFAULT_GRID_RESOLUTION): number {

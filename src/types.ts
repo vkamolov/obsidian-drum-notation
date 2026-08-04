@@ -44,6 +44,8 @@ export type ParseWarningCode =
   | "tuplet-mismatch"
   | "unsupported-tuplet-duration"
   | "unsupported-tuplet-span"
+  | "late-system-setting"
+  | "repeat-meter-mismatch"
   | "removed-setting";
 
 // The pre-structure form of a row: a label, the instrument it resolved to,
@@ -61,17 +63,25 @@ export interface DrumStickingInput {
   patterns: string[];
 }
 
+export interface DrumSystemSettings {
+  timeSignature: string;
+  beamGrouping?: number[];
+}
+
 export interface MeasureRepeatInput {
   type: MeasureRepeat;
   count: number;
 }
 
 export interface DrumSystem {
+  timeSignature: string;
+  beamGrouping?: number[];
   bars: DrumBar[];
   subtitle?: string;
 }
 
 export interface DrumBar {
+  timeSignature: string;
   rows: DrumRow[];
   slots: DrumSlot[];
   startSlot: number;

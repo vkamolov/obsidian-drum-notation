@@ -15,7 +15,13 @@ import {
   updateMeasureRepeatProgress
 } from "../../src/engrave";
 import { DrumBarClipboardStore } from "../../src/bar-clipboard";
-import { getBarRange, getSecondsPerSlot, getSlotVisualDurationSeconds } from "../../src/music";
+import {
+  getBarRange,
+  getSecondsPerSlot,
+  getSlotVisualDurationSeconds,
+  getTimeSignatureSequence,
+  hasSystemRhythmOverrides
+} from "../../src/music";
 import { getTitle, parseDrumBlock, parseDrumBlockWithWarnings } from "../../src/parser";
 import {
   COUNT_IN_MODE_OPTIONS,
@@ -276,10 +282,13 @@ function renderPreview(): void {
   speedSelect.disabled = !hasRows;
   metronomeBtn.disabled = block.slots.length === 0;
   muteBtn.disabled = !hasRows;
-  editBtn.disabled = !hasRows || block.containsTupletSyntax;
+  const hasSystemOverrides = hasSystemRhythmOverrides(block);
+  editBtn.disabled = !hasRows || block.containsTupletSyntax || hasSystemOverrides;
   const editDescription = block.containsTupletSyntax
     ? "Visual editing is not available for notation with tuplets. Edit the notation text directly."
-    : "Edit notation visually";
+    : hasSystemOverrides
+      ? "Visual editing is not yet available for notation with system-level Time or Grouping changes. Edit the notation text directly."
+      : "Edit notation visually";
   editBtn.title = editDescription;
   editBtn.setAttribute("aria-label", editDescription);
   syncPlaybackControls(block);
@@ -299,10 +308,9 @@ function renderPreview(): void {
 
   syncControls(block);
   updateDiagnostics(block, editor.value);
-  if (gridEditor && block.containsTupletSyntax) {
+  if (gridEditor && (block.containsTupletSyntax || hasSystemOverrides)) {
     exitEditMode();
-    gridEditorMessage =
-      "Visual editing is not available for notation with tuplets. Edit the notation text directly.";
+    gridEditorMessage = editDescription;
   }
   if (gridEditor && !isApplyingGridEdit) {
     gridEditor.syncBlock(block, selectedBarIndex);
@@ -1195,6 +1203,14 @@ function syncControls(block: DrumBlock): void {
   tempoInput.value = String(block.tempo);
   timeTopInput.value = beats || "4";
   timeBottomInput.value = beatValue || "4";
+  const hasSystemOverrides = hasSystemRhythmOverrides(block);
+  timeTopInput.disabled = hasSystemOverrides;
+  timeBottomInput.disabled = hasSystemOverrides;
+  const timeControlDescription = hasSystemOverrides
+    ? "Edit system-level Time declarations in the notation text."
+    : "Time signature";
+  timeTopInput.title = timeControlDescription;
+  timeBottomInput.title = timeControlDescription;
   gridSelect.value = String(block.gridResolution);
   repeatInput.value = String(block.repeatCount);
   legendSelect.value = block.legendMode;
@@ -1267,6 +1283,12 @@ function enterEditMode(): void {
     renderNotes(currentBlock, editor.value);
     return;
   }
+  if (hasSystemRhythmOverrides(currentBlock)) {
+    gridEditorMessage =
+      "Visual editing is not yet available for notation with system-level Time or Grouping changes. Edit the notation text directly.";
+    renderNotes(currentBlock, editor.value);
+    return;
+  }
   stopPlayback();
   stopPreview();
   selectedBarIndex = barIndexForSlot(currentBlock, currentSlotIndex);
@@ -1317,10 +1339,11 @@ function exitEditMode(): void {
 
 /* ---------- diagnostics ---------- */
 function updateDiagnostics(block: DrumBlock, raw: string): void {
+  const timeSequence = getTimeSignatureSequence(block);
   const rows: Array<[string, string]> = [
     ["title", getTitle(block)],
     ["tempo", `${block.tempo} BPM`],
-    ["time", block.timeSignature],
+    ["time", timeSequence.join(" → ")],
     ["grid", `1/${block.gridResolution}`],
     ["systems", String(block.systems.length)],
     ["bars", String(block.bars.length)],

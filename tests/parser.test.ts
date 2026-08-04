@@ -187,6 +187,119 @@ HH | -x-x`);
   });
 });
 
+describe("parseDrumBlock - system time signatures", () => {
+  it("inherits Time and Grouping until a later system changes them", () => {
+    const block = parseDrumBlock(`Time: 7/8
+Grouping: 2+2+3
+HH | x-x-x-x-x-x-x-
+
+Bar
+HH | x-x-x-x-x-x-x-
+
+Bar
+Time: 3/4
+HH | x-x-x-x-x-x-
+
+Bar
+HH | x-x-x-x-x-x-`);
+
+    expect(block.timeSignature).toBe("7/8");
+    expect(block.systems.map((system) => system.timeSignature)).toEqual(["7/8", "7/8", "3/4", "3/4"]);
+    expect(block.systems.map((system) => system.beamGrouping)).toEqual([[2, 2, 3], [2, 2, 3], undefined, undefined]);
+    expect(block.bars.map((bar) => bar.timeSignature)).toEqual(["7/8", "7/8", "3/4", "3/4"]);
+    expect(block.bars.map((bar) => bar.slots.length)).toEqual([14, 14, 12, 12]);
+  });
+
+  it("supports Grouping: auto and redundant effective declarations", () => {
+    const block = parseDrumBlock(`Time: 7/8
+Grouping: 2+2+3
+HH | x-x-x-x-x-x-x-
+
+Bar
+Time: 7/8
+HH | x-x-x-x-x-x-x-
+
+Bar
+Grouping: 3+2+2
+HH | x-x-x-x-x-x-x-
+
+Bar
+Grouping: auto
+HH | x-x-x-x-x-x-x-`);
+
+    expect(block.systems.map((system) => system.beamGrouping)).toEqual([[2, 2, 3], undefined, [3, 2, 2], undefined]);
+  });
+
+  it("retains inherited meter and grouping after an invalid system Time", () => {
+    const parsed = parseDrumBlockWithWarnings(`Time: 7/8
+Grouping: 2+2+3
+HH | x-x-x-x-x-x-x-
+
+Bar
+Time: nope
+HH | x-x-x-x-x-x-x-`);
+
+    expect(parsed.block.systems.map((system) => system.timeSignature)).toEqual(["7/8", "7/8"]);
+    expect(parsed.block.systems.map((system) => system.beamGrouping)).toEqual([[2, 2, 3], [2, 2, 3]]);
+    expect(parsed.warnings).toEqual([
+      expect.objectContaining({ code: "invalid-setting", line: 6, message: expect.stringContaining("keeping 7/8") })
+    ]);
+  });
+
+  it("uses each system meter for row-length warnings", () => {
+    const parsed = parseDrumBlockWithWarnings(`Time: 4/4
+HH | x-x-x-x-x-x-x-x-
+
+Bar
+Time: 3/4
+HH | x-x-x-x-x-x-x-x-`);
+
+    expect(parsed.warnings).toEqual([
+      expect.objectContaining({
+        code: "row-length-mismatch",
+        line: 6,
+        message: expect.stringContaining("Time 3/4 + Grid 16 expects 12")
+      })
+    ]);
+  });
+
+  it("interprets meter-relative tuplets using each system's meter", () => {
+    const block = parseDrumBlock(`Time: 4/4
+HH | 3(xxx)
+Bar
+Time: 6/8
+HH | 3(xxx)`);
+
+    expect(block.systems[0].bars[0].rhythmRegions[0].durationQuarter).toBe(1);
+    expect(block.systems[1].bars[0].rhythmRegions[0].durationQuarter).toBe(0.5);
+  });
+
+  it("warns for late system settings but applies them to the whole system", () => {
+    const parsed = parseDrumBlockWithWarnings(`HH | x-x-x-x-x-x-
+Time: 3/4`);
+
+    expect(parsed.block.timeSignature).toBe("3/4");
+    expect(parsed.block.systems[0].timeSignature).toBe("3/4");
+    expect(parsed.warnings).toEqual([
+      expect.objectContaining({ code: "late-system-setting", line: 2 })
+    ]);
+  });
+
+  it("rejects a repeat across different effective meters", () => {
+    const parsed = parseDrumBlockWithWarnings(`Time: 4/4
+HH | x-x-x-x-x-x-x-x-
+
+Bar
+Time: 3/4
+%`);
+
+    expect(parsed.block.bars).toHaveLength(1);
+    expect(parsed.warnings).toEqual([
+      expect.objectContaining({ code: "repeat-meter-mismatch", line: 6 })
+    ]);
+  });
+});
+
 describe("parseDrumBlock - system subtitles", () => {
   it("assigns one trimmed subtitle to each rendered system", () => {
     const block = parseDrumBlock(`Title: Sticking lane

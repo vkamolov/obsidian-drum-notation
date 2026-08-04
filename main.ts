@@ -38,7 +38,13 @@ import {
   replaceDrumsBlockBody,
   ReplaceDrumsBlockFailure
 } from "./src/markdown";
-import { getBarRange, getSecondsPerSlot, getSlotVisualDurationSeconds } from "./src/music";
+import {
+  getBarRange,
+  getSecondsPerSlot,
+  getSlotVisualDurationSeconds,
+  getTimeSignatureSequence,
+  hasSystemRhythmOverrides
+} from "./src/music";
 import { ensureNotationFontsInDocument } from "./src/notation-fonts";
 import { getTitle, parseDrumBlockWithWarnings } from "./src/parser";
 import {
@@ -374,8 +380,15 @@ export default class DrumNotationPlugin extends Plugin {
       const positionLabel = block.containsTupletSyntax
         ? "rhythmic positions"
         : `${block.gridResolution === 32 ? "thirty-second" : "sixteenth"} slots`;
+      const timeSequence = getTimeSignatureSequence(block);
+      const timeLabel = timeSequence.length > 1 ? "mixed meter" : block.timeSignature;
+      const timeDescription = timeSequence.length > 1
+        ? `Time changes: ${timeSequence.join(" → ")}`
+        : `Time: ${block.timeSignature}`;
+      const metaText = `${block.tempo} BPM · ${timeLabel} · ${block.bars.length} bar${block.bars.length === 1 ? "" : "s"} · ${block.slots.length} ${positionLabel}${block.repeatCount > 1 ? ` · repeat ${block.repeatCount}x` : ""}`;
       title.createEl("small", {
-        text: `${block.tempo} BPM · ${block.timeSignature} · ${block.bars.length} bar${block.bars.length === 1 ? "" : "s"} · ${block.slots.length} ${positionLabel}${block.repeatCount > 1 ? ` · repeat ${block.repeatCount}x` : ""}`
+        text: metaText,
+        attr: { title: timeDescription, "aria-label": `${metaText}. ${timeDescription}` }
       });
 
       const hasRows = block.rows.length > 0;
@@ -1511,6 +1524,13 @@ export default class DrumNotationPlugin extends Plugin {
       return {
         ok: false,
         reason: "Visual editing is not available for notation with tuplets. Edit the notation text directly."
+      };
+    }
+
+    if (hasSystemRhythmOverrides(block)) {
+      return {
+        ok: false,
+        reason: "Visual editing is not yet available for notation with system-level Time or Grouping changes. Edit the notation text directly."
       };
     }
 

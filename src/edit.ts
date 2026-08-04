@@ -1,5 +1,5 @@
 import { DRUM_KIT, getHitChar, normalizePattern } from "./kit";
-import { getSlotsPerBar, isValidBeamGrouping } from "./music";
+import { getSlotsPerBar, hasSystemRhythmOverrides, isValidBeamGrouping } from "./music";
 import { finalizeDrumBlock, parseDrumBlock } from "./parser";
 import { getBarDurationQuarter, getWrittenBeatQuarter } from "./rhythm";
 import { serializeDrumBlock } from "./serializer";
@@ -70,12 +70,25 @@ export function setTimeSignature(
   numerator: number,
   denominator: number
 ): TimeSignatureEditResult {
+  if (hasSystemRhythmOverrides(block)) {
+    return {
+      ok: false,
+      block,
+      message: "Edit system-level Time and Grouping declarations in the notation text."
+    };
+  }
+
   const timeSignature = `${Math.max(1, Math.round(numerator))}/${Math.max(1, Math.round(denominator))}`;
   const writtenBeatQuarter = getWrittenBeatQuarter(timeSignature);
   const barDurationQuarter = getBarDurationQuarter(timeSignature);
+  const beamGrouping = block.beamGrouping && isValidBeamGrouping(timeSignature, block.beamGrouping)
+    ? [...block.beamGrouping]
+    : undefined;
   let relativeTupletOverflow = false;
   const systems = block.systems.map((system) => ({
     ...system,
+    timeSignature,
+    ...(beamGrouping ? { beamGrouping: [...beamGrouping] } : { beamGrouping: undefined }),
     bars: system.bars.map((bar) => {
       let startQuarter = 0;
       let containsRelativeTuplet = false;
@@ -105,6 +118,7 @@ export function setTimeSignature(
 
       return {
         ...bar,
+        timeSignature,
         durationQuarter: startQuarter,
         rhythmRegions
       };
@@ -126,13 +140,10 @@ export function setTimeSignature(
   const nextBlock: DrumBlock = {
     ...block,
     timeSignature,
+    ...(beamGrouping ? { beamGrouping } : { beamGrouping: undefined }),
     systems,
     bars
   };
-
-  if (nextBlock.beamGrouping && !isValidBeamGrouping(timeSignature, nextBlock.beamGrouping)) {
-    delete nextBlock.beamGrouping;
-  }
 
   return {
     ok: true,
@@ -325,6 +336,7 @@ export function captureBarClipboardPayload(block: DrumBlock, barIndex: number): 
 
   const view = views[location.system];
   const bar = view.bars[location.bar];
+  const sourceBar = block.bars[barIndex];
   const snapshot = snapshotBar(view, location.bar);
   const stickingPattern =
     snapshot.stickingPattern && /[RLB]/.test(snapshot.stickingPattern) ? snapshot.stickingPattern : undefined;
@@ -332,7 +344,7 @@ export function captureBarClipboardPayload(block: DrumBlock, barIndex: number): 
   return {
     kind: "drum-notation-bar",
     version: 1,
-    timeSignature: block.timeSignature,
+    timeSignature: sourceBar?.timeSignature ?? block.timeSignature,
     gridResolution: block.gridResolution,
     width: bar.width,
     rows: snapshot.rows
@@ -366,11 +378,12 @@ export function pasteBarClipboardPayload(
 
   const view = views[location.system];
   const targetBar = view.bars[location.bar];
+  const targetTimeSignature = block.bars[barIndex]?.timeSignature ?? block.timeSignature;
 
   if (
     payload.kind !== "drum-notation-bar" ||
     payload.version !== 1 ||
-    payload.timeSignature !== block.timeSignature ||
+    payload.timeSignature !== targetTimeSignature ||
     payload.gridResolution !== block.gridResolution ||
     payload.width !== targetBar.width
   ) {
@@ -898,6 +911,13 @@ function toRepeatSection(view: SystemView): Array<MeasureRepeatInput | undefined
 }
 
 function rebuildBlock(block: DrumBlock, views: SystemView[]): DrumBlock {
+  // Mixed-meter blocks are text-authored in this release. Every grid/bar edit
+  // eventually rebuilds through this function, so fail closed here as well as
+  // in the UI instead of accidentally flattening per-system rhythm settings.
+  if (hasSystemRhythmOverrides(block)) {
+    return block;
+  }
+
   syncMeasureRepeatCopies(views);
   views.forEach(compactStickingPatterns);
 

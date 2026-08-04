@@ -132,6 +132,37 @@ BD | o-----------o-----------`
   },
 
   {
+    id: "mixed-meter-phrase",
+    name: "Mixed meter phrase",
+    category: "meters-and-feels",
+    source: `Title: Mixed meter phrase
+Tempo: 96
+Time: 4/4
+Subtitle: Main groove in 4/4
+HH | x-x-x-x-x-x-x-x-
+SD | ----o-------o---
+BD | o-------o-------
+Bar
+Time: 3/4
+Subtitle: Change to 3/4
+HH | x-x-x-x-x-x-
+SD | ----o-------
+BD | o-------o---
+Bar
+Subtitle: Inherits 3/4
+HT | o-o-o-o-----
+MT | --------o-o-
+SD | ------------
+Bar
+Time: 7/8
+Grouping: 2+2+3
+Subtitle: Finish in grouped 7/8
+HH | x-x-x-x-x-x-x-
+SD | ----o-------o-
+BD | o---o---o-----`
+  },
+
+  {
     id: "triplet-fill",
     name: "Triplet fill",
     category: "tuplets",

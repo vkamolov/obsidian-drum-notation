@@ -257,6 +257,29 @@ HH | ${"-".repeat(slotsPerBar)}`);
     expect(getMetronomePulses(block).map((pulse) => pulse.slotIndex)).toEqual(expected);
   });
 
+  it("uses each bar's effective meter for mixed-meter metronome pulses", () => {
+    const block = parseDrumBlock(`Time: 4/4
+HH | x-x-x-x-x-x-x-x-
+Bar
+Time: 3/4
+HH | x-x-x-x-x-x-`);
+
+    expect(getMetronomePulses(block).map((pulse) => [
+      pulse.slotIndex,
+      pulse.quarterOffset,
+      pulse.intervalQuarter,
+      pulse.isDownbeat
+    ])).toEqual([
+      [0, 0, 1, true],
+      [4, 1, 1, false],
+      [8, 2, 1, false],
+      [12, 3, 1, false],
+      [16, 4, 1, true],
+      [20, 5, 1, false],
+      [24, 6, 1, false]
+    ]);
+  });
+
   it("defaults count-in to off and labels the one-bar mode", () => {
     const block = parseDrumBlock("HH | x---");
 
@@ -271,6 +294,7 @@ HH | ${"-".repeat(slotsPerBar)}`);
     ["4/4", 16, 16, [0, 4, 8, 12]],
     ["3/4", 16, 12, [0, 4, 8]],
     ["6/8", 16, 12, [0, 6]],
+    ["7/8", 16, 14, [0, 2, 4, 6, 8, 10, 12]],
     ["12/8", 16, 24, [0, 6, 12, 18]]
   ] as const)("uses one expected meter bar for %s count-in", (timeSignature, grid, expectedSlots, expectedPulses) => {
     const block = parseDrumBlock(`Time: ${timeSignature}
@@ -279,6 +303,40 @@ HH | x---`);
 
     expect(getCountInSlotCount(block, "1-bar")).toBe(expectedSlots);
     expect(getCountInPulses(block, "1-bar").map((pulse) => pulse.slotIndex)).toEqual(expectedPulses);
+  });
+
+  it("uses the first played bar's meter for count-in", () => {
+    const block = parseDrumBlock(`Time: 4/4
+HH | x-x-x-x-x-x-x-x-
+Bar
+Time: 3/4
+HH | x-x-x-x-x-x-`);
+
+    expect(getCountInSlotCount(block, "1-bar", 16)).toBe(12);
+    expect(getCountInPulses(block, "1-bar", 16).map((pulse) => pulse.slotIndex)).toEqual([0, 4, 8]);
+  });
+
+  it("schedules a count-in from the resumed mixed-meter bar", async () => {
+    const block = parseDrumBlock(`Tempo: 100
+Time: 4/4
+HH | x---------------
+Bar
+Time: 3/4
+HH | x-----------`);
+    const backend = new FakePlaybackBackend();
+    const player = new DrumPlayer(
+      {} as AudioContext,
+      block,
+      vi.fn(),
+      vi.fn(),
+      { startSlot: 16, initialSlot: 16, countInMode: "1-bar" },
+      (() => backend) as DrumPlaybackBackendFactory
+    );
+
+    await player.play();
+
+    expect(backend.scheduled.slice(0, 3).every((entry) => entry.hits[0]?.instrument.id === "metronome")).toBe(true);
+    expect(backend.scheduled[3].time).toBeCloseTo(10.08 + 3 * 0.6);
   });
 
   it("schedules one-bar count-in before playback without visual callbacks", async () => {

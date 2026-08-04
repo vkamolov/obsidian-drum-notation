@@ -15,6 +15,8 @@ of compact diddles remain implicit.
 
 ## Release Notes
 
+- `1.4.0` adds inherited system-level time-signature and beam-grouping changes,
+  with changed signatures engraved at the start of each affected staff line.
 - `1.3.0` adds written-beat-span tuplets such as `2/3(xxx)`, groups the
   playground examples by purpose, and adds ten core rudiment exercises.
 - `1.2.0` extends tuplets with explicit note-value spans such as
@@ -141,6 +143,8 @@ Visual edit mode is intentionally limited in v1:
   Edit its fenced notation text directly. This block-level guard prevents the
   fixed-grid editor from accidentally removing or flattening tuplet regions;
   bar-level locking and tuplet-aware visual controls can be added later.
+- Blocks with effective system-level `Time:` or `Grouping:` changes are
+  rendered and playable but remain text-authored in this release.
 - It edits only top-level `drums` fences. Blocks nested inside callouts, lists, or indented Markdown are rendered and playable, but visual editing is disabled.
 - Embedded drums blocks are rendered and playable, but visual editing and first-bar creation are disabled. Open the source note to edit the groove.
 - The first visual edit serializes the whole block in the plugin's canonical authoring form. This keeps the model safe and deterministic, but it may normalize spacing, labels, header order, and equivalent hit characters.
@@ -206,8 +210,8 @@ Supported settings:
 | `Title:` | `Title: Linear fill` | Shown above the rendered score. |
 | `Subtitle:` | `Subtitle: Verse` | Labels the current rendered staff line and all inline bars on it. |
 | `Tempo:` or `BPM:` | `Tempo: 96` | Playback tempo, clamped between 30 and 260 BPM. |
-| `Time:`, `Meter:`, or `Time Signature:` | `Time: 6/8` | Drawn on the staff. |
-| `Grouping:` | `Grouping: 2+2+3` | Beams `/8` or `/16` meters in explicit groups that add up to the meter numerator. |
+| `Time:`, `Meter:`, or `Time Signature:` | `Time: 6/8` | Drawn on the staff. After `Bar`, changes that system and following systems. |
+| `Grouping:` | `Grouping: 2+2+3` | Beams `/8` or `/16` meters in explicit groups that add up to the meter numerator. Use `auto` to clear inherited grouping. |
 | `Repeat:` or `Repeats:` | `Repeat: 4` | Plays the whole block this many times when pressing **Play**. |
 | `Cursor:` or `Playback Cursor:` | `Cursor: on` | Shows or hides the blinking playback cursor. Defaults to `off`. |
 | `Highlight:`, `Note Highlight:`, or `Playback Highlight:` | `Highlight: off` | Highlights the note/chord that is currently sounding. Defaults to `on`. |
@@ -353,6 +357,33 @@ including multiple inline bars. Normal **Play** runs through all bars in order.
 **Loop Bar** loops the declared bar containing the current cursor or last
 clicked note.
 
+`Time:` after `Bar` changes the meter for that entire system and remains active
+until another system declares `Time:`. A changed meter resets explicit beam
+grouping to automatic; add a new `Grouping:` beside it when needed. All inline
+bars on one rendered line share the same meter:
+
+```drums
+Time: 4/4
+HH | x-x-x-x-x-x-x-x-
+
+Bar
+Time: 3/4
+HH | x-x-x-x-x-x-
+
+Bar
+HH | x-x-x-x-x-x-
+
+Bar
+Time: 7/8
+Grouping: 2+2+3
+HH | x-x-x-x-x-x-x-
+```
+
+For clarity, place system `Time:` and `Grouping:` immediately after `Bar`.
+Late declarations still apply to the complete current system and produce an
+advisory parser warning. A one-bar `%` repeat cannot cross a boundary where the
+effective time signature changes.
+
 ## Subdivisions And Beams
 
 The notation is a literal grid: `Grid: 16` means each character is a sixteenth
@@ -373,7 +404,7 @@ simple or dotted note value. Their symbols are visible by default; add
 describe silence, but they do not force a separate rest after every hit because
 the preceding note duration is inferred from the next hit. In 6/8, 9/8, and
 12/8, regular eighth notes are beamed in compound groups of three. For
-asymmetric `/8` and `/16` meters, add a block-level setting such as
+asymmetric `/8` and `/16` meters, add a setting such as
 `Grouping: 2+2+3` to control beam boundaries. Grouping changes engraving only;
 it does not change playback timing, metronome/count-in pulses, or create
 tuplets. Three hits in a Grid-16 count are not treated as an implicit triplet;

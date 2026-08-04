@@ -41,6 +41,51 @@ HH | x-x-x-x-x-x-x-`);
     expect(out).not.toContain("2 + 2 + 3");
   });
 
+  it("round-trips inherited system Time and Grouping transitions", () => {
+    const out = roundTrips(`Time: 4/4
+HH | x-x-x-x-x-x-x-x-
+
+Bar
+Time: 3/4
+HH | x-x-x-x-x-x-
+
+Bar
+HH | x-x-x-x-x-x-
+
+Bar
+Time: 7/8
+Grouping: 2+2+3
+HH | x-x-x-x-x-x-x-
+
+Bar
+Grouping: auto
+HH | x-x-x-x-x-x-x-`);
+
+    expect(out).toBe(`HH | x-x-x-x-x-x-x-x-
+Bar
+Time: 3/4
+HH | x-x-x-x-x-x-
+Bar
+HH | x-x-x-x-x-x-
+Bar
+Time: 7/8
+Grouping: 2+2+3
+HH | x-x-x-x-x-x-x-
+Bar
+Grouping: auto
+HH | x-x-x-x-x-x-x-`);
+  });
+
+  it("omits redundant system Time declarations", () => {
+    const out = roundTrips(`Time: 4/4
+HH | x-x-x-x-x-x-x-x-
+Bar
+Time: 4/4
+HH | x-x-x-x-x-x-x-x-`);
+
+    expect(out.match(/Time:/g)).toBeNull();
+  });
+
   it("preserves unknown metadata and removed settings verbatim", () => {
     const block = parseDrumBlock(`Engraving: classic
 Author: Jane

@@ -37,11 +37,31 @@ export function serializeDrumBlock(block: DrumBlock, options: SerializeDrumBlock
 }
 
 function serializeMinimalBlock(block: DrumBlock): string {
-  const lines = [...serializeMinimalHeader(block)];
+  return [...serializeMinimalHeader(block), ...serializeSystems(block)].join("\n");
+}
+
+function serializeSystems(block: DrumBlock): string[] {
+  const lines: string[] = [];
 
   block.systems.forEach((system, index) => {
     if (index > 0) {
       lines.push("Bar");
+      const previous = block.systems[index - 1];
+      const meterChanged = system.timeSignature !== previous.timeSignature;
+
+      if (meterChanged) {
+        lines.push(`Time: ${system.timeSignature}`);
+      }
+
+      const previousGrouping = meterChanged ? undefined : previous.beamGrouping;
+
+      if (!sameGrouping(system.beamGrouping, previousGrouping)) {
+        lines.push(
+          system.beamGrouping
+            ? `Grouping: ${system.beamGrouping.join("+")}`
+            : "Grouping: auto"
+        );
+      }
     }
 
     if (system.subtitle) {
@@ -51,7 +71,7 @@ function serializeMinimalBlock(block: DrumBlock): string {
     lines.push(...serializeSystem(system));
   });
 
-  return lines.join("\n");
+  return lines;
 }
 
 function serializeMinimalHeader(block: DrumBlock): string[] {
@@ -118,12 +138,20 @@ function serializeAuthoringBlock(block: DrumBlock): string {
     requiredLines.push(`Legend: ${block.legendMode}`);
   }
 
-  const bodyLines = serializeMinimalBlock(block)
-    .split("\n")
+  const supplementalHeader = serializeMinimalHeader(block)
     .filter((line) => line.trim().length > 0)
     .filter((line) => !isManagedAuthoringLine(line));
+  const bodyLines = serializeSystems(block);
 
-  return [...requiredLines, ...bodyLines].join("\n");
+  return [...requiredLines, ...supplementalHeader, ...bodyLines].join("\n");
+}
+
+function sameGrouping(left: number[] | undefined, right: number[] | undefined): boolean {
+  if (!left || !right) {
+    return left === right;
+  }
+
+  return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
 function getMetadataTitle(block: DrumBlock): string {

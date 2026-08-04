@@ -59,12 +59,14 @@ BD | o-------o-o-----
 
 Settings may appear anywhere in the block (conventionally at the top). Keys are
 case-insensitive and ignore spaces/hyphens (`Time Signature` == `timesignature`).
+`Time:` and `Grouping:` have inherited system scope after a `Bar`; place them
+before that system's rows to avoid a late-setting advisory warning.
 
 | Setting | Aliases | Value | Default | Notes |
 |---------|---------|-------|---------|-------|
 | `Tempo` | `BPM` | integer | `100` | Clamped to 30–260 |
 | `Time` | `Time Signature`, `Meter` | `n/n` | `4/4` | 1–2 digits each |
-| `Grouping` | — | positive integers joined by `+` | unset | Beam grouping for `/8` and `/16` meters; groups must sum to the numerator |
+| `Grouping` | — | positive integers joined by `+`, or `auto` | unset | Beam grouping for `/8` and `/16` meters; groups must sum to the numerator |
 | `Repeat` | `Repeats` | integer | `1` | Clamped to 1–64 |
 | `Grid` | `Subdivision`, `Resolution` | `16` or `32` | `16` | One character = one grid slot |
 | `Legend` | `Instrument Legend`, `Kit Legend`, `Color Legend` | `off` / `used` / `all` | `off` | Color key visibility |
@@ -84,12 +86,18 @@ normalizes any hidden-rest alias to `Rests: off`.
 briefly highlight during playback and clicked-note previews if `Highlight` is
 enabled.
 
-`Grouping:` applies to every bar and system in the block. Whitespace is
-accepted (`2 + 2 + 3`) and serialization normalizes it to `2+2+3`. It changes
-beam boundaries only: playback timing, metronome/count-in pulses, and cursor
-positions remain unchanged. Unsupported meters, malformed groups, zero values,
-or totals that do not match the meter numerator produce an advisory warning and
-fall back to normal meter grouping.
+Before the first `Bar`, `Time:` and `Grouping:` define the block's initial
+meter and grouping. After `Bar`, they apply to that complete rendered system and
+remain active for following systems. Declaring a new `Time:` resets grouping to
+automatic; add a valid `Grouping:` in the same system to replace it. Use
+`Grouping: auto` to clear inherited grouping without changing meter.
+
+Whitespace in explicit grouping is accepted (`2 + 2 + 3`) and serialization
+normalizes it to `2+2+3`. Grouping changes beam boundaries only: playback
+timing, metronome/count-in pulses, and cursor positions remain unchanged.
+Unsupported meters, malformed groups, zero values, or totals that do not match
+the effective meter numerator produce an advisory warning and fall back to
+normal meter grouping.
 
 ### System subtitles
 
@@ -346,6 +354,43 @@ the serializer normalizes the separator to a bare `Bar`. System subtitles are
 modeled and serialize as `Subtitle: text` immediately after the preceding
 `Bar`, or before the first system's rows.
 
+### System time signatures and grouping
+
+A `Time:` declaration after `Bar` changes the time signature for that entire
+system and all following systems until another `Time:` appears. All inline bars
+within one system use the same effective meter. Changed signatures are drawn at
+the start of their system.
+
+```drums
+Time: 4/4
+HH | x-x-x-x-x-x-x-x-
+
+Bar
+Time: 3/4
+HH | x-x-x-x-x-x-
+
+Bar
+HH | x-x-x-x-x-x-
+
+Bar
+Time: 7/8
+Grouping: 2+2+3
+HH | x-x-x-x-x-x-x-
+```
+
+The third system inherits `3/4`. The final `Time: 7/8` resets grouping before
+`Grouping: 2+2+3` establishes the new beam groups. A late declaration after a
+row still applies to its complete system but produces `late-system-setting`.
+An invalid system meter retains the previously inherited meter and grouping.
+
+Before version 1.4.0, the last `Time:` found anywhere in a block controlled all
+systems retroactively. From 1.4.0 onward, declarations after `Bar` have the
+inherited system scope described above.
+
+Blocks with effective system-level Time or Grouping changes are rendered and
+playable, including metronome and count-in, but are read-only in the visual grid
+editor. Edit their fenced notation text directly.
+
 ### One-bar measure repeats
 
 A standalone `%` line means "repeat the previous bar once." Add `xN` to repeat
@@ -353,6 +398,10 @@ that previous one-bar pattern several times, e.g. `%x3` repeats the previous bar
 three times. The parser expands repeat shorthand into normal playable slots
 while marking those bars as repeats, so playback follows the repeated rhythm and
 the serializer/renderer keep the compact repeat symbols:
+
+Repeat shorthand may cross a `Bar` system separator only when the previous and
+current systems have the same effective time signature. A cross-meter repeat is
+not expanded and produces `repeat-meter-mismatch`.
 
 ```drums
 Title: Two bars, second repeated
@@ -623,6 +672,9 @@ To stay deterministic and diff-friendly, serialization **normalizes**:
 - Rests collapse to `-`.
 - Settings left at their default are **omitted** (they re-parse to the default).
 - Explicit beam grouping normalizes to `Grouping: n+n+…`.
+- Effective system meter changes serialize as `Time: n/n` immediately after
+  `Bar`. Grouping transitions serialize beside them; clearing inherited
+  grouping serializes as `Grouping: auto`.
 - Meter-relative tuplets normalize to `N(body)` for one written beat and
   `B/N(body)` for multiple written beats. Absolute tuplets always retain
   `N@D(body)`, even when that duration equals one written beat in the current

@@ -65,7 +65,11 @@ export class DrumPlayer {
 
     this.secondsPerQuarter = getSecondsPerQuarter(this.block, speedPercent);
     this.countInDurationSeconds =
-      getCountInDurationQuarter(this.block, this.options.countInMode ?? "off") *
+      getCountInDurationQuarter(
+        this.block,
+        this.options.countInMode ?? "off",
+        this.initialSlot
+      ) *
       this.secondsPerQuarter;
     this.firstPassDurationSeconds = getRangeDurationSeconds(
       this.block,
@@ -93,14 +97,18 @@ export class DrumPlayer {
   }
 
   private scheduleCountIn(transportStartTime: number, backend: DrumPlaybackBackend): void {
-    const countInPulses = getCountInPulses(this.block, this.options.countInMode ?? "off");
+    const countInPulses = getCountInPulses(
+      this.block,
+      this.options.countInMode ?? "off",
+      this.initialSlot
+    );
 
     countInPulses.forEach((pulse) => {
       backend.scheduleHits(
         [createMetronomeHit(pulse.isDownbeat)],
         transportStartTime + pulse.quarterOffset * this.secondsPerQuarter,
-        pulseIntervalSeconds(this.block, this.secondsPerQuarter),
-        pulseIntervalSeconds(this.block, this.secondsPerQuarter)
+        pulse.intervalQuarter * this.secondsPerQuarter,
+        pulse.intervalQuarter * this.secondsPerQuarter
       );
     });
   }
@@ -171,11 +179,6 @@ export class DrumPlayer {
     });
 
     if (metronomeMode !== "off") {
-      const pulseDuration = pulseIntervalSeconds(
-        this.block,
-        this.secondsPerQuarter
-      );
-
       getMetronomePulses(
         this.block,
         passStartSlot,
@@ -188,8 +191,8 @@ export class DrumPlayer {
         backend.scheduleHits(
           [createMetronomeHit(pulse.isDownbeat)],
           pulseTime,
-          pulseDuration,
-          pulseDuration
+          pulse.intervalQuarter * this.secondsPerQuarter,
+          pulse.intervalQuarter * this.secondsPerQuarter
         );
       });
     }
@@ -313,15 +316,6 @@ export class DrumPlayer {
     this.backend?.stop();
     this.backend = null;
   }
-}
-
-function pulseIntervalSeconds(block: DrumBlock, secondsPerQuarter: number): number {
-  const match = /^(\d+)\/(\d+)$/.exec(block.timeSignature);
-  const numerator = Number.parseInt(match?.[1] ?? "4", 10);
-  const denominator = Math.max(1, Number.parseInt(match?.[2] ?? "4", 10));
-  const compoundMultiplier = numerator >= 6 && numerator % 3 === 0 ? 3 : 1;
-
-  return (4 / denominator) * compoundMultiplier * secondsPerQuarter;
 }
 
 function clampSlotBoundary(slotIndex: number, slotCount: number): number {

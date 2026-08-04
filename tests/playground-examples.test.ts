@@ -33,7 +33,7 @@ describe("playground examples", () => {
       },
       {
         label: "Meters and feels",
-        names: ["6/8 ballad", "7/8 groove", "9/8 groove", "12/8 blues shuffle"]
+        names: ["6/8 ballad", "7/8 groove", "9/8 groove", "12/8 blues shuffle", "Mixed meter phrase"]
       },
       {
         label: "Tuplets",
@@ -75,6 +75,14 @@ describe("playground examples", () => {
   it("resolves the default example by stable id", () => {
     expect(getPlaygroundExample(DEFAULT_PLAYGROUND_EXAMPLE_ID)?.name).toBe("Basic rock groove");
     expect(getPlaygroundExample("missing-example")).toBeUndefined();
+  });
+
+  it("keeps the mixed-meter example warning-free", () => {
+    const example = getPlaygroundExample("mixed-meter-phrase");
+    const parsed = parseDrumBlockWithWarnings(example?.source ?? "");
+
+    expect(parsed.warnings).toEqual([]);
+    expect(parsed.block.systems.map((system) => system.timeSignature)).toEqual(["4/4", "3/4", "3/4", "7/8"]);
   });
 
   it("keeps every rudiment example parseable without advisory warnings", () => {

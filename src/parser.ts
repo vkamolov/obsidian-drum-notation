@@ -28,6 +28,7 @@ import {
   DrumSlot,
   DrumStickingInput,
   DrumSystem,
+  DrumSystemSettings,
   GridResolution,
   LegendMode,
   MAX_MEASURE_REPEAT_COUNT,
@@ -49,6 +50,11 @@ interface BarSnapshot {
   rows: BarSnapshotRow[];
   stickingPattern?: string;
   width: number;
+  timeSignature: string;
+}
+
+interface ResolvedSystemSettings extends DrumSystemSettings {
+  sourceSectionIndex: number;
 }
 
 interface ParsedDrumRowInput extends DrumRowInput {
@@ -151,14 +157,13 @@ function parseDrumBlockInternal(source: string, collectWarnings: boolean): Parse
   const stickingSections: Array<ParsedDrumStickingInput | undefined> = [];
   const repeatSections: Array<Array<MeasureRepeatInput | undefined>> = [];
   const subtitleSections: Array<string | undefined> = [];
+  const systemSettingsSections: DrumSystemSettings[] = [];
   let currentRows: ParsedDrumRowInput[] = [];
   let currentSticking: ParsedDrumStickingInput | undefined;
   let currentRepeats: Array<MeasureRepeatInput | undefined> = [];
   let currentSubtitle: string | undefined;
   const barHistory: BarSnapshot[] = [];
   let tempo = DEFAULT_TEMPO;
-  let timeSignature = DEFAULT_TIME_SIGNATURE;
-  let beamGroupingSetting: { value: string; line: number; originalKey: string } | undefined;
   let repeatCount = DEFAULT_REPEAT_COUNT;
   let showCursor = DEFAULT_SHOW_CURSOR;
   let showHighlight = DEFAULT_SHOW_HIGHLIGHT;
@@ -177,6 +182,9 @@ function parseDrumBlockInternal(source: string, collectWarnings: boolean): Parse
       ...(column !== undefined ? { column } : {})
     });
   };
+  const resolvedSystemSettings = resolveSystemSettings(source, warn);
+  const mainSettings = resolvedSystemSettings[0] ?? { timeSignature: DEFAULT_TIME_SIGNATURE };
+  let sourceSectionIndex = 0;
 
   const pushCurrentBar = () => {
     if (currentRows.length === 0 && !currentSticking) {
@@ -190,7 +198,9 @@ function parseDrumBlockInternal(source: string, collectWarnings: boolean): Parse
     stickingSections.push(currentSticking);
     repeatSections.push(currentRepeats);
     subtitleSections.push(currentSubtitle);
-    barHistory.push(...snapshotBars(currentRows, currentSticking));
+    const settings = resolvedSystemSettings[sourceSectionIndex] ?? mainSettings;
+    systemSettingsSections.push(cloneSystemSettings(settings));
+    barHistory.push(...snapshotBars(currentRows, currentSticking, settings.timeSignature));
     currentRows = [];
     currentSticking = undefined;
     currentRepeats = [];
@@ -207,6 +217,7 @@ function parseDrumBlockInternal(source: string, collectWarnings: boolean): Parse
 
     if (isBarSeparator(line)) {
       pushCurrentBar();
+      sourceSectionIndex++;
       return;
     }
 
@@ -250,20 +261,13 @@ function parseDrumBlockInternal(source: string, collectWarnings: boolean): Parse
         }
 
         tempo = nextTempo;
-      } else if (setting.key === "time" || setting.key === "timesignature" || setting.key === "meter") {
-        const nextTimeSignature = parseTimeSignature(setting.value);
-
-        if (nextTimeSignature === DEFAULT_TIME_SIGNATURE && !isValidTimeSignatureSetting(setting.value)) {
-          warn(lineNumber, "invalid-setting", `${setting.originalKey}: "${setting.value}" is not a valid time signature; using ${DEFAULT_TIME_SIGNATURE}.`);
-        }
-
-        timeSignature = nextTimeSignature;
-      } else if (setting.key === "grouping") {
-        beamGroupingSetting = {
-          value: setting.value,
-          line: lineNumber,
-          originalKey: setting.originalKey
-        };
+      } else if (
+        setting.key === "time" ||
+        setting.key === "timesignature" ||
+        setting.key === "meter" ||
+        setting.key === "grouping"
+      ) {
+        // Time and Grouping are resolved per source system before row parsing.
       } else if (setting.key === "repeat" || setting.key === "repeats") {
         const parsedRepeat = parseRepeatSettingValue(setting.value);
         const nextRepeatCount = parseRepeatCount(setting.value);
@@ -320,13 +324,28 @@ function parseDrumBlockInternal(source: string, collectWarnings: boolean): Parse
     const measureRepeat = parseMeasureRepeatLine(line);
 
     if (measureRepeat) {
-      const repeatedSticking = appendMeasureRepeat(currentRows, currentSticking, currentRepeats, barHistory, measureRepeat);
+      const settings = resolvedSystemSettings[sourceSectionIndex] ?? mainSettings;
+      const repeatResult = appendMeasureRepeat(
+        currentRows,
+        currentSticking,
+        currentRepeats,
+        barHistory,
+        measureRepeat,
+        settings.timeSignature
+      );
 
-      if (repeatedSticking === null) {
+      if (repeatResult.status === "missing") {
         warn(lineNumber, "repeat-without-previous-bar", "Repeat notation needs a previous bar; this line is preserved as metadata.");
         metadata.push(line);
+      } else if (repeatResult.status === "meter-mismatch") {
+        warn(
+          lineNumber,
+          "repeat-meter-mismatch",
+          `Repeat notation cannot copy the previous ${repeatResult.previousTimeSignature} bar into a ${settings.timeSignature} system; this line is preserved as metadata.`
+        );
+        metadata.push(line);
       } else {
-        currentSticking = repeatedSticking;
+        currentSticking = repeatResult.sticking;
       }
 
       return;
@@ -362,22 +381,11 @@ function parseDrumBlockInternal(source: string, collectWarnings: boolean): Parse
   });
 
   pushCurrentBar();
-  const beamGroupingResult = beamGroupingSetting
-    ? parseBeamGrouping(beamGroupingSetting.value, timeSignature)
-    : {};
-
-  if (beamGroupingSetting && beamGroupingResult.error) {
-    warn(
-      beamGroupingSetting.line,
-      "invalid-setting",
-      `${beamGroupingSetting.originalKey}: ${beamGroupingResult.error}`
-    );
-  }
 
   const preparedRhythms = prepareTupletRhythms(
     rowSections,
     stickingSections,
-    timeSignature,
+    systemSettingsSections,
     gridResolution,
     warn
   );
@@ -385,17 +393,18 @@ function parseDrumBlockInternal(source: string, collectWarnings: boolean): Parse
   warnForRowLengthMismatches(
     rowSections,
     stickingSections,
-    timeSignature,
+    systemSettingsSections,
     gridResolution,
     warn,
     preparedRhythms.tupletSourceSegments
   );
+  const effectiveMainSettings = systemSettingsSections[0] ?? mainSettings;
 
   const block = finalizeDrumBlock(
     {
       tempo,
-      timeSignature,
-      ...(beamGroupingResult.grouping ? { beamGrouping: beamGroupingResult.grouping } : {}),
+      timeSignature: effectiveMainSettings.timeSignature,
+      ...(effectiveMainSettings.beamGrouping ? { beamGrouping: [...effectiveMainSettings.beamGrouping] } : {}),
       repeatCount,
       showCursor,
       showHighlight,
@@ -409,10 +418,153 @@ function parseDrumBlockInternal(source: string, collectWarnings: boolean): Parse
     stickingSections,
     subtitleSections,
     preparedRhythms.rhythmSections,
-    preparedRhythms.containsTupletSyntax
+    preparedRhythms.containsTupletSyntax,
+    systemSettingsSections
+  );
+
+  warnings.sort((left, right) =>
+    left.line - right.line || (left.column ?? 0) - (right.column ?? 0)
   );
 
   return { block, warnings };
+}
+
+function resolveSystemSettings(
+  source: string,
+  warn: (line: number, code: ParseWarningCode, message: string, column?: number) => void
+): ResolvedSystemSettings[] {
+  interface SettingDeclaration {
+    value: string;
+    line: number;
+    originalKey: string;
+  }
+
+  interface SourceSectionSettings {
+    timeDeclarations: SettingDeclaration[];
+    groupingDeclarations: SettingDeclaration[];
+  }
+
+  const sections: SourceSectionSettings[] = [{ timeDeclarations: [], groupingDeclarations: [] }];
+  let sectionIndex = 0;
+  let hasPlayableContent = false;
+
+  source.split(/\r?\n/).forEach((rawLine, lineIndex) => {
+    const line = rawLine.trim();
+
+    if (line.length === 0) {
+      return;
+    }
+
+    if (isBarSeparator(line)) {
+      sectionIndex++;
+      sections[sectionIndex] = { timeDeclarations: [], groupingDeclarations: [] };
+      hasPlayableContent = false;
+      return;
+    }
+
+    const setting = parseSettingLine(line);
+
+    if (setting && (
+      setting.key === "time" ||
+      setting.key === "timesignature" ||
+      setting.key === "meter" ||
+      setting.key === "grouping"
+    )) {
+      const declaration = {
+        value: setting.value,
+        line: lineIndex + 1,
+        originalKey: setting.originalKey
+      };
+
+      if (hasPlayableContent) {
+        warn(
+          declaration.line,
+          "late-system-setting",
+          `${setting.originalKey}: applies to this entire system and following systems; place it immediately after Bar for clarity.`
+        );
+      }
+
+      if (setting.key === "grouping") {
+        sections[sectionIndex].groupingDeclarations.push(declaration);
+      } else {
+        sections[sectionIndex].timeDeclarations.push(declaration);
+      }
+
+      return;
+    }
+
+    if (parseMeasureRepeatLine(line) || parseStickingRowInput(line) || parseDrumRowInput(line)) {
+      hasPlayableContent = true;
+    }
+  });
+
+  let inherited: DrumSystemSettings = { timeSignature: DEFAULT_TIME_SIGNATURE };
+
+  return sections.map((section, sourceSectionIndex): ResolvedSystemSettings => {
+    let timeSignature = inherited.timeSignature;
+    let beamGrouping = inherited.beamGrouping ? [...inherited.beamGrouping] : undefined;
+    let hasValidTimeDeclaration = false;
+
+    section.timeDeclarations.forEach((declaration) => {
+      if (!isValidTimeSignatureSetting(declaration.value)) {
+        warn(
+          declaration.line,
+          "invalid-setting",
+          `${declaration.originalKey}: "${declaration.value}" is not a valid time signature; keeping ${timeSignature}.`
+        );
+        return;
+      }
+
+      timeSignature = parseTimeSignature(declaration.value);
+      beamGrouping = undefined;
+      hasValidTimeDeclaration = true;
+    });
+
+    const groupingDeclaration = section.groupingDeclarations[section.groupingDeclarations.length - 1];
+
+    if (groupingDeclaration) {
+      if (normalizeLabel(groupingDeclaration.value) === "auto") {
+        beamGrouping = undefined;
+      } else {
+        const result = parseBeamGrouping(groupingDeclaration.value, timeSignature);
+
+        if (result.error) {
+          warn(
+            groupingDeclaration.line,
+            "invalid-setting",
+            `${groupingDeclaration.originalKey}: ${result.error}`
+          );
+          beamGrouping = undefined;
+        } else {
+          beamGrouping = result.grouping;
+        }
+      }
+    } else if (hasValidTimeDeclaration) {
+      beamGrouping = undefined;
+    }
+
+    // Defensively drop model-derived grouping that cannot apply to the resolved meter.
+    if (beamGrouping && parseBeamGrouping(beamGrouping.join("+"), timeSignature).error) {
+      beamGrouping = undefined;
+    }
+
+    inherited = {
+      timeSignature,
+      ...(beamGrouping ? { beamGrouping: [...beamGrouping] } : {})
+    };
+
+    return {
+      ...cloneSystemSettings(inherited),
+      sourceSectionIndex
+    };
+  });
+}
+
+function cloneSystemSettings(settings: DrumSystemSettings): DrumSystemSettings {
+  return {
+    timeSignature: settings.timeSignature,
+    ...(settings.beamGrouping ? { beamGrouping: [...settings.beamGrouping] } : {})
+  };
 }
 
 // Assembles the structural model (systems -> bars -> rows -> slots) from a
@@ -426,7 +578,8 @@ export function finalizeDrumBlock(
   stickingSections: Array<DrumStickingInput | undefined> = [],
   subtitleSections: Array<string | undefined> = [],
   rhythmSections: Array<Array<DrumRhythmRegion[] | undefined>> = [],
-  containsTupletSyntax = false
+  containsTupletSyntax = false,
+  systemSettingsSections: DrumSystemSettings[] = []
 ): DrumBlock {
   const systems = buildSystems(
     header,
@@ -434,7 +587,8 @@ export function finalizeDrumBlock(
     repeatSections,
     stickingSections,
     subtitleSections,
-    rhythmSections
+    rhythmSections,
+    systemSettingsSections
   );
   const bars: DrumBar[] = [];
   const rows: DrumRow[] = [];
@@ -673,7 +827,7 @@ function warnForUnsupportedRowCharacters(
 function prepareTupletRhythms(
   rowSections: ParsedDrumRowInput[][],
   stickingSections: Array<ParsedDrumStickingInput | undefined>,
-  timeSignature: string,
+  systemSettingsSections: DrumSystemSettings[],
   gridResolution: GridResolution,
   warn: (line: number, code: ParseWarningCode, message: string, column?: number) => void
 ): PreparedRhythmSections {
@@ -682,6 +836,7 @@ function prepareTupletRhythms(
   let containsTupletSyntax = false;
 
   rowSections.forEach((rows, systemIndex) => {
+    const timeSignature = systemSettingsSections[systemIndex]?.timeSignature ?? DEFAULT_TIME_SIGNATURE;
     const sticking = stickingSections[systemIndex];
     const segmentCount = Math.max(
       0,
@@ -799,15 +954,15 @@ function isUnsupportedStickingChar(char: string): boolean {
 function warnForRowLengthMismatches(
   rowSections: ParsedDrumRowInput[][],
   stickingSections: Array<ParsedDrumStickingInput | undefined>,
-  timeSignature: string,
+  systemSettingsSections: DrumSystemSettings[],
   gridResolution: GridResolution,
   warn: (line: number, code: ParseWarningCode, message: string, column?: number) => void,
   skippedSegments: Array<ReadonlySet<number>> = []
 ): void {
-  const expectedSlots = getSlotsPerBar(timeSignature, gridResolution);
-  const nearFullThreshold = Math.floor(expectedSlots * 0.75);
-
   rowSections.forEach((rows, systemIndex) => {
+    const timeSignature = systemSettingsSections[systemIndex]?.timeSignature ?? DEFAULT_TIME_SIGNATURE;
+    const expectedSlots = getSlotsPerBar(timeSignature, gridResolution);
+    const nearFullThreshold = Math.floor(expectedSlots * 0.75);
     const sticking = stickingSections[systemIndex];
     const entries: RowLengthWarningEntry[] = rows.map((row): RowLengthWarningEntry => ({
       label: row.label,
@@ -884,12 +1039,18 @@ function buildSystems(
   repeatSections: Array<Array<MeasureRepeatInput | undefined>>,
   stickingSections: Array<DrumStickingInput | undefined>,
   subtitleSections: Array<string | undefined>,
-  rhythmSections: Array<Array<DrumRhythmRegion[] | undefined>>
+  rhythmSections: Array<Array<DrumRhythmRegion[] | undefined>>,
+  systemSettingsSections: DrumSystemSettings[]
 ): DrumSystem[] {
   let startSlot = 0;
   let startQuarter = 0;
 
   return rowSections.map((rowInputs, systemIndex) => {
+    const settings = systemSettingsSections[systemIndex] ?? header;
+    const timeSignature = settings.timeSignature;
+    const beamGrouping = settings.beamGrouping && !parseBeamGrouping(settings.beamGrouping.join("+"), timeSignature).error
+      ? [...settings.beamGrouping]
+      : undefined;
     const stickingInput = stickingSections[systemIndex];
     const segmentCount = Math.max(1, getSegmentCount(rowInputs, stickingInput));
     const bars = Array.from({ length: segmentCount }, (_, segmentIndex) => {
@@ -902,13 +1063,14 @@ function buildSystems(
       );
       const rhythmRegions =
         rhythmSections[systemIndex]?.[segmentIndex]?.map((region) => ({ ...region })) ??
-        buildPlainRhythmRegions(positionCount, header.timeSignature, header.gridResolution);
+        buildPlainRhythmRegions(positionCount, timeSignature, header.gridResolution);
       const durationQuarter = rhythmRegions.length > 0
         ? Math.max(...rhythmRegions.map(getRegionEndQuarter))
         : 0;
       const slots = buildSlots(rows, startSlot, startQuarter, rhythmRegions, stickingPattern);
       const measureRepeat = repeatSections[systemIndex]?.[segmentIndex];
       const bar = {
+        timeSignature,
         rows,
         slots,
         startSlot,
@@ -928,26 +1090,41 @@ function buildSystems(
     const subtitle = subtitleSections[systemIndex]?.trim();
 
     return {
+      timeSignature,
+      ...(beamGrouping ? { beamGrouping } : {}),
       bars,
       ...(subtitle ? { subtitle } : {})
     };
   });
 }
 
+type AppendMeasureRepeatResult =
+  | { status: "ok"; sticking: ParsedDrumStickingInput | undefined }
+  | { status: "missing" }
+  | { status: "meter-mismatch"; previousTimeSignature: string };
+
 function appendMeasureRepeat(
   currentRows: ParsedDrumRowInput[],
   currentSticking: ParsedDrumStickingInput | undefined,
   currentRepeats: Array<MeasureRepeatInput | undefined>,
   barHistory: BarSnapshot[],
-  measureRepeat: MeasureRepeatInput
-): ParsedDrumStickingInput | undefined | null {
+  measureRepeat: MeasureRepeatInput,
+  timeSignature: string
+): AppendMeasureRepeatResult {
   syncRepeatMarkers(currentRows, currentSticking, currentRepeats);
 
-  const previousBars = [...barHistory, ...snapshotBars(currentRows, currentSticking)];
+  const previousBars = [...barHistory, ...snapshotBars(currentRows, currentSticking, timeSignature)];
   const previousBar = previousBars[previousBars.length - 1];
 
   if (!previousBar) {
-    return null;
+    return { status: "missing" };
+  }
+
+  if (previousBar.timeSignature !== timeSignature) {
+    return {
+      status: "meter-mismatch",
+      previousTimeSignature: previousBar.timeSignature
+    };
   }
 
   let nextSticking = currentSticking;
@@ -960,7 +1137,7 @@ function appendMeasureRepeat(
     });
   }
 
-  return nextSticking;
+  return { status: "ok", sticking: nextSticking };
 }
 
 function appendRowAfterRepeat(
@@ -1138,7 +1315,11 @@ function parseMeasureRepeatCount(value: string | undefined): number {
   return Math.min(MAX_MEASURE_REPEAT_COUNT, Math.max(1, count));
 }
 
-function snapshotBars(rows: DrumRowInput[], sticking: DrumStickingInput | undefined): BarSnapshot[] {
+function snapshotBars(
+  rows: DrumRowInput[],
+  sticking: DrumStickingInput | undefined,
+  timeSignature: string
+): BarSnapshot[] {
   const segmentCount = getSegmentCount(rows, sticking);
   const widths = getBarWidths(rows, sticking);
 
@@ -1155,7 +1336,8 @@ function snapshotBars(rows: DrumRowInput[], sticking: DrumStickingInput | undefi
       })
       .filter((row): row is BarSnapshotRow => row !== null),
     ...(sticking?.patterns[segmentIndex] !== undefined ? { stickingPattern: sticking.patterns[segmentIndex] } : {}),
-    width: widths[segmentIndex] ?? 0
+    width: widths[segmentIndex] ?? 0,
+    timeSignature
   }));
 }
 

@@ -229,6 +229,32 @@ describe("setting edits", () => {
     expect(result.block.timeSignature).toBe("6/8");
   });
 
+  it("rejects model-level Time edits for mixed-meter blocks", () => {
+    const mixed = parseDrumBlock(`Time: 4/4
+HH | x-x-x-x-x-x-x-x-
+Bar
+Time: 3/4
+HH | x-x-x-x-x-x-`);
+    const result = setTimeSignature(mixed, 6, 8);
+
+    expect(result).toEqual({
+      ok: false,
+      block: mixed,
+      message: "Edit system-level Time and Grouping declarations in the notation text."
+    });
+  });
+
+  it("guards bar edits from flattening mixed-meter systems", () => {
+    const mixed = parseDrumBlock(`Time: 4/4
+HH | x-x-x-x-x-x-x-x-
+Bar
+Time: 3/4
+HH | x-x-x-x-x-x-`);
+
+    expect(insertBarAfter(mixed, 0)).toBe(mixed);
+    expect(setHit(mixed, 0, SD, "normal")).toBe(mixed);
+  });
+
   it("preserves compatible grouping and clears it when the meter becomes incompatible", () => {
     const grouped = parseDrumBlock(`Time: 7/8
 Grouping: 2+2+3

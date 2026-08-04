@@ -4,12 +4,15 @@ import {
   durationForDenominator,
   durationForGridSpan,
   getBeamGroupSlotCounts,
+  getBarRange,
   getBeatValue,
   getGridSpanToNextHit,
   getSecondsPerSlot,
   getSlotVisualDurationSeconds,
   getSlotsPerBar,
   getSlotsPerBeat,
+  getTimeSignatureSequence,
+  hasSystemRhythmOverrides,
   isPowerOfTwo,
   largestPowerOfTwoAtMost,
   vexKeyRank
@@ -31,6 +34,31 @@ describe("getSlotsPerBar", () => {
 
   it("falls back to 16 for malformed signatures", () => {
     expect(getSlotsPerBar("nonsense", 16)).toBe(16);
+  });
+});
+
+describe("mixed-meter helpers", () => {
+  const mixed = parseDrumBlock(`Time: 4/4
+HH | x-x-x-x-x-x-x-x-
+Bar
+Time: 3/4
+HH | x-x-x-x-x-x-`);
+
+  it("detects effective system overrides and reports transitions", () => {
+    expect(hasSystemRhythmOverrides(mixed)).toBe(true);
+    expect(getTimeSignatureSequence(mixed)).toEqual(["4/4", "3/4"]);
+
+    const uniform = parseDrumBlock(`Time: 4/4
+HH | x-x-x-x-x-x-x-x-
+Bar
+Time: 4/4
+HH | x-x-x-x-x-x-x-x-`);
+    expect(hasSystemRhythmOverrides(uniform)).toBe(false);
+  });
+
+  it("clamps out-of-range bar lookups to declared mixed-meter bars", () => {
+    expect(getBarRange(mixed, -10)).toEqual({ startSlot: 0, endSlot: 16 });
+    expect(getBarRange(mixed, 999)).toEqual({ startSlot: 16, endSlot: 28 });
   });
 });
 

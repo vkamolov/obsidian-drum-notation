@@ -172,7 +172,16 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
     const visualBars = getVisualBarEntries(scoreSystem.bars);
     const staveX = layout.staveX;
     const staveWidth = width - layout.staveX - layout.staveRightPadding;
-    const headerProbe = createScoreStave(0, staveWidth, true, block, systemIndex, layout);
+    const showTimeSignature = systemIndex === 0 ||
+      block.systems[systemIndex - 1]?.timeSignature !== scoreSystem.timeSignature;
+    const headerProbe = createScoreStave(
+      0,
+      staveWidth,
+      true,
+      scoreSystem.timeSignature,
+      showTimeSignature,
+      layout
+    );
     const firstBarHeaderWidth = headerProbe.getModifierXShift();
     const barWidths = allocateBarWidths(
       visualBars.map((entry) => entry.bar.durationQuarter),
@@ -189,7 +198,14 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
       const bar = entry.bar;
       const isFirstBarInSystem = barIndex === 0;
       const barWidth = barWidths[barIndex] ?? 0;
-      const stave = createScoreStave(currentX, barWidth, isFirstBarInSystem, block, systemIndex, layout);
+      const stave = createScoreStave(
+        currentX,
+        barWidth,
+        isFirstBarInSystem,
+        scoreSystem.timeSignature,
+        showTimeSignature,
+        layout
+      );
 
       stave.setContext(context).draw();
       stave.setNoteStartX(stave.getNoteStartX() + layout.noteStartPadding);
@@ -216,10 +232,10 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
       const visualBar = buildVisualBarNotes(
         bar,
         bar.measureRepeat,
-        block.timeSignature,
+        scoreSystem.timeSignature,
         block.gridResolution,
         block.legendMode !== "off",
-        block.beamGrouping
+        scoreSystem.beamGrouping
       );
       const notes = visualBar.notes;
       notes.forEach((note) => {
@@ -251,9 +267,9 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
       const voice = new Voice({
         numBeats: Math.max(
           1,
-          bar.durationQuarter / (4 / getBeatValue(block.timeSignature))
+          bar.durationQuarter / (4 / getBeatValue(bar.timeSignature))
         ),
-        beatValue: getBeatValue(block.timeSignature)
+        beatValue: getBeatValue(bar.timeSignature)
       }).setStrict(false);
 
       voice.addTickables(notes);
@@ -362,8 +378,8 @@ function createScoreStave(
   x: number,
   width: number,
   includeSystemHeader: boolean,
-  block: DrumBlock,
-  systemIndex: number,
+  timeSpec: string,
+  showTimeSignature: boolean,
   layout: NotationLayout
 ): Stave {
   const stave = new Stave(x, layout.staveY, width, {
@@ -381,11 +397,11 @@ function createScoreStave(
 
   stave.addClef("percussion", "small");
 
-  if (systemIndex === 0) {
-    const timeSignature = new TimeSignature(block.timeSignature, 6);
+  if (showTimeSignature) {
+    const timeSignature = new TimeSignature(timeSpec, 6);
 
     if (layout.signatureFontSize !== undefined) {
-      slimTimeSignature(timeSignature, block.timeSignature, layout.signatureFontSize);
+      slimTimeSignature(timeSignature, timeSpec, layout.signatureFontSize);
     }
 
     stave.addModifier(timeSignature);
