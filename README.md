@@ -15,6 +15,9 @@ of compact diddles remain implicit.
 
 ## Release Notes
 
+- `1.5.0` adds optional split hands/feet engraving with `Voicing: split`,
+  including synchronized up-stem and down-stem voices and shared rests, plus
+  even diddle timing and smoothly overlapping buzz-roll strokes.
 - `1.4.0` adds inherited system-level time-signature and beam-grouping changes,
   with changed signatures engraved at the start of each affected staff line.
 - `1.3.0` adds written-beat-span tuplets such as `2/3(xxx)`, groups the
@@ -194,6 +197,7 @@ Comment: Practice slowly, then loop it.
 Tempo: 120
 Time: 7/8
 Grouping: 2+2+3
+Voicing: split
 Subtitle: Verse
 Repeat: 4
 Cursor: on
@@ -212,6 +216,7 @@ Supported settings:
 | `Tempo:` or `BPM:` | `Tempo: 96` | Playback tempo, clamped between 30 and 260 BPM. |
 | `Time:`, `Meter:`, or `Time Signature:` | `Time: 6/8` | Drawn on the staff. After `Bar`, changes that system and following systems. |
 | `Grouping:` | `Grouping: 2+2+3` | Beams `/8` or `/16` meters in explicit groups that add up to the meter numerator. Use `auto` to clear inherited grouping. |
+| `Voicing:` | `Voicing: split` | Uses separate up-stem hand and down-stem foot voices. Defaults to `single`. |
 | `Repeat:` or `Repeats:` | `Repeat: 4` | Plays the whole block this many times when pressing **Play**. |
 | `Cursor:` or `Playback Cursor:` | `Cursor: on` | Shows or hides the blinking playback cursor. Defaults to `off`. |
 | `Highlight:`, `Note Highlight:`, or `Playback Highlight:` | `Highlight: off` | Highlights the note/chord that is currently sounding. Defaults to `on`. |
@@ -410,6 +415,30 @@ it does not change playback timing, metronome/count-in pulses, or create
 tuplets. Three hits in a Grid-16 count are not treated as an implicit triplet;
 write an explicit tuplet when equal subdivisions must occupy one written beat.
 
+### Drum voicing
+
+By default, `Voicing: single` keeps every instrument in one up-stem voice, as
+in earlier releases. Add `Voicing: split` to engrave hand-played instruments
+with stems up and foot-played instruments with stems down:
+
+```drums
+Voicing: split
+HH | x-x-x-x-x-x-x-x-
+SD | ----o-------o---
+BD | o-------o-o-----
+HF | ------------x---
+```
+
+The lower voice contains kick (`BD`), second kick (`BD2`), hi-hat foot (`HF`),
+and hi-hat foot splash (`HFS`). Every other built-in instrument, including all
+toms and floor toms, remains in the upper voice. Simultaneous hand and foot
+notes align on the same timeline but infer durations and beams independently.
+Inferred whole-kit rests are drawn once, in the upper voice when it is present
+and otherwise in the lower voice; hidden alignment rests keep both voices at
+the full bar duration. `Rests: off` hides the shared rests without changing
+spacing. Voicing affects engraving only, so playback, visual editing, repeats,
+and copied bar content remain unchanged.
+
 ### Explicit tuplets
 
 Use `N(...)` to divide exactly one written denominator beat into `N` equal
@@ -498,8 +527,8 @@ wrappers remain separate engraving and beam groups.
 | `g` | Ghost note, drawn in parentheses with quieter playback |
 | `f` | Flam, drawn as a small grace note with connector and played as a soft grace hit |
 | `r` | Drag / ruff, drawn as two beamed grace notes with connector and played as two soft grace hits |
-| `d` | Diddle, drawn as a mid-stem slash and played as two hits inside the current grid slot |
-| `z`, `Z` | Buzz roll, drawn as a custom line-drawn `Z` through the note stem and played as a closed snare-roll texture |
+| `d` | Diddle, drawn as a mid-stem slash and played as two hits that divide the inferred note value evenly |
+| `z`, `Z` | Buzz roll, drawn as a custom line-drawn `Z` through the note stem and played as an overlapping closed snare-roll texture |
 | `c` | Choked cymbal, drawn with a small plus mark and played with a short muted decay |
 | `-`, `.`, `_` | Rest |
 
@@ -515,7 +544,7 @@ BD | o---------------
 
 ## Buzz Rolls
 
-Use `z` or `Z` on the snare row for a closed buzz roll / press roll. The rendered note shows a modern drumline-style custom line-drawn `Z` through the stem. During playback, snare buzz rolls use a continuous noise texture for the rendered note value, so a single buzz note on one beat sustains through that beat instead of sounding like one short tap.
+Use `z` or `Z` on the snare row for a closed buzz roll / press roll. The rendered note shows a modern drumline-style custom line-drawn `Z` through the stem. During playback, snare buzz rolls use a continuous noise texture for the rendered note value. A short acoustic release tail overlaps the next buzz stroke, avoiding a silent gap between consecutive notes.
 
 ````
 ```drums
@@ -567,7 +596,8 @@ BD | o---------------o---------------
 ```
 ````
 
-Use `d` when you want compact drummer-style diddle notation:
+Use `d` when you want compact drummer-style diddle notation. The two strokes
+divide the inferred rendered note value evenly:
 
 ````
 ```drums
@@ -585,8 +615,9 @@ Combinations:
 
 | Source | Result |
 | --- | --- |
-| `Grid: 16` + `d` | One visible diddled note, played as two thirty-second-note hits. |
-| `Grid: 32` + `d` | One visible diddled thirty-second note, played as two faster hits inside that thirty-second slot. |
+| `Grid: 16` + `d-d-` | Two visible diddled eighth notes, each played as two evenly spaced sixteenth-note strokes. |
+| `Grid: 16` + `d---` | One visible diddled quarter note, played as two evenly spaced eighth-note strokes. |
+| `Grid: 32` + `d` | The two strokes divide that note's inferred Grid-32 duration evenly. |
 | `Grid: 32` + written hits like `oooo` | Four explicit thirty-second notes. |
 | `d` stacked with another row in the same column | The diddled instrument plays twice; the other stacked instrument plays once. |
 | `d` with `X`, `g`, `f`, `r`, or `c` in the same cell | Not supported because each instrument row uses one character per slot. Use written-out `Grid: 32` notes when you need an accented, ghosted, flammed, dragged, or choked double. |

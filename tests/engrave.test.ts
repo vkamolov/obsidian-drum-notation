@@ -1,6 +1,6 @@
-import { Beam, Dot, StaveNote } from "vexflow/bravura";
+import { Beam, Dot, StaveNote, Stem, Tuplet } from "vexflow/bravura";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { buildGridVisualBarNotes } from "../src/engrave";
+import { buildGridVisualBarNotes, buildSplitVisualBarNotes, getScoreSystemHeights } from "../src/engrave";
 import { parseDrumBlock } from "../src/parser";
 import { GridResolution } from "../src/types";
 
@@ -63,6 +63,24 @@ function restSignatures(notes: readonly unknown[]): Array<{ duration: string; do
       dots: note.getModifiersByType("Dot").length,
       visible: note.renderOptions.draw !== false
     }));
+}
+
+function buildSplit(source: string) {
+  const block = parseDrumBlock(`Voicing: split\n${source}`);
+  const bar = block.bars[0];
+  const visualBar = buildSplitVisualBarNotes(
+    bar,
+    bar.timeSignature,
+    block.gridResolution,
+    false,
+    block.beamGrouping
+  );
+
+  return { block, bar, visualBar };
+}
+
+function voiceTicks(notes: readonly { getTicks: () => { value: () => number } }[]): number {
+  return notes.reduce((total, note) => total + note.getTicks().value(), 0);
 }
 
 describe("compound-meter beaming", () => {
@@ -373,5 +391,62 @@ describe("rest engraving", () => {
     });
     expect(visualBar.noteSlots.map((slot) => slot.index)).toEqual([4, 8]);
     expect(visualBar.cursorSlots.map((slot) => slot.index)).toEqual([4, 8]);
+  });
+});
+
+describe("split drum voicing", () => {
+  it("uses independent up-stem and down-stem voices for simultaneous hands and feet", () => {
+    const { visualBar } = buildSplit(`HH | x-x-
+BD | o---`);
+    const directions = visualBar.noteSlots.map((slot, index) => ({
+      instrument: slot.hits[0]?.instrument.id,
+      direction: visualBar.hitNotes[index]?.getStemDirection()
+    }));
+
+    expect(visualBar.voices).toHaveLength(3);
+    expect(directions).toEqual([
+      { instrument: "closed-hat", direction: Stem.UP },
+      { instrument: "closed-hat", direction: Stem.UP },
+      { instrument: "kick", direction: Stem.DOWN }
+    ]);
+    expect(visualBar.hitNotes.slice(0, 2).map((note) => note.getDuration())).toEqual(["8", "8"]);
+    expect(visualBar.hitNotes[2]?.getDuration()).toBe("4");
+    expect(new Set(visualBar.voices.map(voiceTicks)).size).toBe(1);
+  });
+
+  it("draws combined-rhythm rests once while keeping alignment rests hidden", () => {
+    const { visualBar } = buildSplit(`HH | x-----x-
+BD | o-------`);
+    const rests = restSignatures(visualBar.notes);
+
+    expect(rests.filter((rest) => rest.visible)).toEqual([
+      { duration: "8", dots: 0, visible: true }
+    ]);
+    expect(rests.some((rest) => !rest.visible)).toBe(true);
+    expect(new Set(visualBar.voices.map(voiceTicks)).size).toBe(1);
+  });
+
+  it("places the single displayed tuplet above mixed regions and below lower-only regions", () => {
+    const mixed = buildSplit(`HH | 3(xxx)3(xxx)3(xxx)3(xxx)
+BD | 3(o--)3(o--)3(o--)3(o--)`).visualBar;
+    const lower = buildSplit("BD | 3(ooo)3(ooo)3(ooo)3(ooo)").visualBar;
+
+    expect(mixed.tuplets).toHaveLength(4);
+    expect(lower.tuplets).toHaveLength(4);
+    expect(Reflect.get(Reflect.get(mixed.tuplets[0], "options"), "location")).toBe(Tuplet.LOCATION_TOP);
+    expect(Reflect.get(Reflect.get(lower.tuplets[0], "options"), "location")).toBe(Tuplet.LOCATION_BOTTOM);
+  });
+
+  it("uses taller geometry only for systems containing lower-voice notes", () => {
+    const split = parseDrumBlock(`Voicing: split
+BD | o---
+Bar
+HH | x---`);
+    const single = parseDrumBlock(`BD | o---
+Bar
+HH | x---`);
+
+    expect(getScoreSystemHeights(split)).toEqual([220, 122]);
+    expect(getScoreSystemHeights(single)).toEqual([122, 122]);
   });
 });

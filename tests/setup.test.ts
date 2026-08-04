@@ -77,6 +77,15 @@ Rests: off`);
     expect(block.gridResolution).toBe(32);
   });
 
+  it("preserves split voicing while rebuilding the initial bar", () => {
+    const existing = parseDrumBlock(`Voicing: split
+HH | ----
+BD | ----`);
+    const block = createInitialDrumBlock(DEFAULT_DRUM_SETUP_VALUES, existing);
+
+    expect(block.voicing).toBe("split");
+  });
+
   it("prefills setup values from an existing empty block", () => {
     const existing = parseDrumBlock(`Title: Practice fill
 Tempo: 88

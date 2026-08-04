@@ -9,6 +9,7 @@ import {
   colorRenderedNoteheads,
   getLegendHighlightDurationMs,
   makeRenderedNotesInteractive,
+  type RenderedNoteElements,
   renderInstrumentLegend,
   renderVexflowScore,
   setLegendInstrumentHighlight,
@@ -130,9 +131,9 @@ let scoreEl: HTMLElement | null = null;
 let cursorEl: HTMLElement | null = null;
 let cursorPositions: Array<CursorPosition | undefined> = [];
 let barRegions: ScoreBarRegion[] = [];
-let noteElements: Array<SVGGElement | undefined> = [];
-let highlightedNote: SVGGElement | null = null;
-let editHighlightedNote: SVGGElement | null = null;
+let noteElements: RenderedNoteElements = [];
+let highlightedNotes: SVGGElement[] = [];
+let editHighlightedNotes: SVGGElement[] = [];
 let editSelectedSlotIndex: number | null = null;
 let selectedBarIndex = 0;
 let currentSlotIndex = 0;
@@ -417,8 +418,8 @@ function restorePreviewScroll(snapshot: PreviewScrollSnapshot | null): void {
 function clearVisuals(): void {
   cursorEl?.classList.remove("is-active");
   cursorEl?.removeAttribute("style");
-  highlightedNote?.classList.remove("is-playing");
-  highlightedNote = null;
+  highlightedNotes.forEach((element) => element.classList.remove("is-playing"));
+  highlightedNotes = [];
   clearPlaybackLegendHighlight();
 }
 
@@ -487,8 +488,8 @@ function showRepeatProgressForBar(block: DrumBlock, barIndex: number): void {
 }
 
 function clearEditHighlight(): void {
-  editHighlightedNote?.classList.remove("is-edit-selected");
-  editHighlightedNote = null;
+  editHighlightedNotes.forEach((element) => element.classList.remove("is-edit-selected"));
+  editHighlightedNotes = [];
 }
 
 function applyEditHighlight(): void {
@@ -498,8 +499,8 @@ function applyEditHighlight(): void {
     return;
   }
 
-  editHighlightedNote = noteElements[editSelectedSlotIndex] ?? null;
-  editHighlightedNote?.classList.add("is-edit-selected");
+  editHighlightedNotes = noteElements[editSelectedSlotIndex] ?? [];
+  editHighlightedNotes.forEach((element) => element.classList.add("is-edit-selected"));
 }
 
 function selectEditSlot(slotIndex: number | null): void {
@@ -619,9 +620,9 @@ function clampBarIndex(block: DrumBlock, barIndex: number): number {
 
 function moveCursor(slotIndex: number): void {
   if (currentBlock?.showHighlight) {
-    highlightedNote?.classList.remove("is-playing");
-    highlightedNote = noteElements[slotIndex] ?? null;
-    highlightedNote?.classList.add("is-playing");
+    highlightedNotes.forEach((element) => element.classList.remove("is-playing"));
+    highlightedNotes = noteElements[slotIndex] ?? [];
+    highlightedNotes.forEach((element) => element.classList.add("is-playing"));
     flashPlaybackLegendHighlight(currentBlock, currentBlock.slots[slotIndex]);
   } else {
     clearPlaybackLegendHighlight();

@@ -1,6 +1,49 @@
 import { DrumHit, DrumPlaybackKind } from "./types";
 import { DrumPlaybackBackend, DrumPlaybackBackendFactory } from "./playback";
 
+const FALLBACK_DIDDLE_INTERVAL_SECONDS = 0.025;
+const MIN_BUZZ_DURATION_SECONDS = 0.06;
+const MAX_BUZZ_DURATION_SECONDS = 3;
+const MIN_BUZZ_TAIL_SECONDS = 0.012;
+const MAX_BUZZ_TAIL_SECONDS = 0.05;
+
+export interface BuzzRollEnvelopeTiming {
+  writtenDuration: number;
+  attackDuration: number;
+  releaseStartOffset: number;
+  tailDuration: number;
+  sourceDuration: number;
+}
+
+export function getDiddleStrokeIntervalSeconds(slotDuration: number, noteDuration: number): number {
+  const duration = positiveFiniteDuration(noteDuration) ?? positiveFiniteDuration(slotDuration);
+
+  return duration === null ? FALLBACK_DIDDLE_INTERVAL_SECONDS : duration / 2;
+}
+
+export function getBuzzRollEnvelopeTiming(duration: number): BuzzRollEnvelopeTiming {
+  const writtenDuration = Math.max(
+    MIN_BUZZ_DURATION_SECONDS,
+    Math.min(MAX_BUZZ_DURATION_SECONDS, positiveFiniteDuration(duration) ?? MIN_BUZZ_DURATION_SECONDS)
+  );
+  const tailDuration = Math.max(
+    MIN_BUZZ_TAIL_SECONDS,
+    Math.min(MAX_BUZZ_TAIL_SECONDS, writtenDuration * 0.12)
+  );
+
+  return {
+    writtenDuration,
+    attackDuration: Math.min(0.018, writtenDuration * 0.18),
+    releaseStartOffset: writtenDuration,
+    tailDuration,
+    sourceDuration: writtenDuration + tailDuration
+  };
+}
+
+function positiveFiniteDuration(value: number): number | null {
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
 export class DrumSynth implements DrumPlaybackBackend {
   // The AudioContext is owned and shared by the plugin (browsers cap the number
   // of live contexts), so a synth never creates or closes it. Each synth instead
@@ -72,7 +115,11 @@ export class DrumSynth implements DrumPlaybackBackend {
 
     if (hit.articulation === "diddle") {
       this.scheduleInstrument(hit.instrument.playback, time, hit.velocity);
-      this.scheduleInstrument(hit.instrument.playback, time + Math.max(0.025, slotDuration / 2), hit.velocity * 0.92);
+      this.scheduleInstrument(
+        hit.instrument.playback,
+        time + getDiddleStrokeIntervalSeconds(slotDuration, noteDuration),
+        hit.velocity * 0.92
+      );
       return;
     }
 
@@ -278,14 +325,14 @@ export class DrumSynth implements DrumPlaybackBackend {
 
   private scheduleBuzzRoll(time: number, duration: number, velocity: number): void {
     const context = this.audioContext;
-    const clippedDuration = Math.max(0.06, Math.min(3, duration));
-    const bufferSize = Math.max(1, Math.floor(context.sampleRate * clippedDuration));
+    const envelope = getBuzzRollEnvelopeTiming(duration);
+    const bufferSize = Math.max(1, Math.floor(context.sampleRate * envelope.sourceDuration));
     const buffer = context.createBuffer(1, bufferSize, context.sampleRate);
     const data = buffer.getChannelData(0);
 
     for (let i = 0; i < bufferSize; i += 1) {
       const progress = i / bufferSize;
-      const tremor = 0.72 + Math.sin(progress * Math.PI * 2 * clippedDuration * 42) * 0.28;
+      const tremor = 0.72 + Math.sin(progress * Math.PI * 2 * envelope.sourceDuration * 42) * 0.28;
       data[i] = (Math.random() * 2 - 1) * tremor;
     }
 
@@ -293,8 +340,8 @@ export class DrumSynth implements DrumPlaybackBackend {
     const bandpass = context.createBiquadFilter();
     const highpass = context.createBiquadFilter();
     const gain = context.createGain();
-    const attack = Math.min(0.018, clippedDuration * 0.18);
-    const releaseStart = Math.max(time + attack, time + clippedDuration - Math.min(0.055, clippedDuration * 0.35));
+    const releaseStart = time + envelope.releaseStartOffset;
+    const sourceEnd = time + envelope.sourceDuration;
 
     source.buffer = buffer;
     bandpass.type = "bandpass";
@@ -303,13 +350,13 @@ export class DrumSynth implements DrumPlaybackBackend {
     highpass.type = "highpass";
     highpass.frequency.setValueAtTime(520, time);
     gain.gain.setValueAtTime(0.001, time);
-    gain.gain.linearRampToValueAtTime(velocity * 0.62, time + attack);
+    gain.gain.linearRampToValueAtTime(velocity * 0.62, time + envelope.attackDuration);
     gain.gain.setValueAtTime(velocity * 0.55, releaseStart);
-    gain.gain.exponentialRampToValueAtTime(0.001, time + clippedDuration);
+    gain.gain.exponentialRampToValueAtTime(0.001, sourceEnd);
 
     source.connect(bandpass).connect(highpass).connect(gain).connect(this.target());
     source.start(time);
-    source.stop(time + clippedDuration + 0.02);
+    source.stop(sourceEnd + 0.02);
     this.track(source, bandpass, highpass, gain);
   }
 

@@ -62,7 +62,9 @@ describe("playground examples", () => {
           "One-bar repeat",
           "Counted repeat",
           "Articulations",
-          "Open and half-open hats"
+          "Open and half-open hats",
+          "Split drum voicing",
+          "Split voicing with rests"
         ]
       },
       {
@@ -83,6 +85,14 @@ describe("playground examples", () => {
 
     expect(parsed.warnings).toEqual([]);
     expect(parsed.block.systems.map((system) => system.timeSignature)).toEqual(["4/4", "3/4", "3/4", "7/8"]);
+  });
+
+  it.each(["split-drum-voicing", "split-voicing-with-rests"])("keeps the %s example warning-free", (id) => {
+    const example = getPlaygroundExample(id);
+    const parsed = parseDrumBlockWithWarnings(example?.source ?? "");
+
+    expect(parsed.warnings).toEqual([]);
+    expect(parsed.block.voicing).toBe("split");
   });
 
   it("keeps every rudiment example parseable without advisory warnings", () => {

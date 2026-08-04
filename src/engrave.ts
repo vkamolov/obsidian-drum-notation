@@ -15,13 +15,16 @@ import {
   getTupletRenderRatio
 } from "./rhythm";
 import { allocateBarWidths } from "./spacing";
-import { CursorPosition, DrumBar, DrumBlock, DrumHit, DrumInstrument, DrumRhythmRegion, DrumSlot, GridResolution, MeasureRepeat, ScoreRenderResult, StickingHand } from "./types";
+import { CursorPosition, DrumBar, DrumBlock, DrumHit, DrumInstrument, DrumNotationVoice, DrumRhythmRegion, DrumSlot, GridResolution, MeasureRepeat, ScoreRenderResult, StickingHand } from "./types";
 
 export type LegendHighlightSource = "playback" | "preview";
+export type RenderedNoteElements = Array<SVGGElement[] | undefined>;
 
 const LEGEND_HIGHLIGHT_MIN_MS = 90;
 const LEGEND_HIGHLIGHT_MAX_MS = 320;
 const REST_FONT_SCALE = 0.9;
+const SPLIT_SYSTEM_HEIGHT = 220;
+const SPLIT_STICKING_LANE_GAP = 136;
 
 interface NotationLayout {
   systemHeight: number;
@@ -79,12 +82,20 @@ interface NotationLayout {
 
 interface VisualBarNotes {
   notes: Tickable[];
+  voices: Tickable[][];
   hitNotes: StaveNote[];
   noteSlots: DrumSlot[];
   cursorNotes: Tickable[];
   cursorSlots: DrumSlot[];
   beams: Beam[];
   tuplets: Tuplet[];
+  tupletEntries: VisualTupletEntry[];
+}
+
+interface VisualTupletEntry {
+  tuplet: Tuplet;
+  regionIndex: number;
+  hasHits: boolean;
 }
 
 interface VisualBarEntry {
@@ -133,17 +144,26 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
   container.empty();
 
   const cssWidth = getScoreWidth(container);
-  const layout = getNotationLayout();
-  const width = cssWidth / layout.renderScale;
-  const height = layout.systemHeight;
+  const baseLayout = getNotationLayout();
+  const width = cssWidth / baseLayout.renderScale;
+  const systemHeights = getScoreSystemHeights(block);
+  const systemLayouts = block.systems.map((scoreSystem, systemIndex) => {
+    const layout = getSystemNotationLayout(block, scoreSystem.bars.flatMap((bar) => bar.slots));
+
+    return { ...layout, systemHeight: systemHeights[systemIndex] ?? layout.systemHeight };
+  });
   const cursorPositions: Array<ScoreRenderResult["cursorPositions"][number]> = [];
   const barRegions: ScoreRenderResult["barRegions"] = [];
 
-  container.setCssProps({ "--drum-score-min-height": `${Math.max(height, block.systems.length * height)}px` });
+  container.setCssProps({
+    "--drum-score-min-height": `${Math.max(baseLayout.systemHeight, systemLayouts.reduce((sum, layout) => sum + layout.systemHeight, 0))}px`
+  });
 
-  let previousBarAnchors: Array<{ note: Tickable; cursorPosition: CursorPosition } | undefined> = [];
+  let previousBarAnchors: Array<{ notes: Tickable[]; cursorPosition: CursorPosition } | undefined> = [];
 
   block.systems.forEach((scoreSystem, systemIndex) => {
+    const layout = systemLayouts[systemIndex] ?? baseLayout;
+    const height = layout.systemHeight;
     const system = container.createDiv({ cls: "drum-notation__system" });
 
     if (scoreSystem.subtitle) {
@@ -235,7 +255,8 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
         scoreSystem.timeSignature,
         block.gridResolution,
         block.legendMode !== "off",
-        scoreSystem.beamGrouping
+        scoreSystem.beamGrouping,
+        block.voicing
       );
       const notes = visualBar.notes;
       notes.forEach((note) => {
@@ -264,15 +285,18 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
           note.setLedgerLineStyle({ fillStyle: "currentColor", strokeStyle: "currentColor", lineWidth: layout.ledgerLineWidth });
         }
       });
-      const voice = new Voice({
-        numBeats: Math.max(
-          1,
-          bar.durationQuarter / (4 / getBeatValue(bar.timeSignature))
-        ),
-        beatValue: getBeatValue(bar.timeSignature)
-      }).setStrict(false);
+      const voices = visualBar.voices.map((voiceNotes) => {
+        const voice = new Voice({
+          numBeats: Math.max(
+            1,
+            bar.durationQuarter / (4 / getBeatValue(bar.timeSignature))
+          ),
+          beatValue: getBeatValue(bar.timeSignature)
+        }).setStrict(false);
 
-      voice.addTickables(notes);
+        voice.addTickables(voiceNotes);
+        return voice;
+      });
       const barHeaderWidth = isFirstBarInSystem ? firstBarHeaderWidth : 0;
       const availableFormatWidth = Math.max(24, barWidth - barHeaderWidth - layout.formatPadding - layout.noteStartPadding - layout.noteEndPadding);
       const equivalentGridSlots =
@@ -282,8 +306,8 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
         equivalentGridSlots * layout.maxSlotFormatWidth
       );
       const formatWidth = Math.min(availableFormatWidth, slotScaledFormatWidth);
-      new Formatter().joinVoices([voice]).format([voice], formatWidth);
-      voice.draw(context, stave);
+      new Formatter().joinVoices(voices).format(voices, formatWidth);
+      voices.forEach((voice) => voice.draw(context, stave));
       markDragGraceBeams(system);
       if (bar.measureRepeat && entry.repeatCount > 1) {
         drawMeasureRepeatCount(
@@ -330,7 +354,7 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
 
       const cursorHeight = (stave.getYForLine(stave.getNumLines() - 1) - stave.getYForLine(0)) * layout.renderScale;
       const cursorY = systemTop + stave.getYForLine(0) * layout.renderScale;
-      const currentBarAnchors: Array<{ note: Tickable; cursorPosition: CursorPosition } | undefined> = [];
+      const currentBarAnchors: Array<{ notes: Tickable[]; cursorPosition: CursorPosition } | undefined> = [];
 
       visualBar.cursorSlots.forEach((slot, noteIndex) => {
         const note = visualBar.cursorNotes[noteIndex];
@@ -342,7 +366,16 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
         };
 
         cursorPositions[slot.index] = cursorPosition;
-        currentBarAnchors[slot.index - bar.startSlot] = { note, cursorPosition };
+        currentBarAnchors[slot.index - bar.startSlot] = { notes: [], cursorPosition };
+      });
+
+      visualBar.noteSlots.forEach((slot, noteIndex) => {
+        const note = visualBar.hitNotes[noteIndex];
+        const anchor = currentBarAnchors[slot.index - bar.startSlot];
+
+        if (note && anchor && !anchor.notes.includes(note)) {
+          anchor.notes.push(note);
+        }
       });
 
       if (bar.measureRepeat) {
@@ -355,7 +388,7 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
             }
 
             cursorPositions[slot.index] = anchor.cursorPosition;
-            tagRenderedNoteSlot(system, anchor.note, slot);
+            anchor.notes.forEach((note) => tagRenderedNoteSlot(system, note, slot));
           });
         });
       } else {
@@ -574,17 +607,17 @@ export function colorRenderedNoteheads(block: DrumBlock, container: HTMLElement)
     const noteheadGroups = getMainRenderedNoteheadGroups(group);
     const coloredHits = getUniqueHitsForRenderedNoteheads(slot.hits);
     const fallbackColor = coloredHits[0]?.instrument.color;
+    const hasTaggedColors = restoreTaggedInstrumentColors(group);
+
+    if (hasTaggedColors) {
+      restoreNonNoteheadInk(group);
+      return;
+    }
 
     if (fallbackColor) {
       group.style.setProperty("--drum-notehead-color", fallbackColor);
       colorSvgShape(group, fallbackColor);
       restoreNonNoteheadInk(group);
-    }
-
-    const hasTaggedColors = restoreTaggedInstrumentColors(group);
-
-    if (hasTaggedColors) {
-      return;
     }
 
     coloredHits.forEach((hit, hitIndex) => {
@@ -645,6 +678,13 @@ function tagRenderedNoteSlot(scope: HTMLElement, note: Tickable | undefined, slo
 
   if (!noteElement.hasAttribute("data-slot-index")) {
     noteElement.setAttribute("data-slot-index", slotIndex);
+  }
+
+  if (slot.hits.length > 0 && !noteElement.hasAttribute("data-drum-instrument-labels")) {
+    noteElement.setAttribute(
+      "data-drum-instrument-labels",
+      slot.hits.map((hit) => hit.instrument.label).join(", ")
+    );
   }
 
   if (note instanceof StaveNote) {
@@ -849,9 +889,13 @@ function drawAccentMarks(system: HTMLElement, notes: StaveNote[], noteSlots: Dru
       return;
     }
 
-    const stemTopY = note.getStemExtents().topY;
+    const stemExtents = note.getStemExtents();
+    const isStemDown = note.getStemDirection() === Stem.DOWN;
+    const stemEndY = isStemDown
+      ? Math.max(stemExtents.topY, stemExtents.baseY)
+      : Math.min(stemExtents.topY, stemExtents.baseY);
     const x = note.getStemX() - layout.accentWidth * 0.45;
-    const y = stemTopY - layout.accentGap;
+    const y = stemEndY + (isStemDown ? layout.accentGap : -layout.accentGap);
     const halfHeight = layout.accentHeight / 2;
     const accent = svg.createSvg("polyline");
 
@@ -1163,10 +1207,24 @@ function getStickingLabel(hand: StickingHand): string {
 
 function getStemMarkMiddleY(note: StaveNote, markHeight: number, markThickness: number, noteheadClearance: number): number {
   const { topY, baseY } = note.getStemExtents();
-  const noteheadTopY = Math.min(...note.getYs());
   const defaultMiddleY = topY + (baseY - topY) * 0.56;
-  const lowerEdgeOffset = markHeight / 2 + markThickness / 2;
-  const lowestAllowedMiddleY = noteheadTopY - noteheadClearance - lowerEdgeOffset;
+  const edgeOffset = markHeight / 2 + markThickness / 2;
+
+  if (note.getStemDirection() === Stem.DOWN) {
+    const noteheadBottomY = Math.max(
+      ...note.noteHeads.map((noteHead) => {
+        const box = noteHead.getBoundingBox();
+
+        return box.getY() + box.getH();
+      })
+    );
+    const highestAllowedMiddleY = noteheadBottomY + noteheadClearance + edgeOffset;
+
+    return Math.max(defaultMiddleY, highestAllowedMiddleY);
+  }
+
+  const noteheadTopY = Math.min(...note.noteHeads.map((noteHead) => noteHead.getBoundingBox().getY()));
+  const lowestAllowedMiddleY = noteheadTopY - noteheadClearance - edgeOffset;
 
   return Math.min(defaultMiddleY, lowestAllowedMiddleY);
 }
@@ -1227,6 +1285,29 @@ function getNotationLayout(): NotationLayout {
   };
 }
 
+function getSystemNotationLayout(block: DrumBlock, slots: readonly DrumSlot[]): NotationLayout {
+  const layout = getNotationLayout();
+  const hasLowerVoiceContent = block.voicing === "split" && slots.some((slot) =>
+    slot.hits.some((hit) => hit.instrument.notationVoice === "lower")
+  );
+
+  if (!hasLowerVoiceContent) {
+    return layout;
+  }
+
+  return {
+    ...layout,
+    systemHeight: SPLIT_SYSTEM_HEIGHT,
+    stickingLaneGap: SPLIT_STICKING_LANE_GAP
+  };
+}
+
+export function getScoreSystemHeights(block: DrumBlock): number[] {
+  return block.systems.map((scoreSystem) =>
+    getSystemNotationLayout(block, scoreSystem.bars.flatMap((bar) => bar.slots)).systemHeight
+  );
+}
+
 function slimTupletText(tuplet: Tuplet, layout: NotationLayout): void {
   const tupletParts = tuplet as Tuplet & {
     textElement?: {
@@ -1263,10 +1344,21 @@ function buildVisualBarNotes(
   timeSignature: string,
   gridResolution: GridResolution,
   colorNoteheads: boolean,
-  beamGrouping?: readonly number[]
+  beamGrouping: readonly number[] | undefined,
+  voicing: DrumBlock["voicing"]
 ): VisualBarNotes {
   if (measureRepeat) {
     return buildMeasureRepeatVisualBarNotes(measureRepeat);
+  }
+
+  if (voicing === "split") {
+    return buildSplitVisualBarNotes(
+      bar,
+      timeSignature,
+      gridResolution,
+      colorNoteheads,
+      beamGrouping
+    );
   }
 
   return buildGridVisualBarNotes(
@@ -1279,6 +1371,149 @@ function buildVisualBarNotes(
   );
 }
 
+export function buildSplitVisualBarNotes(
+  bar: DrumBar,
+  timeSignature: string,
+  gridResolution: GridResolution,
+  colorNoteheads: boolean,
+  beamGrouping?: readonly number[]
+): VisualBarNotes {
+  const hasUpperHits = bar.slots.some((slot) =>
+    slot.hits.some((hit) => hit.instrument.notationVoice === "upper")
+  );
+  const hasLowerHits = bar.slots.some((slot) =>
+    slot.hits.some((hit) => hit.instrument.notationVoice === "lower")
+  );
+
+  if (!hasLowerHits) {
+    return buildGridVisualBarNotes(
+      bar.slots,
+      timeSignature,
+      gridResolution,
+      colorNoteheads,
+      beamGrouping,
+      bar.rhythmRegions,
+      Stem.UP
+    );
+  }
+
+  if (!hasUpperHits) {
+    return buildGridVisualBarNotes(
+      bar.slots,
+      timeSignature,
+      gridResolution,
+      colorNoteheads,
+      beamGrouping,
+      bar.rhythmRegions,
+      Stem.DOWN
+    );
+  }
+
+  const upper = buildGridVisualBarNotes(
+    projectSlotsToNotationVoice(bar.slots, "upper"),
+    timeSignature,
+    gridResolution,
+    colorNoteheads,
+    beamGrouping,
+    bar.rhythmRegions,
+    Stem.UP
+  );
+  const lower = buildGridVisualBarNotes(
+    projectSlotsToNotationVoice(bar.slots, "lower"),
+    timeSignature,
+    gridResolution,
+    colorNoteheads,
+    beamGrouping,
+    bar.rhythmRegions,
+    Stem.DOWN
+  );
+  const sharedRests = buildGridVisualBarNotes(
+    bar.slots,
+    timeSignature,
+    gridResolution,
+    false,
+    beamGrouping,
+    bar.rhythmRegions,
+    Stem.UP
+  );
+
+  hideRestTickables(upper.notes);
+  hideRestTickables(lower.notes);
+  sharedRests.hitNotes.forEach((note) => {
+    note.renderOptions.draw = false;
+  });
+
+  const cursorBySlot = new Map<number, Tickable>();
+  upper.cursorSlots.forEach((slot, index) => {
+    const note = upper.cursorNotes[index];
+
+    if (note) {
+      cursorBySlot.set(slot.index, note);
+    }
+  });
+  lower.cursorSlots.forEach((slot, index) => {
+    const note = lower.cursorNotes[index];
+
+    if (note && !cursorBySlot.has(slot.index)) {
+      cursorBySlot.set(slot.index, note);
+    }
+  });
+
+  const cursorSlots = bar.slots.filter((slot) => cursorBySlot.has(slot.index));
+  const cursorNotes = cursorSlots.map((slot) => cursorBySlot.get(slot.index) as Tickable);
+  const tuplets = chooseSplitTuplets(upper.tupletEntries, lower.tupletEntries);
+
+  return {
+    notes: [...sharedRests.notes, ...upper.notes, ...lower.notes],
+    voices: [sharedRests.notes, upper.notes, lower.notes],
+    hitNotes: [...upper.hitNotes, ...lower.hitNotes],
+    noteSlots: [...upper.noteSlots, ...lower.noteSlots],
+    cursorNotes,
+    cursorSlots,
+    beams: [...upper.beams, ...lower.beams],
+    tuplets,
+    tupletEntries: []
+  };
+}
+
+function projectSlotsToNotationVoice(
+  slots: readonly DrumSlot[],
+  notationVoice: DrumNotationVoice
+): DrumSlot[] {
+  return slots.map((slot) => ({
+    ...slot,
+    hits: slot.hits.filter((hit) => hit.instrument.notationVoice === notationVoice)
+  }));
+}
+
+function hideRestTickables(notes: readonly Tickable[]): void {
+  notes.forEach((note) => {
+    if (note instanceof StaveNote && note.isRest()) {
+      note.renderOptions.draw = false;
+    }
+  });
+}
+
+function chooseSplitTuplets(
+  upper: readonly VisualTupletEntry[],
+  lower: readonly VisualTupletEntry[]
+): Tuplet[] {
+  const regionIndexes = new Set([
+    ...upper.map((entry) => entry.regionIndex),
+    ...lower.map((entry) => entry.regionIndex)
+  ]);
+
+  return Array.from(regionIndexes)
+    .sort((left, right) => left - right)
+    .flatMap((regionIndex) => {
+      const upperEntry = upper.find((entry) => entry.regionIndex === regionIndex);
+      const lowerEntry = lower.find((entry) => entry.regionIndex === regionIndex);
+      const selected = upperEntry?.hasHits ? upperEntry : lowerEntry?.hasHits ? lowerEntry : upperEntry ?? lowerEntry;
+
+      return selected ? [selected.tuplet] : [];
+    });
+}
+
 function buildMeasureRepeatVisualBarNotes(measureRepeat: MeasureRepeat): VisualBarNotes {
   const note = new RepeatNote(String(measureRepeat), { duration: "1" }, { line: 2 });
 
@@ -1286,12 +1521,14 @@ function buildMeasureRepeatVisualBarNotes(measureRepeat: MeasureRepeat): VisualB
 
   return {
     notes: [note],
+    voices: [[note]],
     hitNotes: [],
     noteSlots: [],
     cursorNotes: [],
     cursorSlots: [],
     beams: [],
-    tuplets: []
+    tuplets: [],
+    tupletEntries: []
   };
 }
 
@@ -1332,7 +1569,8 @@ export function buildGridVisualBarNotes(
   gridResolution: GridResolution,
   colorNoteheads: boolean,
   beamGrouping?: readonly number[],
-  rhythmRegions?: readonly DrumRhythmRegion[]
+  rhythmRegions?: readonly DrumRhythmRegion[],
+  stemDirection: number = Stem.UP
 ): VisualBarNotes {
   if (rhythmRegions?.some((region) => region.kind === "tuplet")) {
     return buildRhythmicVisualBarNotes(
@@ -1340,7 +1578,8 @@ export function buildGridVisualBarNotes(
       timeSignature,
       gridResolution,
       colorNoteheads,
-      rhythmRegions
+      rhythmRegions,
+      stemDirection
     );
   }
 
@@ -1362,9 +1601,9 @@ export function buildGridVisualBarNotes(
   }
 
   if (slots.length > 0 && slots.every((slot) => slot.hits.length === 0)) {
-    appendSilentBarRests(notes, slots.length, gridResolution, beamGroupSlotCounts);
+    appendSilentBarRests(notes, slots.length, gridResolution, beamGroupSlotCounts, stemDirection);
 
-    return { notes, hitNotes, noteSlots, cursorNotes: hitNotes, cursorSlots: noteSlots, beams, tuplets };
+    return { notes, voices: [notes], hitNotes, noteSlots, cursorNotes: hitNotes, cursorSlots: noteSlots, beams, tuplets, tupletEntries: [] };
   }
 
   let beamGroup: StaveNote[] = [];
@@ -1400,20 +1639,20 @@ export function buildGridVisualBarNotes(
 
     if (hitIndexes.length === 0) {
       finishBeamGroup();
-      appendGridRests(notes, beatSlots.length, gridResolution);
+      appendGridRests(notes, beatSlots.length, gridResolution, stemDirection);
       continue;
     }
 
     hitIndexes.forEach((hitIndex, indexInBeat) => {
       if (hitIndex > cursor) {
         finishBeamGroup();
-        appendGridRests(notes, hitIndex - cursor, gridResolution);
+        appendGridRests(notes, hitIndex - cursor, gridResolution, stemDirection);
       }
 
       const slot = beatSlots[hitIndex];
       const nextHitIndex = hitIndexes[indexInBeat + 1] ?? beatSlots.length;
       const span = getGridSpanToNextHit(hitIndex, nextHitIndex, beatSlots.length, gridResolution);
-      const note = makeStaveNote(slot, span.duration, colorNoteheads, span.dots);
+      const note = makeStaveNote(slot, span.duration, colorNoteheads, span.dots, stemDirection);
 
       notes.push(note);
       hitNotes.push(note);
@@ -1423,7 +1662,7 @@ export function buildGridVisualBarNotes(
 
       if (span.supportedSpan !== nextHitIndex - hitIndex) {
         finishBeamGroup();
-        appendGridRests(notes, nextHitIndex - hitIndex - span.supportedSpan, gridResolution);
+        appendGridRests(notes, nextHitIndex - hitIndex - span.supportedSpan, gridResolution, stemDirection);
         cursor = nextHitIndex;
       }
     });
@@ -1437,7 +1676,7 @@ export function buildGridVisualBarNotes(
 
   finishBeamGroup();
 
-  return { notes, hitNotes, noteSlots, cursorNotes: hitNotes, cursorSlots: noteSlots, beams, tuplets };
+  return { notes, voices: [notes], hitNotes, noteSlots, cursorNotes: hitNotes, cursorSlots: noteSlots, beams, tuplets, tupletEntries: [] };
 }
 
 function buildRhythmicVisualBarNotes(
@@ -1445,18 +1684,21 @@ function buildRhythmicVisualBarNotes(
   timeSignature: string,
   gridResolution: GridResolution,
   colorNoteheads: boolean,
-  rhythmRegions: readonly DrumRhythmRegion[]
+  rhythmRegions: readonly DrumRhythmRegion[],
+  stemDirection: number
 ): VisualBarNotes {
   const result: VisualBarNotes = {
     notes: [],
+    voices: [],
     hitNotes: [],
     noteSlots: [],
     cursorNotes: [],
     cursorSlots: [],
     beams: [],
-    tuplets: []
+    tuplets: [],
+    tupletEntries: []
   };
-  for (const region of rhythmRegions) {
+  for (const [regionIndex, region] of rhythmRegions.entries()) {
     const regionSlots = slots.slice(
       region.startPosition,
       region.startPosition + region.positionCount
@@ -1467,7 +1709,10 @@ function buildRhythmicVisualBarNotes(
         regionSlots,
         timeSignature,
         gridResolution,
-        colorNoteheads
+        colorNoteheads,
+        undefined,
+        undefined,
+        stemDirection
       );
 
       mergeVisualBarNotes(result, plain);
@@ -1484,7 +1729,10 @@ function buildRhythmicVisualBarNotes(
         regionSlots,
         timeSignature,
         gridResolution,
-        colorNoteheads
+        colorNoteheads,
+        undefined,
+        undefined,
+        stemDirection
       );
 
       mergeVisualBarNotes(result, plain);
@@ -1493,7 +1741,7 @@ function buildRhythmicVisualBarNotes(
 
     const duration = String(renderRatio.tickableDenominator);
     const regionNotes = regionSlots.map((slot) =>
-      makeStaveNote(slot, duration, colorNoteheads)
+      makeStaveNote(slot, duration, colorNoteheads, 0, stemDirection)
     );
     let beamRun: StaveNote[] = [];
 
@@ -1522,15 +1770,23 @@ function buildRhythmicVisualBarNotes(
     finishBeamRun();
 
     if (region.subdivisionCount !== renderRatio.notesOccupied) {
-      result.tuplets.push(
-        new Tuplet(regionNotes, {
+      const tuplet = new Tuplet(regionNotes, {
           numNotes: region.subdivisionCount,
           notesOccupied: renderRatio.notesOccupied,
-          ratioed: false
-        })
-      );
+          ratioed: false,
+          location: stemDirection === Stem.DOWN ? Tuplet.LOCATION_BOTTOM : Tuplet.LOCATION_TOP
+        });
+
+      result.tuplets.push(tuplet);
+      result.tupletEntries.push({
+        tuplet,
+        regionIndex,
+        hasHits: regionSlots.some((slot) => slot.hits.length > 0)
+      });
     }
   }
+
+  result.voices = [result.notes];
 
   return result;
 }
@@ -1543,6 +1799,7 @@ function mergeVisualBarNotes(target: VisualBarNotes, source: VisualBarNotes): vo
   target.cursorSlots.push(...source.cursorSlots);
   target.beams.push(...source.beams);
   target.tuplets.push(...source.tuplets);
+  target.tupletEntries.push(...source.tupletEntries);
 }
 
 function makeRestSlot(): DrumSlot {
@@ -1555,13 +1812,13 @@ function makeRestSlot(): DrumSlot {
   };
 }
 
-function appendGridRests(notes: Tickable[], span: number, gridResolution: GridResolution): void {
+function appendGridRests(notes: Tickable[], span: number, gridResolution: GridResolution, stemDirection: number): void {
   let remaining = span;
 
   while (remaining > 0) {
     const restSpan = largestPowerOfTwoAtMost(remaining);
 
-    notes.push(makeStaveNote(makeRestSlot(), durationForGridSpan(gridResolution, restSpan)));
+    notes.push(makeStaveNote(makeRestSlot(), durationForGridSpan(gridResolution, restSpan), false, 0, stemDirection));
     remaining -= restSpan;
   }
 }
@@ -1570,7 +1827,8 @@ function appendSilentBarRests(
   notes: Tickable[],
   slotCount: number,
   gridResolution: GridResolution,
-  beamGroupSlotCounts: readonly number[]
+  beamGroupSlotCounts: readonly number[],
+  stemDirection: number
 ): void {
   let cursor = 0;
   let groupIndex = 0;
@@ -1581,26 +1839,26 @@ function appendSilentBarRests(
       slotCount - cursor
     );
 
-    appendGroupedGridRests(notes, groupSpan, gridResolution);
+    appendGroupedGridRests(notes, groupSpan, gridResolution, stemDirection);
     cursor += groupSpan;
     groupIndex += 1;
   }
 }
 
-function appendGroupedGridRests(notes: Tickable[], span: number, gridResolution: GridResolution): void {
+function appendGroupedGridRests(notes: Tickable[], span: number, gridResolution: GridResolution, stemDirection: number): void {
   let remaining = span;
 
   while (remaining > 0) {
     const exactSpan = getGridSpanToNextHit(0, remaining, remaining, gridResolution);
 
     if (exactSpan.supportedSpan === remaining) {
-      notes.push(makeStaveNote(makeRestSlot(), exactSpan.duration, false, exactSpan.dots));
+      notes.push(makeStaveNote(makeRestSlot(), exactSpan.duration, false, exactSpan.dots, stemDirection));
       return;
     }
 
     const restSpan = largestPowerOfTwoAtMost(remaining);
 
-    notes.push(makeStaveNote(makeRestSlot(), durationForGridSpan(gridResolution, restSpan)));
+    notes.push(makeStaveNote(makeRestSlot(), durationForGridSpan(gridResolution, restSpan), false, 0, stemDirection));
     remaining -= restSpan;
   }
 }
@@ -1609,9 +1867,9 @@ function makeRenderedNotesInteractive(
   block: DrumBlock,
   container: HTMLElement,
   onPreview: (slot: DrumSlot) => void
-): Array<SVGGElement | undefined> {
+): RenderedNoteElements {
   const slotByIndex = new Map(block.slots.map((slot) => [slot.index, slot] as const));
-  const noteElements: Array<SVGGElement | undefined> = [];
+  const noteElements: RenderedNoteElements = [];
 
   container.querySelectorAll<SVGGElement>("svg [data-slot-index], svg [data-slot-indices]").forEach((group) => {
     const slotIndexes = getRenderedSlotIndexes(group);
@@ -1625,10 +1883,15 @@ function makeRenderedNotesInteractive(
     }
 
     slots.forEach((candidate) => {
-      noteElements[candidate.index] = group;
+      const elements = noteElements[candidate.index] ?? [];
+
+      if (!elements.includes(group)) {
+        elements.push(group);
+      }
+      noteElements[candidate.index] = elements;
     });
 
-    const instrumentList = slot.hits.map((hit) => hit.instrument.label).join(", ");
+    const instrumentList = group.dataset.drumInstrumentLabels ?? slot.hits.map((hit) => hit.instrument.label).join(", ");
 
     group.classList.add("drum-notation__interactive-note");
     group.setAttribute("tabindex", "0");
@@ -1668,13 +1931,19 @@ function getRenderedSlotIndexes(group: SVGGElement): number[] {
     .filter((value) => Number.isFinite(value));
 }
 
-function makeStaveNote(slot: DrumSlot, duration = "16", colorNoteheads = false, dots = 0): StaveNote {
+function makeStaveNote(
+  slot: DrumSlot,
+  duration = "16",
+  colorNoteheads = false,
+  dots = 0,
+  stemDirection: number = Stem.UP
+): StaveNote {
   if (slot.hits.length === 0) {
     const rest = new StaveNote({
       keys: [restKeyForDuration(duration)],
       duration: `${duration}r`,
       clef: "percussion",
-      stemDirection: Stem.UP
+      stemDirection
     });
 
     attachDots(rest, dots);
@@ -1688,7 +1957,7 @@ function makeStaveNote(slot: DrumSlot, duration = "16", colorNoteheads = false, 
     keys,
     duration,
     clef: "percussion",
-    stemDirection: Stem.UP
+    stemDirection
   });
 
   attachDots(note, dots);
@@ -1697,7 +1966,7 @@ function makeStaveNote(slot: DrumSlot, duration = "16", colorNoteheads = false, 
     applyLegendNoteheadColors(note, slot.hits);
   }
 
-  applyHitModifiers(note, slot.hits, colorNoteheads);
+  applyHitModifiers(note, slot.hits, colorNoteheads, stemDirection);
 
   return note;
 }
@@ -1729,9 +1998,14 @@ function applyLegendNoteheadColors(note: StaveNote, hits: DrumHit[]): void {
   });
 }
 
-function applyHitModifiers(note: StaveNote, hits: DrumHit[], colorNoteheads: boolean): void {
+function applyHitModifiers(
+  note: StaveNote,
+  hits: DrumHit[],
+  colorNoteheads: boolean,
+  stemDirection: number
+): void {
   addGhostParentheses(note, hits);
-  addGraceNoteOrnaments(note, hits, colorNoteheads);
+  addGraceNoteOrnaments(note, hits, colorNoteheads, stemDirection);
 }
 
 function addGhostParentheses(note: StaveNote, hits: DrumHit[]): void {
@@ -1749,7 +2023,12 @@ function addGhostParentheses(note: StaveNote, hits: DrumHit[]): void {
     });
 }
 
-function addGraceNoteOrnaments(note: StaveNote, hits: DrumHit[], colorNoteheads: boolean): void {
+function addGraceNoteOrnaments(
+  note: StaveNote,
+  hits: DrumHit[],
+  colorNoteheads: boolean,
+  stemDirection: number
+): void {
   hits
     .filter((hit) => hit.articulation === "flam" || hit.articulation === "drag")
     .forEach((hit) => {
@@ -1767,7 +2046,7 @@ function addGraceNoteOrnaments(note: StaveNote, hits: DrumHit[], colorNoteheads:
             keys: [hit.instrument.vexKey],
             duration: isDrag ? "16" : "8",
             clef: "percussion",
-            stemDirection: Stem.UP,
+            stemDirection,
             slash: false
           })
       );

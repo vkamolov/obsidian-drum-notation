@@ -286,6 +286,16 @@ HH | x---`);
     expect(serializeDrumBlock(edited)).toContain("Rests: off");
   });
 
+  it("preserves split voicing through structural visual edits", () => {
+    const split = parseDrumBlock(`Voicing: split
+HH | x---
+BD | o---`);
+    const edited = toggleHit(split, 1, SD);
+
+    expect(edited.voicing).toBe("split");
+    expect(serializeDrumBlock(edited)).toContain("Voicing: split");
+  });
+
   it("setting edits survive a serialize round-trip", () => {
     const edited = setTempo(setGrid(block, 32), 90);
     const text = serializeDrumBlock(edited);

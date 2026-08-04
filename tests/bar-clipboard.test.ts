@@ -67,6 +67,19 @@ CR | c---`);
     expect(findHit(result.block, result.block.bars[2].startSlot, "crash")).toBeTruthy();
   });
 
+  it("uses the target block's voicing without adding it to the clipboard payload", () => {
+    const source = parseDrumBlock("HH | x---\nBD | o---");
+    const target = parseDrumBlock("Voicing: split\nHH | ----\nBD | ----");
+    const payload = captureBarClipboardPayload(source, 0)!;
+    const result = pasteBarClipboardPayload(target, 0, payload);
+
+    expect(payload).not.toHaveProperty("voicing");
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.block.voicing).toBe("split");
+    }
+  });
+
   it("clears target-only instruments and preserves prefixes needed by later bars", () => {
     const source = parseDrumBlock("HH | x---");
     const target = parseDrumBlock("SD | o--- | --o- | o---\nBD | o--- | --o- | ----");

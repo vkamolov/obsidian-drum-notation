@@ -23,6 +23,7 @@ describe("parseDrumBlock - defaults and basic structure", () => {
     expect(block.showCursor).toBe(false);
     expect(block.showHighlight).toBe(true);
     expect(block.showRests).toBe(true);
+    expect(block.voicing).toBe("single");
   });
 
   it("builds one bar of sixteen slots from three rows", () => {
@@ -53,6 +54,7 @@ Legend: all
 Cursor: off
 Highlight: no
 Rests: hide
+Voicing: SPLIT
 HH | x-x-x-x-x-x-x-x-`);
 
   it("clamps and normalizes settings", () => {
@@ -64,6 +66,7 @@ HH | x-x-x-x-x-x-x-x-`);
     expect(block.showCursor).toBe(false);
     expect(block.showHighlight).toBe(false);
     expect(block.showRests).toBe(false);
+    expect(block.voicing).toBe("split");
   });
 
   it.each(["on", "show", "true", "yes", "1"])("accepts Rests: %s as visible", (value) => {
@@ -84,6 +87,20 @@ HH | x---`);
         code: "invalid-setting",
         line: 1,
         message: expect.stringContaining("using on")
+      })
+    );
+  });
+
+  it("warns and uses single voicing for an invalid value", () => {
+    const parsed = parseDrumBlockWithWarnings(`Voicing: orchestral
+HH | x---`);
+
+    expect(parsed.block.voicing).toBe("single");
+    expect(parsed.warnings).toContainEqual(
+      expect.objectContaining({
+        code: "invalid-setting",
+        line: 1,
+        message: expect.stringContaining("using single")
       })
     );
   });

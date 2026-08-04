@@ -20,6 +20,7 @@ import {
   colorRenderedNoteheads,
   getLegendHighlightDurationMs,
   makeRenderedNotesInteractive,
+  type RenderedNoteElements,
   renderInstrumentLegend,
   renderVexflowScore,
   setLegendInstrumentHighlight,
@@ -135,7 +136,7 @@ function getSetupTimeDenominator(value: string): DrumSetupTimeDenominator {
 interface RenderState {
   cursorPositions: Array<CursorPosition | undefined>;
   barRegions: ScoreBarRegion[];
-  noteElements: Array<SVGGElement | undefined>;
+  noteElements: RenderedNoteElements;
   cursor: HTMLElement | null;
 }
 
@@ -291,7 +292,7 @@ export default class DrumNotationPlugin extends Plugin {
     let currentSlotIndex = clampSlotIndex(block, restored?.playback.slotIndex ?? 0);
     let selectedBarIndex = clampBarIndex(block, restored?.selectedBarIndex ?? barIndexForSlot(block, currentSlotIndex));
     let editSelectedSlotIndex: number | null = restored?.selectedSlotIndex ?? selectedSlotIndexFromSession(restored?.session) ?? null;
-    let highlightedEditNote: SVGGElement | null = null;
+    let highlightedEditNotes: SVGGElement[] = [];
     let gridEditor: GridEditorHandle | null = null;
     let playbackSpeedPercent = DEFAULT_PLAYBACK_SPEED_PERCENT;
     let visuals = makePlaybackVisuals(block, state, root, () => playbackSpeedPercent);
@@ -441,8 +442,8 @@ export default class DrumNotationPlugin extends Plugin {
     };
 
     const clearEditHighlight = () => {
-      highlightedEditNote?.classList.remove("is-edit-selected");
-      highlightedEditNote = null;
+      highlightedEditNotes.forEach((element) => element.classList.remove("is-edit-selected"));
+      highlightedEditNotes = [];
     };
 
     const applyEditHighlight = () => {
@@ -452,8 +453,8 @@ export default class DrumNotationPlugin extends Plugin {
         return;
       }
 
-      highlightedEditNote = state.noteElements[editSelectedSlotIndex] ?? null;
-      highlightedEditNote?.classList.add("is-edit-selected");
+      highlightedEditNotes = state.noteElements[editSelectedSlotIndex] ?? [];
+      highlightedEditNotes.forEach((element) => element.classList.add("is-edit-selected"));
     };
 
     const selectEditSlot = (slotIndex: number | null) => {
@@ -1736,7 +1737,7 @@ function makePlaybackVisuals(
   legendContainer: HTMLElement,
   getSpeedPercent: () => number
 ): { clearCursor: () => void; moveCursor: (slotIndex: number) => void } {
-  let highlightedNote: SVGGElement | null = null;
+  let highlightedNotes: SVGGElement[] = [];
   let legendTimer: number | null = null;
 
   const clearPlaybackLegendHighlight = () => {
@@ -1768,8 +1769,8 @@ function makePlaybackVisuals(
   const clearCursor = () => {
     state.cursor?.removeClass("is-active");
     state.cursor?.removeAttribute("style");
-    highlightedNote?.classList.remove("is-playing");
-    highlightedNote = null;
+    highlightedNotes.forEach((element) => element.classList.remove("is-playing"));
+    highlightedNotes = [];
     clearPlaybackLegendHighlight();
   };
 
@@ -1777,9 +1778,9 @@ function makePlaybackVisuals(
     const cursorPosition = state.cursorPositions[slotIndex];
 
     if (block.showHighlight) {
-      highlightedNote?.classList.remove("is-playing");
-      highlightedNote = state.noteElements[slotIndex] ?? null;
-      highlightedNote?.classList.add("is-playing");
+      highlightedNotes.forEach((element) => element.classList.remove("is-playing"));
+      highlightedNotes = state.noteElements[slotIndex] ?? [];
+      highlightedNotes.forEach((element) => element.classList.add("is-playing"));
       flashPlaybackLegendHighlight(block.slots[slotIndex]);
     } else {
       clearPlaybackLegendHighlight();

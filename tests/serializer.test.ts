@@ -41,6 +41,17 @@ HH | x-x-x-x-x-x-x-`);
     expect(out).not.toContain("2 + 2 + 3");
   });
 
+  it("round-trips split voicing and omits the single-voice default", () => {
+    const split = roundTrips(`Voicing: SPLIT
+HH | x-x-
+BD | o---`);
+    const single = serializeDrumBlock(parseDrumBlock(`Voicing: single
+HH | x---`));
+
+    expect(split).toContain("Voicing: split");
+    expect(single).not.toContain("Voicing:");
+  });
+
   it("round-trips inherited system Time and Grouping transitions", () => {
     const out = roundTrips(`Time: 4/4
 HH | x-x-x-x-x-x-x-x-

@@ -256,7 +256,7 @@ SD | OoooOoooOoooOooo`
 Tempo: 72
 Time: 4/4
 Grid: 16
-Subtitle: Diddle shorthand; ST marks the hand leading each double
+Subtitle: Even doubles; ST marks the hand leading each pair
 ST | R-L-R-L-R-L-R-L-
 SD | d-d-d-d-d-d-d-d-`
   },
@@ -360,7 +360,7 @@ SD | r-o-r-o-r-o-r-o-`
 Tempo: 68
 Time: 4/4
 Grid: 16
-Subtitle: Alternating buzz strokes ending with a clean release
+Subtitle: Overlapping buzz strokes ending with a clean release
 ST | R-L-R-L-R-L-R-L-
 SD | z-z-z-z-z-z-z-o-`
   },
@@ -447,6 +447,41 @@ HO | ----x-------x---
 HH | --x---x---x---x-
 SD | ----o-------o---
 BD | o-------o-------`
+  },
+
+  {
+    id: "split-drum-voicing",
+    name: "Split drum voicing",
+    category: "notation-features",
+    source: `Title: Split drum voicing
+Tempo: 96
+Time: 4/4
+Grid: 16
+Voicing: split
+Subtitle: Hands stem up; feet stem down
+ST  | R-L-R-L-R-L-R-L-
+HH  | x-x-x-x-x-x-x-x-
+SD  | ----o-------o---
+BD  | o-----o-o-------
+BD2 | ----------o-----
+HF  | ------------x---`
+  },
+
+  {
+    id: "split-voicing-with-rests",
+    name: "Split voicing with rests",
+    category: "notation-features",
+    source: `Title: Split voicing with rests
+Tempo: 80
+Time: 4/4
+Grid: 16
+Voicing: split
+Rests: on
+Subtitle: Shared rests appear once across both voices
+HH | x-x-x-x--------- | ----x-----------
+SD | ----o----------- | ------------o---
+BD | o--------------- | --------o-------
+HF | ---------------- | --------------x-`
   },
 
   {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  DRUM_KIT,
   getAllowedArticulations,
   getArticulation,
   getArticulationForKey,
@@ -109,6 +110,20 @@ describe("INSTRUMENTS_BY_ALIAS", () => {
     expect(INSTRUMENTS_BY_ALIAS.get("rd")?.vexKey).toBe("f/5/X");
     expect(INSTRUMENTS_BY_ALIAS.get("rb")?.vexKey).toBe("f/5/d2");
     expect(INSTRUMENTS_BY_ALIAS.get("cb")?.vexKey).toBe("e/5/X");
+  });
+
+  it("assigns only foot-played instruments to the lower notation voice", () => {
+    const lowerIds = DRUM_KIT
+      .filter((instrument) => instrument.notationVoice === "lower")
+      .map((instrument) => instrument.id);
+
+    expect(lowerIds).toEqual([
+      "hi-hat-foot",
+      "hi-hat-foot-splash",
+      "kick",
+      "second-kick"
+    ]);
+    expect(INSTRUMENTS_BY_ALIAS.get("ft")?.notationVoice).toBe("upper");
   });
 });
 

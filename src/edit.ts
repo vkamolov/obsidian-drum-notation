@@ -1192,12 +1192,13 @@ function defaultLabel(instrument: DrumInstrument): string {
 }
 
 function headerOf(block: DrumBlock): DrumBlockHeader {
-  const { tempo, timeSignature, beamGrouping, repeatCount, showCursor, showHighlight, showRests, legendMode, gridResolution, metadata } = block;
+  const { tempo, timeSignature, beamGrouping, voicing, repeatCount, showCursor, showHighlight, showRests, legendMode, gridResolution, metadata } = block;
 
   return {
     tempo,
     timeSignature,
     ...(beamGrouping ? { beamGrouping: [...beamGrouping] } : {}),
+    voicing,
     repeatCount,
     showCursor,
     showHighlight,

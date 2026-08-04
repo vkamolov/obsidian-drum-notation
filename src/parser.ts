@@ -17,6 +17,7 @@ import {
   DEFAULT_SHOW_RESTS,
   DEFAULT_TEMPO,
   DEFAULT_TIME_SIGNATURE,
+  DEFAULT_VOICING,
   DrumBar,
   DrumBlock,
   DrumBlockHeader,
@@ -95,6 +96,7 @@ const SETTING_KEYS = new Set([
   "timesignature",
   "meter",
   "grouping",
+  "voicing",
   "count",
   "repeat",
   "repeats",
@@ -119,6 +121,7 @@ const DIAGNOSTIC_SETTING_KEYS = new Set([
   "timesignature",
   "meter",
   "grouping",
+  "voicing",
   "repeat",
   "repeats",
   "cursor",
@@ -168,6 +171,7 @@ function parseDrumBlockInternal(source: string, collectWarnings: boolean): Parse
   let showCursor = DEFAULT_SHOW_CURSOR;
   let showHighlight = DEFAULT_SHOW_HIGHLIGHT;
   let showRests = DEFAULT_SHOW_RESTS;
+  let voicing = DEFAULT_VOICING;
   let legendMode = DEFAULT_LEGEND_MODE;
   let gridResolution = DEFAULT_GRID_RESOLUTION;
   const warn = (line: number, code: ParseWarningCode, message: string, column?: number) => {
@@ -297,6 +301,15 @@ function parseDrumBlockInternal(source: string, collectWarnings: boolean): Parse
         }
 
         showRests = parseBooleanSetting(setting.value, DEFAULT_SHOW_RESTS);
+      } else if (setting.key === "voicing") {
+        const normalized = normalizeLabel(setting.value);
+
+        if (normalized !== "single" && normalized !== "split") {
+          warn(lineNumber, "invalid-setting", `${setting.originalKey}: "${setting.value}" is not a recognized voicing mode; using ${DEFAULT_VOICING}.`);
+          voicing = DEFAULT_VOICING;
+        } else {
+          voicing = normalized;
+        }
       } else if (setting.key === "legend" || setting.key === "instrumentlegend" || setting.key === "kitlegend" || setting.key === "colorlegend") {
         if (!isLegendSettingValue(setting.value)) {
           warn(lineNumber, "invalid-setting", `${setting.originalKey}: "${setting.value}" is not a recognized legend mode; using ${DEFAULT_LEGEND_MODE}.`);
@@ -409,6 +422,7 @@ function parseDrumBlockInternal(source: string, collectWarnings: boolean): Parse
       showCursor,
       showHighlight,
       showRests,
+      voicing,
       legendMode,
       gridResolution,
       metadata

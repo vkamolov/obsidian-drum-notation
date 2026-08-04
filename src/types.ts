@@ -2,6 +2,7 @@ export interface DrumBlockHeader {
   tempo: number;
   timeSignature: string;
   beamGrouping?: number[];
+  voicing: DrumVoicingMode;
   repeatCount: number;
   showCursor: boolean;
   showHighlight: boolean;
@@ -184,6 +185,7 @@ export interface DrumInstrument {
   id: string;
   label: string;
   aliases: string[];
+  notationVoice: DrumNotationVoice;
   vexKey: string;
   midi: number;
   color: string;
@@ -214,12 +216,15 @@ export type DrumArticulation = "normal" | "accent" | "ghost" | "flam" | "drag" |
 export type StickingHand = "right" | "left" | "both";
 export type GridResolution = 16 | 32;
 export type LegendMode = "off" | "used" | "all";
+export type DrumVoicingMode = "single" | "split";
+export type DrumNotationVoice = "upper" | "lower";
 export type MetronomeMode = "off" | "with-drums" | "metronome-only";
 export type CountInMode = "off" | "1-bar";
 export type MeasureRepeat = 1;
 
 export const DEFAULT_TEMPO = 100;
 export const DEFAULT_TIME_SIGNATURE = "4/4";
+export const DEFAULT_VOICING: DrumVoicingMode = "single";
 export const DEFAULT_REPEAT_COUNT = 1;
 export const MAX_MEASURE_REPEAT_COUNT = 99;
 export const DEFAULT_SHOW_CURSOR = false;

@@ -235,6 +235,31 @@ SD | z--o`);
     expect(backend.scheduled[3].noteDuration).toBeCloseTo(getSecondsPerSlot(block));
   });
 
+  it("passes the inferred eighth-note duration to double-stroke diddles", async () => {
+    const block = parseDrumBlock(`Tempo: 72
+Grid: 16
+SD | d-d-d-d-d-d-d-d-`);
+    const backend = new FakePlaybackBackend();
+    const player = new DrumPlayer(
+      {} as AudioContext,
+      block,
+      vi.fn(),
+      vi.fn(),
+      {},
+      (() => backend) as DrumPlaybackBackendFactory
+    );
+
+    await player.play();
+
+    const diddles = backend.scheduled.filter((entry) =>
+      entry.hits.some((hit) => hit.articulation === "diddle")
+    );
+    const expectedDuration = getSecondsPerSlot(block) * 2;
+
+    expect(diddles).toHaveLength(8);
+    diddles.forEach((entry) => expect(entry.noteDuration).toBeCloseTo(expectedDuration));
+  });
+
   it.each([
     ["4/4", 16, [0, 4, 8, 12]],
     ["4/4", 32, [0, 8, 16, 24]],

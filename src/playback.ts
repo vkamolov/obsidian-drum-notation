@@ -36,6 +36,7 @@ const METRONOME_INSTRUMENT: DrumInstrument = {
   id: "metronome",
   label: "Metronome",
   aliases: [],
+  notationVoice: "upper",
   vexKey: "c/5",
   midi: 37,
   color: "#64748b",

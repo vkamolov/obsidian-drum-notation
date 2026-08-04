@@ -8,6 +8,7 @@ import {
   DEFAULT_SHOW_RESTS,
   DEFAULT_TEMPO,
   DEFAULT_TIME_SIGNATURE,
+  DEFAULT_VOICING,
   DrumBlock,
   DrumBar,
   DrumInstrument,
@@ -118,6 +119,10 @@ function serializeMinimalHeader(block: DrumBlock): string[] {
     lines.push(`Rests: ${block.showRests ? "on" : "off"}`);
   }
 
+  if (block.voicing !== DEFAULT_VOICING) {
+    lines.push(`Voicing: ${block.voicing}`);
+  }
+
   return lines;
 }
 
@@ -127,6 +132,7 @@ function serializeAuthoringBlock(block: DrumBlock): string {
     `Tempo: ${block.tempo}`,
     `Time: ${block.timeSignature}`,
     ...(block.beamGrouping ? [`Grouping: ${block.beamGrouping.join("+")}`] : []),
+    ...(block.voicing !== DEFAULT_VOICING ? [`Voicing: ${block.voicing}`] : []),
     `Grid: ${block.gridResolution}`
   ];
 
@@ -179,6 +185,7 @@ function isManagedAuthoringLine(line: string): boolean {
     "timesignature",
     "meter",
     "grouping",
+    "voicing",
     "repeat",
     "repeats",
     "grid",

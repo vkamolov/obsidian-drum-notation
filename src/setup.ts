@@ -11,6 +11,7 @@ import {
   DEFAULT_SHOW_RESTS,
   DEFAULT_TEMPO,
   DEFAULT_TIME_SIGNATURE,
+  DEFAULT_VOICING,
   DrumBlock,
   DrumBlockHeader,
   DrumInstrument,
@@ -178,6 +179,7 @@ function defaultHeader(): DrumBlockHeader {
     showCursor: DEFAULT_SHOW_CURSOR,
     showHighlight: DEFAULT_SHOW_HIGHLIGHT,
     showRests: DEFAULT_SHOW_RESTS,
+    voicing: DEFAULT_VOICING,
     legendMode: DEFAULT_LEGEND_MODE,
     gridResolution: DEFAULT_GRID_RESOLUTION,
     metadata: []
@@ -193,6 +195,7 @@ function toHeader(block: DrumBlock): DrumBlockHeader {
     showCursor: block.showCursor,
     showHighlight: block.showHighlight,
     showRests: block.showRests,
+    voicing: block.voicing,
     legendMode: block.legendMode,
     gridResolution: block.gridResolution,
     metadata: [...block.metadata]

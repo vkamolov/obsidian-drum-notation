@@ -67,6 +67,7 @@ before that system's rows to avoid a late-setting advisory warning.
 | `Tempo` | `BPM` | integer | `100` | Clamped to 30–260 |
 | `Time` | `Time Signature`, `Meter` | `n/n` | `4/4` | 1–2 digits each |
 | `Grouping` | — | positive integers joined by `+`, or `auto` | unset | Beam grouping for `/8` and `/16` meters; groups must sum to the numerator |
+| `Voicing` | — | `single` or `split` | `single` | One up-stem voice, or separate hand/foot voices |
 | `Repeat` | `Repeats` | integer | `1` | Clamped to 1–64 |
 | `Grid` | `Subdivision`, `Resolution` | `16` or `32` | `16` | One character = one grid slot |
 | `Legend` | `Instrument Legend`, `Kit Legend`, `Color Legend` | `off` / `used` / `all` | `off` | Color key visibility |
@@ -98,6 +99,28 @@ timing, metronome/count-in pulses, and cursor positions remain unchanged.
 Unsupported meters, malformed groups, zero values, or totals that do not match
 the effective meter numerator produce an advisory warning and fall back to
 normal meter grouping.
+
+### Drum voicing
+
+`Voicing: single` is the default and engraves the complete kit in one up-stem
+voice. `Voicing: split` assigns hand-played instruments to an upper, up-stem
+voice and assigns kick (`BD`), second kick (`BD2`), hi-hat foot (`HF`), and
+hi-hat foot splash (`HFS`) to a lower, down-stem voice. All other built-in
+instruments, including floor toms, remain in the upper voice.
+
+Both voices share the same absolute timeline but infer note durations and beams
+independently. Each active voice is padded to the complete bar duration with
+hidden alignment rests. Inferred whole-kit rests are drawn only once: in the
+upper voice when it exists, otherwise in the lower voice. `Rests: off` hides
+those shared symbols but leaves all timing and alignment tickables in place.
+Tuplet timing is applied to each voice independently, with one tuplet indicator
+drawn above an upper-voice region or below a lower-only region.
+
+Voicing changes engraving only. It does not change notation rows, playback,
+metronome timing, repeats, visual editing, or bar clipboard content. Invalid
+values produce an advisory `invalid-setting` warning and fall back to
+`Voicing: single`. Serialization omits the default and emits `Voicing: split`
+when enabled.
 
 ### System subtitles
 
@@ -303,8 +326,8 @@ Every pattern character is either a **rest** or a **hit with an articulation**.
 | `g` | Ghost note (parenthesized, quieter) | 0.2 |
 | `f` | Flam (grace note + connector) | 0.75 |
 | `r` | Drag / ruff (two beamed grace notes + connector) | 0.75 |
-| `d` | Diddle (two hits inside the slot) | 0.75 |
-| `z`, `Z` | Buzz / press roll | 0.68 |
+| `d` | Diddle; two strokes divide the inferred note value evenly | 0.75 |
+| `z`, `Z` | Buzz / press roll with a short overlapping release tail | 0.68 |
 | `c` | Choked cymbal (short cymbal hit with plus mark) | 0.9 |
 | `-`, `.`, `_`, space | Rest (no hit) | — |
 
@@ -545,8 +568,10 @@ BD | o-------o-------
 
 ### Diddle
 
-A diddle (`d`) is two hits inside one slot — the basis of double-stroke rolls.
-Here the snare plays paradiddle stickings against a steady hi-hat:
+A diddle (`d`) divides its inferred rendered note value into two evenly spaced
+hits—the basis of double-stroke rolls. For example, each `d` in `d-d-` is an
+eighth-note diddle and therefore plays two sixteenth-note strokes. Here the
+snare plays paradiddle stickings against a steady hi-hat:
 
 ```drums
 Title: Diddle groove
@@ -557,8 +582,9 @@ BD | o-------o-------
 
 ### Buzz / press roll
 
-A buzz roll (`z`) sustains as a closed snare-roll texture. End a long roll with a
-normal release note:
+A buzz roll (`z`) sustains as a closed snare-roll texture. Consecutive buzz
+strokes use short overlapping release tails so the texture does not fall silent
+between notes. End a long roll with a normal release note:
 
 ```drums
 Title: Two-beat buzz roll
@@ -671,6 +697,8 @@ To stay deterministic and diff-friendly, serialization **normalizes**:
   `c`).
 - Rests collapse to `-`.
 - Settings left at their default are **omitted** (they re-parse to the default).
+- Split voicing serializes canonically as `Voicing: split`; single voicing is
+  omitted as the default.
 - Explicit beam grouping normalizes to `Grouping: n+n+…`.
 - Effective system meter changes serialize as `Time: n/n` immediately after
   `Bar`. Grouping transitions serialize beside them; clearing inherited
