@@ -144,7 +144,7 @@ the **first** import in `app.ts`. `engrave.ts` itself was **not** changed.
 
 ```bash
 npm ci
-npm test            # expect: 161 passed
+npm test            # expect the full unit suite to pass
 npm run build       # plugin build: tsc + esbuild, no errors; emits main.js
 npm run web:build   # vite build, no errors; emits web/dist/ (JS ~1.17MB — VexFlow; size warning is advisory only)
 npm run web:typecheck
@@ -185,6 +185,21 @@ In the browser at `localhost:5173`:
 Console should be free of errors/warnings.
 
 ## Known limitations / things to scrutinize
+
+- **Agent verification privacy:** source PNG/JPEG/WebP images, pasted agent
+  responses, reports, and review state remain ephemeral. Only an explicit Save
+  writes normalized notation to the existing playground `localStorage` key.
+- **Agent verification limits:** responses are capped at 1 MiB, with at most 16
+  `drums` blocks and 128 KiB per block. Source images are checked before decode
+  at 15 MiB and after decode at 10,000 pixels per side / 40 megapixels. SVG is
+  rejected. PDF comparison currently uses page screenshots.
+- **Production CSP:** GitHub Pages receives a strict meta CSP from the Vite
+  production build. Meta CSP cannot enforce `frame-ancestors` or emit violation
+  reports. `style-src-attr` is a CSP Level 3 directive, so older browsers may
+  fall back to `style-src`; the source-sink check remains the standing control.
+  CSP is not claimed to block CSSOM property writes. `worker-src 'none'` must
+  become `'self'` if local audio transcription later adds a same-origin module
+  worker; add `blob:` only if testing proves it necessary.
 
 - **Edit-mode contiguous-prefix rule:** adding a hit to a *later* bar where an
   instrument is absent materializes empty rest-rows in earlier bars (preserves

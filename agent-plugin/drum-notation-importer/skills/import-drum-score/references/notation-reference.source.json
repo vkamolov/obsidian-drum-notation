@@ -1,0 +1,5 @@
+{
+  "source": "docs/notation-format.md",
+  "normalization": "strip-bom-and-normalize-newlines",
+  "sha256": "e10262d5688a33e3d8a3f88c8ac2b9058d588043280c3ade4f5a3284c4224cc6"
+}

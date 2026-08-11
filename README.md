@@ -775,7 +775,22 @@ contents.
 
 The web playground runs entirely in the browser. It uses `localStorage` to keep
 the current playground notation and light/dark preference for the current
-browser profile. It does not send notation to a server.
+browser profile. Its **Verify agent result** workspace keeps pasted responses,
+source images, import reports, and review state only in the current tab. An
+explicit save stores normalized notation only. The site does not read the
+clipboard, call a model, accept browser API keys, or send notation or images to
+a server.
+
+## Drum Notation Importer Agent Plugin
+
+The repository also contains the independently versioned
+`drum-notation-importer` Agent Plugin. Version 0.1 transcribes clean printed
+drum-score images or visually exposed PDF pages into `drums` blocks, validates
+them locally against the same parser used here, and reports ambiguities and
+format workarounds. Audio transcription and hosted inference are not included.
+
+Importer releases use tags such as `agent-plugin-v0.1.0`; they do not change
+the Obsidian plugin version or release assets.
 
 ## License And Third-Party Notices
 

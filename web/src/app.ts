@@ -44,6 +44,7 @@ import {
 import { DrumPlayer } from "../../src/player";
 import { getMeasureRepeatProgress } from "../../src/repeat-progress";
 import { serializeDrumBlock } from "../../src/serializer";
+import { validateDrumNotation } from "../../src/validation";
 import { setGrid, setRepeatCount, setTempo, setTimeSignature } from "../../src/edit";
 import { createSynthPlaybackBackend } from "../../src/synth";
 import {
@@ -72,6 +73,18 @@ import {
   RepeatBarDialogResult
 } from "../../src/editor-grid";
 import { createIconSvg } from "./icons";
+import {
+  compareReportCore,
+  detectRasterImageKind,
+  DrumImportReport,
+  extractAgentResponse,
+  HumanReviewState,
+  isAllowedRasterDimensions,
+  ImportReportState,
+  MAX_SOURCE_IMAGE_BYTES,
+  MAX_SOURCE_IMAGE_PIXELS,
+  MAX_SOURCE_IMAGE_SIDE
+} from "./importer";
 
 const STORAGE_KEY = "drum-playground.notation";
 const THEME_KEY = "drum-playground.theme";
@@ -123,6 +136,27 @@ const modelOut = $<HTMLDivElement>("pg-model");
 const normalizedOut = $<HTMLPreElement>("pg-normalized");
 const normalizedFlag = $<HTMLSpanElement>("pg-normalized-flag");
 const notesOut = $<HTMLDivElement>("pg-notes");
+const playgroundModeBtn = $<HTMLButtonElement>("pg-mode-playground");
+const verifyModeBtn = $<HTMLButtonElement>("pg-mode-verify");
+const verifyPanel = $<HTMLElement>("pg-verify-panel");
+const importPrompt = $<HTMLPreElement>("pg-import-prompt");
+const copyPromptBtn = $<HTMLButtonElement>("pg-copy-prompt");
+const sourceFileInput = $<HTMLInputElement>("pg-source-file");
+const agentResponseInput = $<HTMLTextAreaElement>("pg-agent-response");
+const extractResponseBtn = $<HTMLButtonElement>("pg-extract-response");
+const clearVerificationBtn = $<HTMLButtonElement>("pg-clear-verification");
+const verificationUndoBtn = $<HTMLButtonElement>("pg-verify-undo");
+const saveVerifiedBtn = $<HTMLButtonElement>("pg-save-verified");
+const verificationMessage = $<HTMLParagraphElement>("pg-verify-message");
+const segmentTabs = $<HTMLDivElement>("pg-segment-tabs");
+const signalParser = $<HTMLElement>("pg-signal-parser");
+const signalReport = $<HTMLElement>("pg-signal-report");
+const signalAgent = $<HTMLElement>("pg-signal-agent");
+const humanReviewSelect = $<HTMLSelectElement>("pg-human-review");
+const signalCore = $<HTMLElement>("pg-signal-core");
+const sourcePane = $<HTMLElement>("pg-source-pane");
+const sourceEmpty = $<HTMLParagraphElement>("pg-source-empty");
+const sourceImage = $<HTMLImageElement>("pg-source-image");
 
 /* ---------- render state ---------- */
 let currentBlock: DrumBlock | null = null;
@@ -149,6 +183,22 @@ let isApplyingGridEdit = false;
 let audioRecoveryWarning: string | null = null;
 let gridEditorMessage: string | null = null;
 const barClipboard = new DrumBarClipboardStore();
+
+interface VerificationSegmentState {
+  source: string;
+  edited: string;
+  humanReview: HumanReviewState;
+}
+
+let verificationActive = false;
+let playgroundDraftSnapshot = "";
+let verificationSegments: VerificationSegmentState[] = [];
+let selectedVerificationSegment = -1;
+let verificationReport: DrumImportReport | null = null;
+let verificationReportState: ImportReportState = "missing";
+let verificationResponseErrors: string[] = [];
+let verificationUndoStack: string[] = [];
+let sourceObjectUrl: string | null = null;
 
 barClipboard.subscribe(() => {
   gridEditorMessage = null;
@@ -309,6 +359,9 @@ function renderPreview(): void {
 
   syncControls(block);
   updateDiagnostics(block, editor.value);
+  if (verificationActive) {
+    renderVerificationSignals();
+  }
   if (gridEditor && (block.containsTupletSyntax || hasSystemOverrides)) {
     exitEditMode();
     gridEditorMessage = editDescription;
@@ -1222,6 +1275,7 @@ function syncControls(block: DrumBlock): void {
 // rewrite the editor in authoring form. The core serializer still owns the
 // deterministic normalized form used in diagnostics.
 function applyEditedBlock(next: DrumBlock): void {
+  recordVerificationUndo();
   dismissManualCopyText();
   editor.value = serializeDrumBlock(next, { mode: "authoring" });
   persist();
@@ -1230,6 +1284,7 @@ function applyEditedBlock(next: DrumBlock): void {
 
 function applyGridEditedBlock(next: DrumBlock, changedSlotIndex?: number, nextSelectedBarIndex?: number): void {
   const restartPlayback = capturePlaybackRestart();
+  recordVerificationUndo();
   dismissManualCopyText();
   gridEditorMessage = null;
 
@@ -1410,9 +1465,290 @@ function formatParseWarning(warning: ParseWarning): string {
   return `${location}: ${warning.message}`;
 }
 
+/* ---------- agent-result verification ---------- */
+function setVerificationMessage(message: string, error = false): void {
+  verificationMessage.textContent = message;
+  verificationMessage.classList.toggle("is-error", error);
+}
+
+function saveCurrentVerificationText(): void {
+  const segment = verificationSegments[selectedVerificationSegment];
+  if (verificationActive && segment) {
+    segment.edited = editor.value;
+  }
+}
+
+function updateVerificationUndoButton(): void {
+  verificationUndoBtn.disabled = !verificationActive || verificationUndoStack.length === 0;
+}
+
+function recordVerificationUndo(): void {
+  if (!verificationActive || selectedVerificationSegment < 0) {
+    return;
+  }
+  if (verificationUndoStack[verificationUndoStack.length - 1] !== editor.value) {
+    verificationUndoStack.push(editor.value);
+    if (verificationUndoStack.length > 50) {
+      verificationUndoStack.shift();
+    }
+  }
+  updateVerificationUndoButton();
+}
+
+function renderSegmentTabs(): void {
+  segmentTabs.replaceChildren();
+  verificationSegments.forEach((segment, index) => {
+    const reportSegment = verificationReport?.segments.find((candidate) => candidate.blockIndex === index);
+    const button = segmentTabs.createEl("button", {
+      cls: `pg-segment-tab${index === selectedVerificationSegment ? " is-active" : ""}`,
+      text: reportSegment?.title?.trim() || `Segment ${index + 1}`,
+      attr: {
+        type: "button",
+        role: "tab",
+        "aria-selected": index === selectedVerificationSegment ? "true" : "false"
+      }
+    });
+    button.addEventListener("click", () => selectVerificationSegment(index));
+    button.title = segment.source.slice(0, 120);
+  });
+}
+
+function selectVerificationSegment(index: number): void {
+  if (index < 0 || index >= verificationSegments.length) {
+    return;
+  }
+  stopPlayback();
+  exitEditMode();
+  saveCurrentVerificationText();
+  selectedVerificationSegment = index;
+  verificationUndoStack = [];
+  editor.value = verificationSegments[index].edited;
+  humanReviewSelect.value = verificationSegments[index].humanReview;
+  renderSegmentTabs();
+  renderPreview();
+  updateVerificationUndoButton();
+}
+
+function renderVerificationSignals(): void {
+  if (!verificationActive || selectedVerificationSegment < 0) {
+    signalParser.textContent = "Waiting for a segment";
+    signalReport.textContent = verificationReportState === "malformed" ? "Malformed" : "Not supplied";
+    signalAgent.textContent = "Unavailable";
+    signalCore.textContent = "Unavailable";
+    saveVerifiedBtn.disabled = true;
+    return;
+  }
+
+  const local = validateDrumNotation(editor.value);
+  signalParser.textContent = local.status === "clean"
+    ? "Valid · clean"
+    : local.status === "warnings"
+      ? `Valid · ${local.warnings.length} warning${local.warnings.length === 1 ? "" : "s"}`
+      : `Invalid · ${local.errors.join(" ")}`;
+  signalReport.textContent = verificationReportState === "valid"
+    ? "Schema v1 valid"
+    : verificationReportState === "malformed"
+      ? "Malformed · ignored"
+      : "Not supplied";
+
+  const reportSegment = verificationReport?.segments.find((segment) => segment.blockIndex === selectedVerificationSegment);
+  if (!reportSegment) {
+    signalAgent.textContent = "Unavailable";
+  } else if (reportSegment.validationStatus === "unavailable") {
+    signalAgent.textContent = "Validation unavailable";
+  } else {
+    const agrees = reportSegment.validationStatus === local.status;
+    signalAgent.textContent = `${reportSegment.validationStatus}${agrees ? " · agrees" : " · differs locally"}`;
+  }
+
+  const compatibility = compareReportCore(verificationReport, __NOTATION_CORE_VERSION__, __NOTATION_CORE_DIGEST__);
+  if (compatibility === "unavailable") {
+    signalCore.textContent = `Page ${__NOTATION_CORE_VERSION__} · report unavailable`;
+  } else if (compatibility === "same") {
+    signalCore.textContent = `Compatible · ${__NOTATION_CORE_VERSION__}`;
+  } else {
+    signalCore.textContent = `Transcribed against notation core ${verificationReport?.notationCoreVersion}; this page validates against ${__NOTATION_CORE_VERSION__}.`;
+  }
+
+  const segment = verificationSegments[selectedVerificationSegment];
+  humanReviewSelect.value = segment.humanReview;
+  saveVerifiedBtn.disabled = local.status === "invalid";
+}
+
+function enterVerificationMode(): void {
+  if (verificationActive) {
+    return;
+  }
+  playgroundDraftSnapshot = editor.value;
+  verificationActive = true;
+  activeDocument.body.classList.add("pg-verifying");
+  verifyPanel.hidden = false;
+  sourcePane.hidden = false;
+  playgroundModeBtn.classList.remove("is-active");
+  playgroundModeBtn.setAttribute("aria-pressed", "false");
+  verifyModeBtn.classList.add("is-active");
+  verifyModeBtn.setAttribute("aria-pressed", "true");
+  exampleSelect.disabled = true;
+  renderSegmentTabs();
+  renderVerificationSignals();
+}
+
+function exitVerificationModeToDraft(): void {
+  if (!verificationActive) {
+    return;
+  }
+  saveCurrentVerificationText();
+  stopPlayback();
+  exitEditMode();
+  verificationActive = false;
+  activeDocument.body.classList.remove("pg-verifying");
+  verifyPanel.hidden = true;
+  sourcePane.hidden = true;
+  playgroundModeBtn.classList.add("is-active");
+  playgroundModeBtn.setAttribute("aria-pressed", "true");
+  verifyModeBtn.classList.remove("is-active");
+  verifyModeBtn.setAttribute("aria-pressed", "false");
+  exampleSelect.disabled = false;
+  editor.value = playgroundDraftSnapshot;
+  verificationUndoStack = [];
+  renderPreview();
+  updateVerificationUndoButton();
+}
+
+function extractVerificationResponse(): void {
+  enterVerificationMode();
+  const extracted = extractAgentResponse(agentResponseInput.value);
+  verificationReport = extracted.report;
+  verificationReportState = extracted.reportState;
+  verificationResponseErrors = extracted.errors;
+  verificationSegments = extracted.segments.map((segment) => ({
+    source: segment.source,
+    edited: segment.source,
+    humanReview: "unreviewed"
+  }));
+
+  if (verificationSegments.length === 0) {
+    selectedVerificationSegment = -1;
+    renderSegmentTabs();
+    renderVerificationSignals();
+    setVerificationMessage(verificationResponseErrors.join(" ") || "No usable notation segments found.", true);
+    return;
+  }
+
+  const suffix = verificationResponseErrors.length > 0 ? ` ${verificationResponseErrors.join(" ")}` : "";
+  setVerificationMessage(
+    `Extracted ${verificationSegments.length} segment${verificationSegments.length === 1 ? "" : "s"}. Source, report, and review state remain ephemeral.${suffix}`,
+    verificationResponseErrors.length > 0
+  );
+  selectVerificationSegment(0);
+}
+
+function clearSourceImage(): void {
+  if (sourceObjectUrl) {
+    URL.revokeObjectURL(sourceObjectUrl);
+    sourceObjectUrl = null;
+  }
+  sourceImage.removeAttribute("src");
+  sourceImage.hidden = true;
+  sourceEmpty.hidden = false;
+}
+
+async function loadSourceImage(file: File | undefined): Promise<void> {
+  clearSourceImage();
+  if (!file) {
+    return;
+  }
+  if (file.size > MAX_SOURCE_IMAGE_BYTES) {
+    setVerificationMessage(`Image exceeds ${MAX_SOURCE_IMAGE_BYTES} bytes.`, true);
+    sourceFileInput.value = "";
+    return;
+  }
+
+  const signature = new Uint8Array(await file.slice(0, 16).arrayBuffer());
+  const kind = detectRasterImageKind(signature);
+  if (!kind) {
+    setVerificationMessage("Only raster PNG, JPEG, and WebP images are accepted. SVG and unknown formats are rejected.", true);
+    sourceFileInput.value = "";
+    return;
+  }
+
+  const objectUrl = URL.createObjectURL(file);
+  const candidate = new Image();
+  candidate.src = objectUrl;
+  try {
+    await candidate.decode();
+  } catch {
+    URL.revokeObjectURL(objectUrl);
+    setVerificationMessage("The selected image could not be decoded.", true);
+    sourceFileInput.value = "";
+    return;
+  }
+
+  if (!isAllowedRasterDimensions(candidate.naturalWidth, candidate.naturalHeight)) {
+    URL.revokeObjectURL(objectUrl);
+    setVerificationMessage(`Decoded image exceeds ${MAX_SOURCE_IMAGE_SIDE}px per side or ${MAX_SOURCE_IMAGE_PIXELS} total pixels.`, true);
+    sourceFileInput.value = "";
+    return;
+  }
+
+  sourceObjectUrl = objectUrl;
+  sourceImage.src = objectUrl;
+  sourceImage.hidden = false;
+  sourceEmpty.hidden = true;
+  setVerificationMessage(`${kind.toUpperCase()} source loaded locally (${candidate.naturalWidth}×${candidate.naturalHeight}).`);
+}
+
+function clearVerificationWorkspace(): void {
+  stopPlayback();
+  exitEditMode();
+  verificationSegments = [];
+  selectedVerificationSegment = -1;
+  verificationReport = null;
+  verificationReportState = "missing";
+  verificationResponseErrors = [];
+  verificationUndoStack = [];
+  agentResponseInput.value = "";
+  sourceFileInput.value = "";
+  clearSourceImage();
+  editor.value = playgroundDraftSnapshot;
+  renderSegmentTabs();
+  renderPreview();
+  updateVerificationUndoButton();
+  setVerificationMessage("Verification workspace cleared. Your saved playground draft was not changed.");
+}
+
+function undoVerificationEdit(): void {
+  const previous = verificationUndoStack.pop();
+  if (previous === undefined) {
+    return;
+  }
+  editor.value = previous;
+  saveCurrentVerificationText();
+  renderPreview();
+  updateVerificationUndoButton();
+}
+
+function saveVerifiedNotation(): void {
+  if (!verificationActive || !currentBlock || selectedVerificationSegment < 0) {
+    return;
+  }
+  const validated = validateDrumNotation(editor.value);
+  if (validated.status === "invalid") {
+    setVerificationMessage("Invalid notation cannot be saved to the playground.", true);
+    return;
+  }
+  playgroundDraftSnapshot = validated.normalized;
+  savePlaygroundValue(STORAGE_KEY, validated.normalized);
+  setVerificationMessage("Saved normalized notation only. The source image and import report were not persisted.");
+}
+
 /* ---------- persistence & examples ---------- */
 function persist(): void {
-  savePlaygroundValue(STORAGE_KEY, editor.value);
+  if (verificationActive) {
+    saveCurrentVerificationText();
+  } else {
+    savePlaygroundValue(STORAGE_KEY, editor.value);
+  }
 }
 
 function populateExamples(): void {
@@ -1681,6 +2017,11 @@ function init(): void {
     renderPreview();
     restartPlayback();
   }, 250);
+  editor.addEventListener("beforeinput", (event) => {
+    if (event.inputType !== "historyUndo" && event.inputType !== "historyRedo") {
+      recordVerificationUndo();
+    }
+  });
   editor.addEventListener("input", () => {
     dismissManualCopyText();
     onEdit();
@@ -1822,6 +2163,28 @@ function init(): void {
     const dark = activeDocument.body.classList.toggle("theme-dark");
     savePlaygroundValue(THEME_KEY, dark ? "dark" : "light");
   });
+
+  playgroundModeBtn.addEventListener("click", exitVerificationModeToDraft);
+  verifyModeBtn.addEventListener("click", enterVerificationMode);
+  copyPromptBtn.addEventListener("click", () => {
+    void copyText(copyPromptBtn, importPrompt.textContent ?? "");
+  });
+  extractResponseBtn.addEventListener("click", extractVerificationResponse);
+  clearVerificationBtn.addEventListener("click", clearVerificationWorkspace);
+  verificationUndoBtn.addEventListener("click", undoVerificationEdit);
+  saveVerifiedBtn.addEventListener("click", saveVerifiedNotation);
+  sourceFileInput.addEventListener("change", () => {
+    void loadSourceImage(sourceFileInput.files?.[0]);
+  });
+  humanReviewSelect.addEventListener("change", () => {
+    const segment = verificationSegments[selectedVerificationSegment];
+    if (segment) {
+      segment.humanReview = humanReviewSelect.value as HumanReviewState;
+      renderVerificationSignals();
+    }
+  });
+  window.addEventListener("pagehide", clearSourceImage);
+  window.addEventListener("beforeunload", clearSourceImage);
 
   // Refit the score to the pane width (debounced; skip no-op width changes).
   let lastWidth = 0;

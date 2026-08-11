@@ -9,6 +9,10 @@
     <header class="pg-topbar">
       <div class="pg-topbar__head">
         <div class="pg-brand">drum notation <span>· playground</span></div>
+        <nav class="pg-mode-switch" aria-label="Workspace">
+          <button id="pg-mode-playground" class="pg-mode-switch__button is-active" type="button" aria-pressed="true">Playground</button>
+          <button id="pg-mode-verify" class="pg-mode-switch__button" type="button" aria-pressed="false">Verify agent result</button>
+        </nav>
       </div>
 
       <div class="pg-toolbar" aria-label="Playground toolbar">
@@ -92,7 +96,62 @@
       </div>
     </header>
 
+    <section id="pg-verify-panel" class="pg-verify-panel" aria-label="Agent-result verification" hidden>
+      <div class="pg-verify-onboarding">
+        <div>
+          <strong>1. Run the importer in your agent</strong>
+          <p>Install the extracted <code>drum-notation-importer</code> Agent Plugin directory in a supported client, then attach a clean printed drum-score image. For PDFs, attach a page screenshot when your agent cannot see pages directly.</p>
+        </div>
+        <details>
+          <summary>Exact transcription prompt</summary>
+          <pre id="pg-import-prompt" class="pg-import-prompt">Use the import-drum-score skill to transcribe this clean printed drum score into Obsidian Drum Notation. Ask before guessing any material ambiguity. Return fenced drums blocks followed by a fenced drum-import-report JSON block.</pre>
+          <button id="pg-copy-prompt" class="pg-btn pg-btn--small" type="button">Copy prompt</button>
+        </details>
+      </div>
+      <div class="pg-verify-inputs">
+        <label class="pg-verify-field">
+          <span>2. Source image (local only)</span>
+          <input id="pg-source-file" type="file" accept="image/png,image/jpeg,image/webp" />
+        </label>
+        <label class="pg-verify-field pg-verify-field--response">
+          <span>3. Paste the complete agent response</span>
+          <textarea id="pg-agent-response" spellcheck="false" autocomplete="off" placeholder="Paste fenced drums blocks and the optional drum-import-report here"></textarea>
+        </label>
+        <div class="pg-verify-actions">
+          <button id="pg-extract-response" class="pg-btn pg-btn--accent" type="button">Extract and verify</button>
+          <button id="pg-clear-verification" class="pg-btn" type="button">Clear</button>
+          <button id="pg-verify-undo" class="pg-btn" type="button" disabled>Undo</button>
+          <button id="pg-save-verified" class="pg-btn" type="button" disabled>Save selected to playground</button>
+        </div>
+      </div>
+      <p id="pg-verify-message" class="pg-verify-message" role="status"></p>
+      <div id="pg-segment-tabs" class="pg-segment-tabs" role="tablist" aria-label="Imported segments"></div>
+      <dl class="pg-signal-grid" aria-label="Verification signals">
+        <div><dt>Local parser</dt><dd id="pg-signal-parser">Waiting</dd></div>
+        <div><dt>Import report</dt><dd id="pg-signal-report">Not supplied</dd></div>
+        <div><dt>Agent claim</dt><dd id="pg-signal-agent">Unavailable</dd></div>
+        <div>
+          <dt>Human review</dt>
+          <dd>
+            <select id="pg-human-review" aria-label="Human review state">
+              <option value="unreviewed">Not reviewed</option>
+              <option value="needs-changes">Needs changes</option>
+              <option value="approved">Approved</option>
+            </select>
+          </dd>
+        </div>
+        <div><dt>Notation core</dt><dd id="pg-signal-core">Unavailable</dd></div>
+      </dl>
+    </section>
+
     <main class="pg-main">
+      <section id="pg-source-pane" class="pg-pane pg-pane--source" hidden>
+        <div class="pg-pane__head">source image</div>
+        <div class="pg-source-scroll">
+          <p id="pg-source-empty" class="pg-source-empty">Choose a PNG, JPEG, or WebP score image. Images stay in this browser tab and are never saved.</p>
+          <img id="pg-source-image" class="pg-source-image" alt="Locally selected drum-score source" hidden />
+        </div>
+      </section>
       <section class="pg-pane pg-pane--editor">
         <div class="pg-pane__head">Obsidian-ready notation</div>
         <textarea id="pg-editor" class="pg-editor" spellcheck="false" autocomplete="off"

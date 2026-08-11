@@ -2,7 +2,6 @@ name: CI
 
 on:
   push:
-    branches: [main]
   pull_request:
     branches: [main]
 
@@ -33,3 +32,15 @@ jobs:
 
       - name: Typecheck web playground
         run: npm run web:typecheck
+
+      - name: Verify agent plugin and security invariants
+        run: |
+          npm run check:agent-plugin
+          npm run security:style-sinks
+          npm run check:third-party
+
+      - name: Install browser test engines
+        run: npx playwright install --with-deps chromium webkit
+
+      - name: Test production CSP and verifier
+        run: npm run web:test:csp

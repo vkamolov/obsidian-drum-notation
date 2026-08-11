@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["anonymousId", "stratum", "features", "navigationBlocked", "workaroundSeverity", "notationEventCount", "ambiguityCount", "ambiguityRate", "firstPassStatus", "correctionEffort", "outcome"],
+  "properties": {
+    "anonymousId": { "type": "string", "pattern": "^chart-[0-9]{2,3}$" },
+    "stratum": { "enum": ["practice", "full-song-gig"] },
+    "features": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "navigationBlocked": { "type": "boolean" },
+    "workaroundSeverity": { "enum": ["none", "appearance", "structure", "meaning", "blocked"] },
+    "notationEventCount": { "type": "integer", "minimum": 1 },
+    "ambiguityCount": { "type": "integer", "minimum": 0 },
+    "ambiguityRate": { "type": "number", "minimum": 0, "maximum": 1, "description": "ambiguityCount divided by notationEventCount" },
+    "firstPassStatus": { "enum": ["clean", "warnings", "invalid", "unavailable"] },
+    "correctionEffort": { "enum": ["none", "quick", "moderate", "slow"] },
+    "outcome": { "enum": ["usable", "usable-after-correction", "not-usable"] },
+    "replacementReason": { "type": "string" }
+  }
+}

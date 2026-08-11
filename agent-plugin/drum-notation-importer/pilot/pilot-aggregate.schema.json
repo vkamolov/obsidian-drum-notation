@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "plannedSampleSize", "plannedMix", "completed", "status", "featureFrequency", "workaroundSeverity", "ambiguity", "firstPassStatus", "correctionEffort", "outcome", "navigationBlocked"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "plannedSampleSize": { "enum": [20, 30] },
+    "plannedMix": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["practice", "fullSongGig"],
+      "properties": {
+        "practice": { "type": "integer", "minimum": 0 },
+        "fullSongGig": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "completed": { "type": "integer", "minimum": 0, "maximum": 30 },
+    "status": { "enum": ["not-started", "in-progress", "extension-preselected", "decision-required", "complete"] },
+    "featureFrequency": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } },
+    "workaroundSeverity": { "$ref": "#/$defs/severityCounts" },
+    "ambiguity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["count", "notationEventCount", "rate"],
+      "properties": {
+        "count": { "type": "integer", "minimum": 0 },
+        "notationEventCount": { "type": "integer", "minimum": 0 },
+        "rate": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "firstPassStatus": { "$ref": "#/$defs/statusCounts" },
+    "correctionEffort": { "$ref": "#/$defs/effortCounts" },
+    "outcome": { "$ref": "#/$defs/outcomeCounts" },
+    "navigationBlocked": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["count", "rate"],
+      "properties": {
+        "count": { "type": "integer", "minimum": 0 },
+        "rate": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "decisionRecord": { "type": ["string", "null"] }
+  },
+  "$defs": {
+    "severityCounts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["none", "appearance", "structure", "meaning", "blocked"],
+      "properties": {
+        "none": { "type": "integer", "minimum": 0 },
+        "appearance": { "type": "integer", "minimum": 0 },
+        "structure": { "type": "integer", "minimum": 0 },
+        "meaning": { "type": "integer", "minimum": 0 },
+        "blocked": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "statusCounts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["clean", "warnings", "invalid", "unavailable"],
+      "properties": {
+        "clean": { "type": "integer", "minimum": 0 },
+        "warnings": { "type": "integer", "minimum": 0 },
+        "invalid": { "type": "integer", "minimum": 0 },
+        "unavailable": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "effortCounts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["none", "quick", "moderate", "slow"],
+      "properties": {
+        "none": { "type": "integer", "minimum": 0 },
+        "quick": { "type": "integer", "minimum": 0 },
+        "moderate": { "type": "integer", "minimum": 0 },
+        "slow": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "outcomeCounts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["usable", "usableAfterCorrection", "notUsable"],
+      "properties": {
+        "usable": { "type": "integer", "minimum": 0 },
+        "usableAfterCorrection": { "type": "integer", "minimum": 0 },
+        "notUsable": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

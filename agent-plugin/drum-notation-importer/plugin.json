@@ -1,0 +1,20 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "drum-notation-importer",
+  "version": "0.1.0",
+  "description": "Transcribe printed drum scores into validated Obsidian Drum Notation.",
+  "author": {
+    "name": "vkamolov",
+    "url": "https://github.com/vkamolov"
+  },
+  "homepage": "https://vkamolov.github.io/obsidian-drum-notation/",
+  "repository": "https://github.com/vkamolov/obsidian-drum-notation",
+  "license": "MIT",
+  "keywords": [
+    "drums",
+    "music-notation",
+    "transcription",
+    "obsidian",
+    "practice"
+  ]
+}

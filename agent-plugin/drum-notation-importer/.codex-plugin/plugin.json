@@ -1,0 +1,35 @@
+{
+  "name": "drum-notation-importer",
+  "version": "0.1.0",
+  "description": "Transcribe printed drum scores into validated Obsidian Drum Notation.",
+  "author": {
+    "name": "vkamolov",
+    "url": "https://github.com/vkamolov"
+  },
+  "homepage": "https://vkamolov.github.io/obsidian-drum-notation/",
+  "repository": "https://github.com/vkamolov/obsidian-drum-notation",
+  "license": "MIT",
+  "keywords": [
+    "drums",
+    "music-notation",
+    "transcription",
+    "obsidian",
+    "practice"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Drum Notation Importer",
+    "shortDescription": "Transcribe printed drum notation",
+    "longDescription": "Turn clean printed drum-score images into locally validated notation blocks for the Obsidian Drum Notation plugin.",
+    "developerName": "vkamolov",
+    "category": "Productivity",
+    "capabilities": [
+      "Image understanding",
+      "Local validation"
+    ],
+    "websiteURL": "https://vkamolov.github.io/obsidian-drum-notation/",
+    "defaultPrompt": [
+      "Transcribe this printed drum score into Obsidian drum notation."
+    ]
+  }
+}

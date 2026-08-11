@@ -1,11 +1,8 @@
-name: Release plugin
+name: Release agent plugin
 
-# Cut a release by pushing an annotated tag that equals the manifest version, e.g.:
-#   git tag -a 0.9.0 -m "0.9.0" && git push origin 0.9.0
-# Obsidian requires the tag to match manifest.json "version" exactly (no leading "v").
 on:
   push:
-    tags-ignore:
+    tags:
       - "agent-plugin-v*"
 
 permissions:
@@ -27,20 +24,21 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Verify tag matches manifest version
+      - name: Verify importer tag
         run: |
           tag="${GITHUB_REF#refs/tags/}"
-          manifest="$(node -p "require('./manifest.json').version")"
-          if ! printf '%s' "$tag" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-            echo "Tag $tag is not an exact semver tag like 1.0.0" >&2
+          version="$(node -p "require('./agent-plugin/drum-notation-importer/metadata.json').version")"
+          expected="agent-plugin-v${version}"
+          if ! printf '%s' "$tag" | grep -Eq '^agent-plugin-v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "Tag $tag is not an exact importer tag like agent-plugin-v0.1.0" >&2
             exit 1
           fi
-          if [ "$tag" != "$manifest" ]; then
-            echo "Tag $tag does not match manifest version $manifest" >&2
+          if [ "$tag" != "$expected" ]; then
+            echo "Tag $tag does not match importer version $version" >&2
             exit 1
           fi
 
-      - name: Test, audit, and build
+      - name: Build and verify all shared surfaces
         run: |
           npm test
           npm run build
@@ -57,15 +55,15 @@ jobs:
       - name: Verify production CSP
         run: npm run web:test:csp
 
-      - name: Generate artifact attestations
+      - name: Package agent plugin
+        run: npm run agent-plugin:package
+
+      - name: Generate artifact attestation
         uses: actions/attest@v4
         with:
-          subject-path: |
-            main.js
-            manifest.json
-            styles.css
+          subject-path: dist/agent-plugin/drum-notation-importer-*.tar.gz
 
-      - name: Create draft GitHub release with plugin assets
+      - name: Create draft GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -74,4 +72,4 @@ jobs:
             --title "$tag" \
             --draft \
             --generate-notes \
-            main.js manifest.json styles.css
+            dist/agent-plugin/drum-notation-importer-*.tar.gz

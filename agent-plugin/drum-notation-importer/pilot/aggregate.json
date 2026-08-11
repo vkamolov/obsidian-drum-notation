@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "plannedSampleSize": 20,
+  "plannedMix": { "practice": 14, "fullSongGig": 6 },
+  "completed": 0,
+  "status": "not-started",
+  "featureFrequency": {},
+  "workaroundSeverity": { "none": 0, "appearance": 0, "structure": 0, "meaning": 0, "blocked": 0 },
+  "ambiguity": { "count": 0, "notationEventCount": 0, "rate": 0 },
+  "firstPassStatus": { "clean": 0, "warnings": 0, "invalid": 0, "unavailable": 0 },
+  "correctionEffort": { "none": 0, "quick": 0, "moderate": 0, "slow": 0 },
+  "outcome": { "usable": 0, "usableAfterCorrection": 0, "notUsable": 0 },
+  "navigationBlocked": { "count": 0, "rate": 0 },
+  "decisionRecord": null
+}
