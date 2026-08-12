@@ -104,7 +104,7 @@
         </div>
         <details>
           <summary>Exact transcription prompt</summary>
-          <pre id="pg-import-prompt" class="pg-import-prompt">Use the import-drum-score skill to transcribe this clean printed drum score into Obsidian Drum Notation. Ask before guessing any material ambiguity. Return fenced drums blocks followed by a fenced drum-import-report JSON block.</pre>
+          <pre id="pg-import-prompt" class="pg-import-prompt">Use the import-drum-score skill to transcribe this clean printed drum score into Obsidian Drum Notation. Inspect the highest-resolution source and inventory distinct instrument positions and ornament shapes before mapping them. For every x notehead, locate the five staff lines and use the source legend when present; otherwise classify its categorical relationship to the staff as ledger through the notehead, ledger immediately below it, or no ledger. If the full score does not resolve that relationship, request a focused crop containing the notehead and surrounding staff. Ask and stop before guessing any material ambiguity. Re-observe any row-length warning against the source instead of padding automatically, then revalidate. Return fenced drums blocks followed by a fenced drum-import-report JSON block.</pre>
           <button id="pg-copy-prompt" class="pg-btn pg-btn--small" type="button">Copy prompt</button>
         </details>
       </div>
@@ -142,11 +142,24 @@
         </div>
         <div><dt>Notation core</dt><dd id="pg-signal-core">Unavailable</dd></div>
       </dl>
+      <section id="pg-report-details" class="pg-report-details" aria-labelledby="pg-report-details-title" aria-live="polite" hidden>
+        <div class="pg-report-details__head">
+          <h2 id="pg-report-details-title">Report details</h2>
+          <div class="pg-report-details__meta">
+            <span id="pg-report-origin" class="pg-report-origin" hidden></span>
+            <span id="pg-report-details-count" class="pg-report-details__count"></span>
+          </div>
+        </div>
+        <div id="pg-report-details-content" class="pg-report-details__content"></div>
+      </section>
     </section>
 
     <main class="pg-main">
       <section id="pg-source-pane" class="pg-pane pg-pane--source" hidden>
-        <div class="pg-pane__head">source image</div>
+        <div class="pg-pane__head pg-pane__head--actions">
+          <span>source image</span>
+          <button id="pg-open-crop" class="pg-pane__head-action" type="button" hidden>Create focused crop</button>
+        </div>
         <div class="pg-source-scroll">
           <p id="pg-source-empty" class="pg-source-empty">Choose a PNG, JPEG, or WebP score image. Images stay in this browser tab and are never saved.</p>
           <img id="pg-source-image" class="pg-source-image" alt="Locally selected drum-score source" hidden />
@@ -190,6 +203,43 @@
         </div>
       </details>
     </footer>
+
+    <dialog id="pg-crop-dialog" class="pg-crop-dialog" aria-labelledby="pg-crop-title">
+      <div class="pg-crop-dialog__head">
+        <div>
+          <h2 id="pg-crop-title">Create a focused crop</h2>
+          <p>Drag around the notehead, ledger line, and enough surrounding staff to establish its vertical position.</p>
+        </div>
+        <button id="pg-close-crop" class="pg-btn pg-btn--small" type="button">Close</button>
+      </div>
+      <div class="pg-crop-workspace">
+        <div>
+          <div id="pg-crop-stage" class="pg-crop-stage" aria-label="Source image crop selection">
+            <img id="pg-crop-source" alt="Source score for focused crop selection" draggable="false" />
+            <div id="pg-crop-selection" class="pg-crop-selection" hidden></div>
+          </div>
+          <p id="pg-crop-status" class="pg-crop-status" role="status">Drag on the image to select a focused region.</p>
+          <button id="pg-generate-crop" class="pg-btn pg-btn--accent" type="button" disabled>Generate crop</button>
+        </div>
+        <section id="pg-crop-result" class="pg-crop-result" aria-label="Focused crop result" hidden>
+          <img id="pg-crop-preview" alt="Enlarged focused drum-notation crop" />
+          <div class="pg-crop-handoff">
+            <strong>Paste in this order</strong>
+            <ol>
+              <li>Copy and paste the retry prompt.</li>
+              <li>Copy and paste the crop.</li>
+            </ol>
+            <p>The clipboard holds one item at a time. Copying the crop replaces the prompt, so paste the crop before copying anything else.</p>
+          </div>
+          <pre id="pg-crop-retry-prompt" class="pg-import-prompt">Inspect this focused drum-notation crop. Is the x notehead crossed by a horizontal ledger line, positioned immediately above a ledger line, or shown with no ledger line? Use the surrounding staff as reference. If unresolved, say so and do not infer the instrument from rhythm.</pre>
+          <div class="pg-crop-actions">
+            <button id="pg-copy-crop-prompt" class="pg-btn" type="button">1. Copy retry prompt</button>
+            <button id="pg-copy-crop" class="pg-btn pg-btn--accent" type="button">2. Copy crop</button>
+            <button id="pg-download-crop" class="pg-btn" type="button">Download crop</button>
+          </div>
+        </section>
+      </div>
+    </dialog>
 
     <script type="module" src="/src/app.ts"></script>
   </body>

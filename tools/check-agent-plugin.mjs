@@ -1,11 +1,11 @@
 import { createHash } from "node:crypto";
 import { execFileSync, spawnSync } from "node:child_process";
-import { readFile, stat } from "node:fs/promises";
+import { readFile, readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import Ajv2020 from "ajv/dist/2020.js";
 import { digestRecords } from "./notation-digest.mjs";
 import { loadBundledTsModule } from "./load-ts-module.mjs";
-import { PLUGIN_ROOT, REPO_ROOT } from "./plugin-paths.mjs";
+import { PLUGIN_ROOT, REPO_ROOT, SKILL_ROOT } from "./plugin-paths.mjs";
 import { getValidatorProvenance } from "./validator-provenance.mjs";
 
 function runNode(relativeScript, args = []) {
@@ -40,9 +40,13 @@ if (!portableValid(portable)) {
 
 const metadata = JSON.parse(await readFile(path.join(PLUGIN_ROOT, "metadata.json"), "utf8"));
 const openai = JSON.parse(await readFile(path.join(PLUGIN_ROOT, ".codex-plugin", "plugin.json"), "utf8"));
+const claude = JSON.parse(await readFile(path.join(PLUGIN_ROOT, ".claude-plugin", "plugin.json"), "utf8"));
+const gemini = JSON.parse(await readFile(path.join(PLUGIN_ROOT, "gemini-extension.json"), "utf8"));
 const sharedFields = ["name", "version", "description", "author", "homepage", "repository", "license", "keywords"];
 for (const field of sharedFields) {
-  if (JSON.stringify(portable[field]) !== JSON.stringify(openai[field]) || JSON.stringify(openai[field]) !== JSON.stringify(metadata[field])) {
+  if (JSON.stringify(portable[field]) !== JSON.stringify(openai[field]) ||
+    JSON.stringify(openai[field]) !== JSON.stringify(claude[field]) ||
+    JSON.stringify(claude[field]) !== JSON.stringify(metadata[field])) {
     throw new Error(`Manifest metadata drift in ${field}`);
   }
 }
@@ -54,12 +58,42 @@ const unexpectedOpenAiKeys = Object.keys(openai).filter((key) => !allowedOpenAiK
 if (unexpectedOpenAiKeys.length > 0) {
   throw new Error(`Unsupported OpenAI manifest fields: ${unexpectedOpenAiKeys.join(", ")}`);
 }
+const expectedClaudeSchema = "https://json.schemastore.org/claude-code-plugin-manifest.json";
+const allowedClaudeKeys = new Set(["$schema", ...sharedFields, "displayName"]);
+const unexpectedClaudeKeys = Object.keys(claude).filter((key) => !allowedClaudeKeys.has(key));
+if (claude.$schema !== expectedClaudeSchema || claude.displayName !== metadata.interface.displayName || unexpectedClaudeKeys.length > 0) {
+  throw new Error(`Claude manifest metadata is stale or unsupported: ${unexpectedClaudeKeys.join(", ")}`);
+}
+const allowedGeminiKeys = new Set(["name", "version", "description"]);
+const unexpectedGeminiKeys = Object.keys(gemini).filter((key) => !allowedGeminiKeys.has(key));
+for (const field of allowedGeminiKeys) {
+  if (gemini[field] !== metadata[field]) {
+    throw new Error(`Gemini extension metadata drift in ${field}`);
+  }
+}
+if (unexpectedGeminiKeys.length > 0) {
+  throw new Error(`Unsupported Gemini extension fields: ${unexpectedGeminiKeys.join(", ")}`);
+}
 const interfaceTextFields = ["displayName", "shortDescription", "longDescription", "developerName", "category", "websiteURL"];
 if (interfaceTextFields.some((field) => typeof openai.interface?.[field] !== "string" || openai.interface[field].trim() === "") ||
   !Array.isArray(openai.interface?.capabilities) || !openai.interface.capabilities.every((value) => typeof value === "string") ||
   !Array.isArray(openai.interface?.defaultPrompt) || openai.interface.defaultPrompt.length === 0 ||
   !openai.interface.defaultPrompt.every((value) => typeof value === "string" && value.trim() !== "")) {
   throw new Error("OpenAI interface metadata does not satisfy local packaging rules");
+}
+const iconRelativePath = "./assets/drum-notation-importer.png";
+if (openai.interface.brandColor !== "#6C5CE7" || openai.interface.composerIcon !== iconRelativePath || openai.interface.logo !== iconRelativePath) {
+  throw new Error("OpenAI visual metadata is stale");
+}
+const assetsRoot = path.join(PLUGIN_ROOT, "assets");
+const assetEntries = await readdir(assetsRoot);
+if (JSON.stringify(assetEntries.sort()) !== JSON.stringify(["drum-notation-importer.png"])) {
+  throw new Error(`Unexpected importer assets: ${assetEntries.join(", ")}`);
+}
+const iconBytes = await readFile(path.join(PLUGIN_ROOT, iconRelativePath.slice(2)));
+const pngSignature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+if (!iconBytes.subarray(0, 8).equals(pngSignature) || iconBytes.readUInt32BE(16) !== 1024 || iconBytes.readUInt32BE(20) !== 1024) {
+  throw new Error("Importer icon must be a 1024x1024 PNG");
 }
 if (!/^\d+\.\d+\.\d+$/.test(metadata.version)) {
   throw new Error(`Importer version must be exact semver: ${metadata.version}`);
@@ -79,7 +113,13 @@ const skillSource = await readFile(path.join(PLUGIN_ROOT, "skills", "import-drum
 if (!/^---\nname: import-drum-score\ndescription: .+\n---\n/s.test(skillSource) || skillSource.includes("[TODO:")) {
   throw new Error("Skill frontmatter is invalid or still contains TODO placeholders");
 }
-for (const forbidden of ["agents", "mcp.json", ".mcp.json", "hooks", "assets", path.join("skills", "import-drum-score", "agents")]) {
+if (!skillSource.includes("<skill-directory>/scripts/validate-drum-notation.mjs") || skillSource.includes("<plugin-root>/scripts/validate-drum-notation.mjs")) {
+  throw new Error("Skill validator instructions must remain self-contained");
+}
+if (await stat(path.join(PLUGIN_ROOT, "scripts", "validate-drum-notation.mjs")).then(() => true).catch(() => false)) {
+  throw new Error("Bundled validator must live inside the import-drum-score skill");
+}
+for (const forbidden of ["agents", "mcp.json", ".mcp.json", "hooks", path.join("skills", "import-drum-score", "agents")]) {
   const forbiddenPath = path.join(PLUGIN_ROOT, forbidden);
   if (await stat(forbiddenPath).then(() => true).catch(() => false)) {
     throw new Error(`${forbidden} is outside the 0.1 package scope`);
@@ -92,7 +132,7 @@ if (knownDigest !== "b3c3efa9da7d73bea4f48367902a6beaa94bc9b9e49f0dc757aea23dcac
 }
 
 const provenance = await getValidatorProvenance();
-const validatorPath = path.join(PLUGIN_ROOT, "scripts", "validate-drum-notation.mjs");
+const validatorPath = path.join(SKILL_ROOT, "scripts", "validate-drum-notation.mjs");
 const bundledValidatorSource = await readFile(validatorPath, "utf8");
 if (/\b(?:fetch|WebSocket|EventSource|XMLHttpRequest|sendBeacon)\s*\(/.test(bundledValidatorSource) || /node:(?:http|https|net|tls)/.test(bundledValidatorSource)) {
   throw new Error("Bundled validator must remain network-free");
@@ -116,7 +156,11 @@ const fixtures = [
   ...current.PLAYGROUND_EXAMPLES.map((example) => ({ name: example.id, source: example.source })),
   { name: "invalid-empty", source: "Title: Empty" },
   { name: "warning-character", source: "HH | x?--------------" },
-  { name: "boundary-grid-32", source: "Grid: 32\nHH | x-------------------------------" }
+  { name: "boundary-grid-32", source: "Grid: 32\nHH | x-------------------------------" },
+  {
+    name: "cymbal-position-regression",
+    source: "Time: 3/4\nVoicing: split\nCR | x-----------\nHH | --x-x-x-x-x-\nSD | ----Og-g---d\nBD | o-------o-o-"
+  }
 ];
 
 for (const fixture of fixtures) {
@@ -132,11 +176,20 @@ for (const fixture of fixtures) {
       throw new Error(`Bundled/current validator mismatch for ${fixture.name} field ${field}`);
     }
   }
+  if (fixture.name === "invalid-empty" &&
+    (actual.status !== "invalid" || run.status !== 1 || !actual.errors.includes("No supported drum rows were parsed."))) {
+    throw new Error("Rows-less notation must remain invalid JSON with exit code 1");
+  }
 }
 
 const usageRun = spawnSync(process.execPath, [validatorPath, "--unknown"], { encoding: "utf8" });
 if (usageRun.status !== 1 || JSON.parse(usageRun.stdout).status !== "invalid") {
   throw new Error("Bundled validator usage errors must emit authoritative invalid JSON and exit 1");
+}
+
+const claudeValidation = spawnSync("claude", ["plugin", "validate", PLUGIN_ROOT, "--strict"], { encoding: "utf8" });
+if (!claudeValidation.error && claudeValidation.status !== 0) {
+  throw new Error(`Claude plugin validation failed:\n${claudeValidation.stdout}${claudeValidation.stderr}`);
 }
 
 const obsidianRelease = await readFile(path.join(REPO_ROOT, ".github", "workflows", "release.yml"), "utf8");

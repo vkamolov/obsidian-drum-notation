@@ -255,6 +255,10 @@ export function setInstrument(
   fromInstrument: DrumInstrument,
   toInstrument: DrumInstrument
 ): DrumBlock {
+  if (fromInstrument.id === toInstrument.id || findHit(block, slotIndex, toInstrument.id)) {
+    return block;
+  }
+
   const hit = findHit(block, slotIndex, fromInstrument.id);
 
   if (!hit) {

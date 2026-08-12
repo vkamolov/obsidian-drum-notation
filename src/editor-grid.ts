@@ -27,6 +27,7 @@ import {
   pasteBarClipboardPayload,
   resizeBarRepeatGroup,
   setHit,
+  setInstrument,
   setSticking,
   splitSystemAfterBar
 } from "./edit";
@@ -227,6 +228,25 @@ export function formatStickingCellAriaLabel(
   return `Sticking, ${countSpeechLabel}, ${sticking ? getStickingAriaLabel(sticking).toLowerCase() : "empty"}`;
 }
 
+export function getInstrumentMoveOptions(
+  block: DrumBlock,
+  slotIndex: number,
+  fromInstrument: DrumInstrument
+): Array<{ instrument: DrumInstrument; occupied: boolean }> {
+  const hit = findHit(block, slotIndex, fromInstrument.id);
+  if (!hit) {
+    return [];
+  }
+
+  return DRUM_KIT
+    .filter((instrument) => instrument.id !== fromInstrument.id)
+    .filter((instrument) => isArticulationAllowed(instrument, hit.articulation))
+    .map((instrument) => ({
+      instrument,
+      occupied: !!findHit(block, slotIndex, instrument.id)
+    }));
+}
+
 export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
   let working = options.block;
   const initialSession = options.initialSessionState;
@@ -370,7 +390,9 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
       );
     }
 
-    return selectedCell.slotIndex >= bar.startSlot && selectedCell.slotIndex < bar.startSlot + bar.slots.length;
+    return selectedCell.slotIndex >= bar.startSlot &&
+      selectedCell.slotIndex < bar.startSlot + bar.slots.length &&
+      (selectedCell.kind !== "instrument" || hasDisplayedInstrument(selectedCell.instrumentId));
   };
 
   const selectedInstrument = (): DrumInstrument | undefined => {
@@ -507,6 +529,27 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     }
 
     applyChange(clearHit(working, selectedCell.slotIndex, instrument), selectedCell.slotIndex);
+  };
+
+  const moveSelectedHit = (targetInstrumentId: string) => {
+    if (!selectedCell || selectedCell.kind !== "instrument") {
+      return;
+    }
+
+    const fromInstrument = selectedInstrument();
+    if (!fromInstrument) {
+      return;
+    }
+    const target = getInstrumentMoveOptions(working, selectedCell.slotIndex, fromInstrument)
+      .find((option) => option.instrument.id === targetInstrumentId && !option.occupied);
+    if (!target) {
+      return;
+    }
+
+    const slotIndex = selectedCell.slotIndex;
+    selectedCell = { kind: "instrument", slotIndex, instrumentId: target.instrument.id };
+    markExtraInstrumentModeled(target.instrument.id);
+    applyChange(setInstrument(working, slotIndex, fromInstrument, target.instrument), slotIndex);
   };
 
   const applyStickingToSelection = (hand: StickingHand) => {
@@ -1083,6 +1126,28 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
       button.disabled = isRowSelection && selectedHitCount === 0;
       button.addEventListener("click", () => applyArticulationToSelection(articulation));
     });
+
+    if (!isRowSelection && slotIndex !== undefined && hit) {
+      const moveOptions = getInstrumentMoveOptions(working, slotIndex, instrument);
+      if (moveOptions.length > 0) {
+        tools.createSpan({ cls: "pg-grid-editor__tool-separator", attr: { "aria-hidden": "true" } });
+        const moveWrap = tools.createSpan({ cls: "pg-grid-editor__palette-wrap" });
+        const moveSelect = moveWrap.createEl("select", {
+          cls: "pg-grid-editor__palette pg-grid-editor__move-instrument",
+          attr: { "aria-label": "Move to instrument" }
+        });
+        moveSelect.createEl("option", { text: "Move to instrument…", value: "" });
+        moveOptions.forEach((option) => {
+          const element = moveSelect.createEl("option", {
+            text: option.occupied ? `${option.instrument.label} — occupied` : option.instrument.label,
+            value: option.instrument.id
+          });
+          element.disabled = option.occupied;
+        });
+        moveSelect.addEventListener("change", () => moveSelectedHit(moveSelect.value));
+        moveWrap.createSpan({ cls: "pg-grid-editor__palette-caret", attr: { "aria-hidden": "true" } });
+      }
+    }
 
     tools.createSpan({
       cls: "pg-grid-editor__tool-separator",

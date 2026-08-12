@@ -11,3 +11,9 @@ Classify `navigationBlocked` as true when unsupported D.S./D.C., Segno/Coda, amb
 Correction effort is ordinal: `none`, `quick` (up to 5 minutes), `moderate` (6–15 minutes), or `slow` (over 15 minutes). Do not average these values.
 
 Default to navigation semantics before MIDI/audio when the evidence is materially above 25%, or when full-song/gig charts become the majority intended use. Retain importer-first sequencing when it is materially below 25%. The default roadmap is image import, paste-back verification, deterministic MIDI import, local worker-based audio transcription, then hosted inference only if evidence justifies its security and operating costs.
+
+## Focused crop recognition gate
+
+Evaluate the focused-crop workflow with 12 blind temporary examples before deciding whether it needs more recognition support: crash, hi-hat, ride, splash, China, and stack, each at two source scales. Preselect the examples and expected readings before running them. Record each outcome as `correct`, `unresolved`, or `confident-wrong`; do not commit source images or expected answers. The successful real crash test is supporting evidence, not one of the blind 12 cases.
+
+With zero to two confident errors, investigate only those cases and retain the focused-crop workflow. With at least three confident errors out of 12, stop prompt tuning and plan browser-local annotated staff guides. More than four unresolved outcomes also triggers the annotated-guide review. This gate does not authorize automatic staff detection, OMR, or remote inference.

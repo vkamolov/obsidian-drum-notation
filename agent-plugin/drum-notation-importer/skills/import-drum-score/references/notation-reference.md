@@ -28,19 +28,27 @@ System-level `Time:` and `Grouping:` may appear immediately after `Bar`. A late 
 ## Rows and timing
 
 - One pattern character is one grid position. In 4/4, Grid 16 uses 16 positions per bar and Grid 32 uses 32.
-- Use `-` for explicit rests. The parser also accepts `.`, `_`, and spaces, but output should use `-`.
+- Use `-` for silent grid positions. The parser also accepts `.`, `_`, and spaces, but output should use `-`. Silence preserves timing and playback; it does not distinguish a printed rest from an ordinary gap or force a visible glyph.
+- Treat `row-length-mismatch` as a prompt to re-observe the complete row, not as a request to pad it. Reconstruct every position against the source's beat/grid anchors. Append trailing `-` only after confirming genuine trailing silence; a clean validator result alone cannot prove that no mid-row hit was missed.
 - Rows can cover only a contiguous prefix of bars in a system. Materialize rest patterns in earlier bars when an instrument begins later.
 - Stack simultaneous instruments by placing hits at the same character position on separate rows.
 - Add `ST | R-LB...` for sticking: `R`, `L`, `B`, and rest characters.
+
+## Instrument identity and visible rests
+
+- Before mapping, inventory distinct notehead positions and shapes, accents, grace notes, stem marks, rests, and rhythmic anchors at the highest available resolution. Request a focused crop when fine detail cannot be distinguished.
+- For every `x` notehead, first locate the five staff lines and classify its visible relationship as ledger through the notehead, ledger immediately below it, or no ledger. Do not claim numeric measurements from the image. Group matching vertical positions before using rhythmic context; a recurring pattern cannot override a distinct position cluster.
+- Treat a source legend or drum key as authoritative because publisher conventions vary. When no source legend is visible, use the generated x-notehead ladder in [kit-reference.md](kit-reference.md). If the full-score view cannot resolve the relationship, require a focused crop containing the notehead and surrounding staff. Ask rather than mapping a materially ambiguous cluster.
+- With `Voicing: split`, hands and feet retain independent rhythms, but the engraver displays only rests inferred where the whole kit is silent. When one voice sounds, rests in the other voice are hidden alignment rests. `Rests: on` is already the default and does not force those voice-specific glyphs.
 
 ## Hit alphabet
 
 - `x` or `o`: normal hit. The serializer chooses the canonical glyph for the instrument notehead.
 - `X`: accent.
 - `g`: ghost note.
-- `f`: flam.
+- `f`: flam. Emit only when a separate grace notehead is visible before the primary note.
 - `r`: drag or ruff.
-- `d`: diddle.
+- `d`: diddle. Emit for a slash through the primary note's stem under the source's notation convention. If the image cannot distinguish that slash from a grace note, ask before choosing `d` or `f`.
 - `z`: buzz or press roll.
 - `c`: choked cymbal.
 

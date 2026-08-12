@@ -117,9 +117,11 @@ The site builds from `web/` via `npm run web:build`; `vite.config.ts` uses
 ## Agent plugin
 
 The portable source package lives at `agent-plugin/drum-notation-importer/` and
-targets Agent Plugins 1.0.0. The same directory contains the generated
-`.codex-plugin/plugin.json` compatibility manifest. Both manifests are emitted
-from `metadata.json`; do not edit them independently.
+targets Agent Plugins 1.0.0. The same directory contains generated OpenAI,
+Claude, and Gemini CLI compatibility manifests. All manifests are emitted from
+`metadata.json`; do not edit them independently. The validator lives inside the
+skill so the shared `skills/import-drum-score/` directory remains independently
+installable by Agent Skills clients.
 
 For an importer release:
 
@@ -132,8 +134,8 @@ For an importer release:
    git tag -a agent-plugin-v0.1.0 -m "agent-plugin-v0.1.0"
    git push origin agent-plugin-v0.1.0
    ```
-5. Inspect the draft release, attestation, and extracted directory before
-   publishing.
+5. Inspect the draft release, attestation, and all four extracted packages
+   before publishing: portable, OpenAI, Claude, and Gemini CLI.
 
 The Obsidian workflow ignores `agent-plugin-v*`; the importer workflow rejects
 a tag that does not exactly match importer metadata.
@@ -148,8 +150,8 @@ a tag that does not exactly match importer metadata.
   interactions remain usable.
 - Clipboard fallback never shows stale notation.
 - Production bundles retain the VexFlow/license notice.
-- Portable/OpenAI agent manifests, validator provenance, kit reference, and
-  notation-reference acknowledgment are current.
+- Portable, OpenAI, Claude, and Gemini CLI manifests, validator provenance,
+  kit reference, and notation-reference acknowledgment are current.
 - Production CSP tests pass in Chromium and WebKit with visible noteheads and
   no off-origin requests.
 - Manual install works using only `main.js`, `manifest.json`, and `styles.css`.

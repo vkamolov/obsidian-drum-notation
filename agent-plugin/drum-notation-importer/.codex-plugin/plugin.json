@@ -29,7 +29,10 @@
     ],
     "websiteURL": "https://vkamolov.github.io/obsidian-drum-notation/",
     "defaultPrompt": [
-      "Transcribe this printed drum score into Obsidian drum notation."
-    ]
+      "Transcribe the attached printed drum score using the import-drum-score skill. Validate the notation and include the import report."
+    ],
+    "brandColor": "#6C5CE7",
+    "composerIcon": "./assets/drum-notation-importer.png",
+    "logo": "./assets/drum-notation-importer.png"
   }
 }

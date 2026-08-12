@@ -171,9 +171,27 @@ describe("hit edits", () => {
   it("setInstrument moves a hit to another voice, keeping articulation", () => {
     const block = parseDrumBlock("SD | ---g");
     const moved = setInstrument(block, 3, SD, HH);
+    const text = serializeDrumBlock(moved);
 
     expect(findHit(moved, 3, SD.id)).toBeUndefined();
     expect(findHit(moved, 3, HH.id)?.articulation).toBe("ghost");
+    expect(serializeDrumBlock(parseDrumBlock(text))).toBe(text);
+  });
+
+  it("setInstrument returns the original block for the same instrument", () => {
+    const block = parseDrumBlock("HH | x---");
+
+    expect(setInstrument(block, 0, HH, HH)).toBe(block);
+  });
+
+  it("setInstrument preserves both hits when the target slot is occupied", () => {
+    const block = parseDrumBlock("CR | X---\nHH | x---");
+    const unchanged = setInstrument(block, 0, HH, CC);
+
+    expect(unchanged).toBe(block);
+    expect(findHit(unchanged, 0, HH.id)?.articulation).toBe("normal");
+    expect(findHit(unchanged, 0, CC.id)?.articulation).toBe("accent");
+    expect(serializeDrumBlock(unchanged)).toBe("CR | X---\nHH | x---");
   });
 
   it("edited blocks remain serialize round-trip stable", () => {

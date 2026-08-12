@@ -14,22 +14,32 @@ if (check.status !== 0) {
 
 const metadata = JSON.parse(await readFile(path.join(PLUGIN_ROOT, "metadata.json"), "utf8"));
 const distRoot = path.join(REPO_ROOT, "dist", "agent-plugin");
-const stagingRoot = path.join(distRoot, metadata.name);
-if (!stagingRoot.startsWith(path.join(REPO_ROOT, "dist") + path.sep)) {
+if (!distRoot.startsWith(path.join(REPO_ROOT, "dist") + path.sep)) {
   throw new Error("Refusing to package outside the repository dist directory");
 }
 await rm(distRoot, { recursive: true, force: true });
-await mkdir(stagingRoot, { recursive: true });
 
-for (const entry of ["plugin.json", ".codex-plugin", "skills", "scripts"]) {
-  await cp(path.join(PLUGIN_ROOT, entry), path.join(stagingRoot, entry), { recursive: true });
-}
-await cp(path.join(REPO_ROOT, "LICENSE"), path.join(stagingRoot, "LICENSE"));
-await writeFile(path.join(stagingRoot, "VERSION"), `${metadata.version}\n`);
+const variants = [
+  { id: "portable", suffix: "", entries: ["plugin.json", "skills"] },
+  { id: "openai", suffix: "-openai", entries: ["plugin.json", ".codex-plugin", "skills", "assets"] },
+  { id: "claude", suffix: "-claude", entries: ["plugin.json", ".claude-plugin", "skills"] },
+  { id: "gemini", suffix: "-gemini", entries: ["plugin.json", "gemini-extension.json", "skills"] }
+];
 
-const archive = path.join(distRoot, `${metadata.name}-${metadata.version}.tar.gz`);
-const tar = spawnSync("tar", ["-czf", archive, "-C", distRoot, metadata.name], { encoding: "utf8" });
-if (tar.status !== 0) {
-  throw new Error(`tar failed: ${tar.stderr}`);
+for (const variant of variants) {
+  const variantRoot = path.join(distRoot, variant.id);
+  const stagingRoot = path.join(variantRoot, metadata.name);
+  await mkdir(stagingRoot, { recursive: true });
+  for (const entry of variant.entries) {
+    await cp(path.join(PLUGIN_ROOT, entry), path.join(stagingRoot, entry), { recursive: true });
+  }
+  await cp(path.join(REPO_ROOT, "LICENSE"), path.join(stagingRoot, "LICENSE"));
+  await writeFile(path.join(stagingRoot, "VERSION"), `${metadata.version}\n`);
+
+  const archive = path.join(distRoot, `${metadata.name}-${metadata.version}${variant.suffix}.tar.gz`);
+  const tar = spawnSync("tar", ["-czf", archive, "-C", variantRoot, metadata.name], { encoding: "utf8" });
+  if (tar.status !== 0) {
+    throw new Error(`tar failed for ${variant.id}: ${tar.stderr}`);
+  }
+  console.log(`Packaged ${variant.id}: ${archive}`);
 }
-console.log(`Packaged ${archive}`);

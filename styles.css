@@ -736,6 +736,10 @@ body.is-mobile .drum-notation__speed {
   display: none;
 }
 
+.pg-grid-editor__move-instrument {
+  max-width: 12rem;
+}
+
 .drum-notation .pg-grid-editor__palette-caret,
 #pg-edit-root .pg-grid-editor__palette-caret {
   position: absolute;

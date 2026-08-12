@@ -80,11 +80,21 @@ import {
   extractAgentResponse,
   HumanReviewState,
   isAllowedRasterDimensions,
+  ImportReportMessage,
+  ImportReportSegment,
   ImportReportState,
+  ImportReportWorkaround,
   MAX_SOURCE_IMAGE_BYTES,
   MAX_SOURCE_IMAGE_PIXELS,
   MAX_SOURCE_IMAGE_SIDE
 } from "./importer";
+import {
+  CropPoint,
+  CropRect,
+  getClampedDisplaySelection,
+  getFocusedCropOutputSize,
+  mapDisplaySelectionToSource
+} from "./image-crop";
 
 const STORAGE_KEY = "drum-playground.notation";
 const THEME_KEY = "drum-playground.theme";
@@ -154,9 +164,27 @@ const signalReport = $<HTMLElement>("pg-signal-report");
 const signalAgent = $<HTMLElement>("pg-signal-agent");
 const humanReviewSelect = $<HTMLSelectElement>("pg-human-review");
 const signalCore = $<HTMLElement>("pg-signal-core");
+const reportDetails = $<HTMLElement>("pg-report-details");
+const reportOrigin = $<HTMLSpanElement>("pg-report-origin");
+const reportDetailsCount = $<HTMLSpanElement>("pg-report-details-count");
+const reportDetailsContent = $<HTMLDivElement>("pg-report-details-content");
 const sourcePane = $<HTMLElement>("pg-source-pane");
 const sourceEmpty = $<HTMLParagraphElement>("pg-source-empty");
 const sourceImage = $<HTMLImageElement>("pg-source-image");
+const openCropBtn = $<HTMLButtonElement>("pg-open-crop");
+const cropDialog = $<HTMLDialogElement>("pg-crop-dialog");
+const closeCropBtn = $<HTMLButtonElement>("pg-close-crop");
+const cropStage = $<HTMLDivElement>("pg-crop-stage");
+const cropSource = $<HTMLImageElement>("pg-crop-source");
+const cropSelection = $<HTMLDivElement>("pg-crop-selection");
+const cropStatus = $<HTMLParagraphElement>("pg-crop-status");
+const generateCropBtn = $<HTMLButtonElement>("pg-generate-crop");
+const cropResult = $<HTMLElement>("pg-crop-result");
+const cropPreview = $<HTMLImageElement>("pg-crop-preview");
+const cropRetryPrompt = $<HTMLPreElement>("pg-crop-retry-prompt");
+const copyCropBtn = $<HTMLButtonElement>("pg-copy-crop");
+const downloadCropBtn = $<HTMLButtonElement>("pg-download-crop");
+const copyCropPromptBtn = $<HTMLButtonElement>("pg-copy-crop-prompt");
 
 /* ---------- render state ---------- */
 let currentBlock: DrumBlock | null = null;
@@ -187,6 +215,7 @@ const barClipboard = new DrumBarClipboardStore();
 interface VerificationSegmentState {
   source: string;
   edited: string;
+  reportBaseline: string;
   humanReview: HumanReviewState;
 }
 
@@ -199,6 +228,11 @@ let verificationReportState: ImportReportState = "missing";
 let verificationResponseErrors: string[] = [];
 let verificationUndoStack: string[] = [];
 let sourceObjectUrl: string | null = null;
+let focusedCropObjectUrl: string | null = null;
+let focusedCropBlob: Blob | null = null;
+let focusedCropSourceRect: CropRect | null = null;
+let cropDragStart: CropPoint | null = null;
+let cropDragPointerId: number | null = null;
 
 barClipboard.subscribe(() => {
   gridEditorMessage = null;
@@ -1276,6 +1310,7 @@ function syncControls(block: DrumBlock): void {
 // deterministic normalized form used in diagnostics.
 function applyEditedBlock(next: DrumBlock): void {
   recordVerificationUndo();
+  markVerificationNeedsChanges();
   dismissManualCopyText();
   editor.value = serializeDrumBlock(next, { mode: "authoring" });
   persist();
@@ -1285,6 +1320,7 @@ function applyEditedBlock(next: DrumBlock): void {
 function applyGridEditedBlock(next: DrumBlock, changedSlotIndex?: number, nextSelectedBarIndex?: number): void {
   const restartPlayback = capturePlaybackRestart();
   recordVerificationUndo();
+  markVerificationNeedsChanges();
   dismissManualCopyText();
   gridEditorMessage = null;
 
@@ -1466,6 +1502,87 @@ function formatParseWarning(warning: ParseWarning): string {
 }
 
 /* ---------- agent-result verification ---------- */
+function appendReportMessageGroup(title: string, messages: ImportReportMessage[], tone: "warning" | "ambiguity"): void {
+  const group = reportDetailsContent.createDiv({ cls: `pg-report-group pg-report-group--${tone}` });
+  group.createEl("h3", { text: title });
+  const list = group.createEl("ul");
+  for (const entry of messages) {
+    const item = list.createEl("li");
+    item.createEl("code", { text: entry.code });
+    item.createSpan({ text: entry.message });
+  }
+}
+
+function appendReportWorkaroundGroup(workarounds: ImportReportWorkaround[]): void {
+  const group = reportDetailsContent.createDiv({ cls: "pg-report-group pg-report-group--workaround" });
+  group.createEl("h3", { text: "Workarounds" });
+  const list = group.createEl("ul");
+  for (const workaround of workarounds) {
+    const item = list.createEl("li");
+    item.createEl("span", {
+      cls: `pg-report-loss pg-report-loss--${workaround.loss}`,
+      text: workaround.loss
+    });
+    const description = item.createSpan();
+    description.createEl("strong", { text: workaround.feature });
+    description.append(` — ${workaround.action}`);
+  }
+}
+
+function renderVerificationReportDetails(
+  localWarnings: ParseWarning[],
+  reportSegment: ImportReportSegment | undefined,
+  reportStale: boolean
+): void {
+  reportDetailsContent.replaceChildren();
+  let detailCount = 0;
+
+  reportOrigin.hidden = !reportSegment;
+  reportOrigin.textContent = reportSegment
+    ? reportStale
+      ? "Original agent report · may not match current edits"
+      : "Original agent report"
+    : "";
+  reportOrigin.classList.toggle("is-stale", reportStale);
+
+  if (localWarnings.length > 0) {
+    appendReportMessageGroup("Local parser warnings", localWarnings.map((warning) => ({
+      code: warning.code,
+      message: formatParseWarning(warning)
+    })), "warning");
+    detailCount += localWarnings.length;
+  }
+
+  if (reportSegment?.issues.length) {
+    appendReportMessageGroup("Agent observations", reportSegment.issues, "warning");
+    detailCount += reportSegment.issues.length;
+  }
+
+  if (reportSegment?.ambiguities.length) {
+    appendReportMessageGroup("Ambiguities", reportSegment.ambiguities, "ambiguity");
+    detailCount += reportSegment.ambiguities.length;
+  }
+
+  if (reportSegment?.workarounds.length) {
+    appendReportWorkaroundGroup(reportSegment.workarounds);
+    detailCount += reportSegment.workarounds.length;
+  }
+
+  if (reportSegment?.validationStatus === "warnings" &&
+      reportSegment.issues.length === 0 &&
+      reportSegment.ambiguities.length === 0 &&
+      reportSegment.workarounds.length === 0) {
+    appendReportMessageGroup("Agent observations", [{
+      code: "warning-details-missing",
+      message: "The agent reported validation warnings but supplied no issue, ambiguity, or workaround details."
+    }], "warning");
+    detailCount += 1;
+  }
+
+  reportDetailsCount.textContent = detailCount === 1 ? "1 item" : `${detailCount} items`;
+  reportDetails.hidden = detailCount === 0 && !reportStale;
+}
+
 function setVerificationMessage(message: string, error = false): void {
   verificationMessage.textContent = message;
   verificationMessage.classList.toggle("is-error", error);
@@ -1493,6 +1610,23 @@ function recordVerificationUndo(): void {
     }
   }
   updateVerificationUndoButton();
+}
+
+function markVerificationNeedsChanges(): void {
+  if (!verificationActive || selectedVerificationSegment < 0) {
+    return;
+  }
+  const segment = verificationSegments[selectedVerificationSegment];
+  if (segment) {
+    segment.humanReview = "needs-changes";
+    humanReviewSelect.value = "needs-changes";
+  }
+}
+
+function notationComparisonValue(text: string, validation = validateDrumNotation(text)): string {
+  return validation.status === "invalid"
+    ? text.replace(/\r\n?/g, "\n").trim()
+    : serializeDrumBlock(parseDrumBlock(validation.normalized), { mode: "authoring" });
 }
 
 function renderSegmentTabs(): void {
@@ -1535,6 +1669,12 @@ function renderVerificationSignals(): void {
     signalReport.textContent = verificationReportState === "malformed" ? "Malformed" : "Not supplied";
     signalAgent.textContent = "Unavailable";
     signalCore.textContent = "Unavailable";
+    reportDetailsContent.replaceChildren();
+    reportOrigin.textContent = "";
+    reportOrigin.hidden = true;
+    reportOrigin.classList.remove("is-stale");
+    reportDetailsCount.textContent = "";
+    reportDetails.hidden = true;
     saveVerifiedBtn.disabled = true;
     return;
   }
@@ -1551,11 +1691,19 @@ function renderVerificationSignals(): void {
       ? "Malformed · ignored"
       : "Not supplied";
 
+  const activeSegment = verificationSegments[selectedVerificationSegment];
   const reportSegment = verificationReport?.segments.find((segment) => segment.blockIndex === selectedVerificationSegment);
+  const reportStale = Boolean(reportSegment) &&
+    notationComparisonValue(editor.value, local) !== notationComparisonValue(activeSegment.reportBaseline);
+  renderVerificationReportDetails(local.warnings, reportSegment, reportStale);
   if (!reportSegment) {
     signalAgent.textContent = "Unavailable";
   } else if (reportSegment.validationStatus === "unavailable") {
-    signalAgent.textContent = "Validation unavailable";
+    signalAgent.textContent = reportStale
+      ? "Validation unavailable · original result; current notation edited"
+      : "Validation unavailable";
+  } else if (reportStale) {
+    signalAgent.textContent = `${reportSegment.validationStatus} · original result; current notation edited`;
   } else {
     const agrees = reportSegment.validationStatus === local.status;
     signalAgent.textContent = `${reportSegment.validationStatus}${agrees ? " · agrees" : " · differs locally"}`;
@@ -1570,8 +1718,7 @@ function renderVerificationSignals(): void {
     signalCore.textContent = `Transcribed against notation core ${verificationReport?.notationCoreVersion}; this page validates against ${__NOTATION_CORE_VERSION__}.`;
   }
 
-  const segment = verificationSegments[selectedVerificationSegment];
-  humanReviewSelect.value = segment.humanReview;
+  humanReviewSelect.value = activeSegment.humanReview;
   saveVerifiedBtn.disabled = local.status === "invalid";
 }
 
@@ -1624,6 +1771,9 @@ function extractVerificationResponse(): void {
   verificationSegments = extracted.segments.map((segment) => ({
     source: segment.source,
     edited: segment.source,
+    reportBaseline: segment.validation.status === "invalid"
+      ? segment.source.replace(/\r\n?/g, "\n").trim()
+      : segment.validation.normalized,
     humanReview: "unreviewed"
   }));
 
@@ -1643,7 +1793,206 @@ function extractVerificationResponse(): void {
   selectVerificationSegment(0);
 }
 
+function setCropStatus(message: string, error = false): void {
+  cropStatus.textContent = message;
+  cropStatus.classList.toggle("is-error", error);
+}
+
+function clearFocusedCropResult(): void {
+  if (focusedCropObjectUrl) {
+    URL.revokeObjectURL(focusedCropObjectUrl);
+    focusedCropObjectUrl = null;
+  }
+  focusedCropBlob = null;
+  cropPreview.removeAttribute("src");
+  cropResult.hidden = true;
+}
+
+function resetFocusedCropSelection(): void {
+  clearFocusedCropResult();
+  focusedCropSourceRect = null;
+  cropDragStart = null;
+  cropDragPointerId = null;
+  cropSelection.hidden = true;
+  generateCropBtn.disabled = true;
+}
+
+function closeFocusedCropDialog(): void {
+  resetFocusedCropSelection();
+  cropSource.removeAttribute("src");
+  if (cropDialog.open) {
+    cropDialog.close();
+  }
+}
+
+function openFocusedCropDialog(): void {
+  if (!sourceObjectUrl || sourceImage.hidden || sourceImage.naturalWidth <= 0 || sourceImage.naturalHeight <= 0) {
+    setVerificationMessage("Load a source image before creating a focused crop.", true);
+    return;
+  }
+
+  resetFocusedCropSelection();
+  cropSource.src = sourceObjectUrl;
+  setCropStatus("Drag on the image to select a focused region.");
+  cropDialog.showModal();
+}
+
+function cropStagePoint(event: PointerEvent): CropPoint {
+  const bounds = cropStage.getBoundingClientRect();
+  return { x: event.clientX - bounds.left, y: event.clientY - bounds.top };
+}
+
+function cropStageSize(): { width: number; height: number } {
+  const bounds = cropStage.getBoundingClientRect();
+  return { width: bounds.width, height: bounds.height };
+}
+
+function cropImageSize(): { width: number; height: number } {
+  return { width: cropSource.naturalWidth, height: cropSource.naturalHeight };
+}
+
+function renderCropSelection(start: CropPoint, end: CropPoint): void {
+  const displayRect = getClampedDisplaySelection(start, end, cropStageSize(), cropImageSize());
+  if (!displayRect) {
+    cropSelection.hidden = true;
+    return;
+  }
+
+  cropSelection.setCssProps({
+    left: `${displayRect.x}px`,
+    top: `${displayRect.y}px`,
+    width: `${displayRect.width}px`,
+    height: `${displayRect.height}px`
+  });
+  cropSelection.hidden = false;
+}
+
+function finishCropSelection(end: CropPoint): void {
+  if (!cropDragStart) {
+    return;
+  }
+
+  renderCropSelection(cropDragStart, end);
+  focusedCropSourceRect = mapDisplaySelectionToSource(cropDragStart, end, cropStageSize(), cropImageSize());
+  generateCropBtn.disabled = focusedCropSourceRect === null;
+  if (focusedCropSourceRect) {
+    setCropStatus(`Selected ${focusedCropSourceRect.width}×${focusedCropSourceRect.height} source pixels.`);
+  } else {
+    setCropStatus("Select a larger region inside the image.", true);
+  }
+}
+
+function canvasToPngBlob(canvas: HTMLCanvasElement): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) {
+        resolve(blob);
+      } else {
+        reject(new Error("The focused crop could not be encoded."));
+      }
+    }, "image/png");
+  });
+}
+
+async function generateFocusedCrop(): Promise<void> {
+  const sourceRect = focusedCropSourceRect;
+  if (!sourceRect) {
+    setCropStatus("Select a focused region first.", true);
+    return;
+  }
+
+  const output = getFocusedCropOutputSize(sourceRect);
+  if (!output || output.width * output.height > MAX_SOURCE_IMAGE_PIXELS) {
+    setCropStatus("The selected crop exceeds the safe output limits.", true);
+    return;
+  }
+
+  clearFocusedCropResult();
+  const canvas = activeDocument.createElement("canvas");
+  canvas.width = output.width;
+  canvas.height = output.height;
+  const context = canvas.getContext("2d");
+  if (!context) {
+    setCropStatus("This browser cannot create a focused crop.", true);
+    return;
+  }
+
+  context.imageSmoothingEnabled = false;
+  context.drawImage(
+    cropSource,
+    sourceRect.x,
+    sourceRect.y,
+    sourceRect.width,
+    sourceRect.height,
+    0,
+    0,
+    output.width,
+    output.height
+  );
+
+  try {
+    focusedCropBlob = await canvasToPngBlob(canvas);
+    focusedCropObjectUrl = URL.createObjectURL(focusedCropBlob);
+    cropPreview.src = focusedCropObjectUrl;
+    cropResult.hidden = false;
+    setCropStatus(`Focused PNG ready (${output.width}×${output.height}). Nothing was uploaded or saved.`);
+  } catch (error) {
+    setCropStatus(error instanceof Error ? error.message : "The focused crop could not be created.", true);
+  }
+}
+
+async function copyFocusedCrop(): Promise<void> {
+  if (!focusedCropBlob) {
+    setCropStatus("Generate a focused crop before copying it.", true);
+    return;
+  }
+
+  try {
+    if (!navigator.clipboard?.write || typeof ClipboardItem === "undefined") {
+      throw new Error("Image clipboard writing is unavailable");
+    }
+    await navigator.clipboard.write([new ClipboardItem({ "image/png": focusedCropBlob })]);
+    setCropStatus("Focused crop copied. Paste it now; copying anything else will replace it.");
+  } catch {
+    setCropStatus("The browser blocked image copying. Use Download crop instead.", true);
+    downloadCropBtn.focus();
+  }
+}
+
+async function copyFocusedCropPrompt(): Promise<void> {
+  const original = copyCropPromptBtn.textContent ?? "";
+  const prompt = cropRetryPrompt.textContent ?? "";
+  try {
+    await writeClipboardText(prompt);
+    copyCropPromptBtn.textContent = "Copied!";
+    setCropStatus("Retry prompt copied. Paste it first, then return to copy the crop.");
+  } catch {
+    showManualCopyText(prompt);
+    copyCropPromptBtn.textContent = "Text selected";
+    setCropStatus("Clipboard text copying is unavailable. Copy the selected retry prompt, paste it, then return for the crop.", true);
+  }
+  window.setTimeout(() => {
+    copyCropPromptBtn.textContent = original;
+  }, 1200);
+}
+
+function downloadFocusedCrop(): void {
+  if (!focusedCropBlob) {
+    setCropStatus("Generate a focused crop before downloading it.", true);
+    return;
+  }
+
+  const downloadUrl = URL.createObjectURL(focusedCropBlob);
+  const link = activeDocument.createElement("a");
+  link.href = downloadUrl;
+  link.download = "drum-score-focused-crop.png";
+  link.click();
+  window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 0);
+  setCropStatus("Focused crop downloaded. Attach it to a new importer request with the retry prompt.");
+}
+
 function clearSourceImage(): void {
+  closeFocusedCropDialog();
   if (sourceObjectUrl) {
     URL.revokeObjectURL(sourceObjectUrl);
     sourceObjectUrl = null;
@@ -1651,6 +2000,7 @@ function clearSourceImage(): void {
   sourceImage.removeAttribute("src");
   sourceImage.hidden = true;
   sourceEmpty.hidden = false;
+  openCropBtn.hidden = true;
 }
 
 async function loadSourceImage(file: File | undefined): Promise<void> {
@@ -1695,6 +2045,7 @@ async function loadSourceImage(file: File | undefined): Promise<void> {
   sourceImage.src = objectUrl;
   sourceImage.hidden = false;
   sourceEmpty.hidden = true;
+  openCropBtn.hidden = false;
   setVerificationMessage(`${kind.toUpperCase()} source loaded locally (${candidate.naturalWidth}×${candidate.naturalHeight}).`);
 }
 
@@ -2023,6 +2374,7 @@ function init(): void {
     }
   });
   editor.addEventListener("input", () => {
+    markVerificationNeedsChanges();
     dismissManualCopyText();
     onEdit();
   });
@@ -2175,6 +2527,54 @@ function init(): void {
   saveVerifiedBtn.addEventListener("click", saveVerifiedNotation);
   sourceFileInput.addEventListener("change", () => {
     void loadSourceImage(sourceFileInput.files?.[0]);
+  });
+  openCropBtn.addEventListener("click", openFocusedCropDialog);
+  closeCropBtn.addEventListener("click", closeFocusedCropDialog);
+  cropDialog.addEventListener("close", () => {
+    resetFocusedCropSelection();
+    cropSource.removeAttribute("src");
+  });
+  cropStage.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0 || cropSource.naturalWidth <= 0 || cropSource.naturalHeight <= 0) {
+      return;
+    }
+    event.preventDefault();
+    resetFocusedCropSelection();
+    cropDragStart = cropStagePoint(event);
+    cropDragPointerId = event.pointerId;
+    cropStage.setPointerCapture(event.pointerId);
+    renderCropSelection(cropDragStart, cropDragStart);
+  });
+  cropStage.addEventListener("pointermove", (event) => {
+    if (cropDragStart && cropDragPointerId === event.pointerId) {
+      renderCropSelection(cropDragStart, cropStagePoint(event));
+    }
+  });
+  cropStage.addEventListener("pointerup", (event) => {
+    if (cropDragStart && cropDragPointerId === event.pointerId) {
+      finishCropSelection(cropStagePoint(event));
+      cropStage.releasePointerCapture(event.pointerId);
+      cropDragStart = null;
+      cropDragPointerId = null;
+    }
+  });
+  cropStage.addEventListener("pointercancel", () => {
+    cropDragStart = null;
+    cropDragPointerId = null;
+    focusedCropSourceRect = null;
+    cropSelection.hidden = true;
+    generateCropBtn.disabled = true;
+    setCropStatus("Selection cancelled. Drag on the image to try again.");
+  });
+  generateCropBtn.addEventListener("click", () => {
+    void generateFocusedCrop();
+  });
+  copyCropBtn.addEventListener("click", () => {
+    void copyFocusedCrop();
+  });
+  downloadCropBtn.addEventListener("click", downloadFocusedCrop);
+  copyCropPromptBtn.addEventListener("click", () => {
+    void copyFocusedCropPrompt();
   });
   humanReviewSelect.addEventListener("change", () => {
     const segment = verificationSegments[selectedVerificationSegment];

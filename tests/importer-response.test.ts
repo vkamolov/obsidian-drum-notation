@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { parseDrumBlockWithWarnings } from "../src/parser";
 import {
   compareReportCore,
   detectRasterImageKind,
@@ -37,6 +38,52 @@ describe("agent response extraction", () => {
     expect(compareReportCore(result.report, "1.6.0", digest)).toBe("different");
   });
 
+  it("accepts a clean report with a row re-observation audit note", () => {
+    const audited = JSON.parse(report);
+    audited.segments[0].issues = [{
+      code: "row-length-reobserved",
+      message: "Re-observed the complete row and confirmed trailing silence before restoring its final rest position."
+    }];
+    const result = extractAgentResponse(`\`\`\`drums\nHH | x-x-x-x-x-x-x-x-\n\`\`\`\n\`\`\`drum-import-report\n${JSON.stringify(audited)}\n\`\`\``);
+
+    expect(result.reportState).toBe("valid");
+    expect(result.report?.validationStatus).toBe("clean");
+    expect(result.report?.segments[0].issues[0].code).toBe("row-length-reobserved");
+  });
+
+  it("accepts cymbal-position audit notes without treating them as losses", () => {
+    const audited = JSON.parse(report);
+    audited.segments[0].issues = [
+      { code: "cymbal-position-convention", message: "Used the standard generated kit ladder because no source legend was visible." },
+      { code: "cymbal-position-evidence", message: "Mapped the upper cluster from a ledger line crossing its notehead." }
+    ];
+    const result = extractAgentResponse(`\`\`\`drums\nHH | x-x-x-x-x-x-x-x-\n\`\`\`\n\`\`\`drum-import-report\n${JSON.stringify(audited)}\n\`\`\``);
+
+    expect(result.reportState).toBe("valid");
+    expect(result.report?.segments[0].issues).toEqual(audited.segments[0].issues);
+    expect(result.report?.segments[0].issues.every((issue) => !("loss" in issue))).toBe(true);
+  });
+
+  it("preserves report issues, ambiguities, and workarounds for readable verification UI", () => {
+    const detailed = JSON.parse(report);
+    detailed.validationStatus = "warnings";
+    detailed.segments[0] = {
+      ...detailed.segments[0],
+      validationStatus: "warnings",
+      issues: [{ code: "split-voice-explicit-rest", message: "The lower-voice rest glyph is not visible." }],
+      ambiguities: [{ code: "cymbal-position", message: "Confirm whether the upper cymbal is crash or ride." }],
+      workarounds: [{ feature: "visible lower-voice rest", action: "Preserved its silent span.", loss: "appearance" }]
+    };
+
+    const result = extractAgentResponse(`\`\`\`drums\nHH | x-x-x-x-x-x-x-x-\n\`\`\`\n\`\`\`drum-import-report\n${JSON.stringify(detailed)}\n\`\`\``);
+
+    expect(result.report?.segments[0]).toMatchObject({
+      issues: [{ code: "split-voice-explicit-rest" }],
+      ambiguities: [{ code: "cymbal-position" }],
+      workarounds: [{ loss: "appearance" }]
+    });
+  });
+
   it("degrades gracefully for malformed reports", () => {
     const result = extractAgentResponse("```drums\nHH | x---------------\n```\n```drum-import-report\n{}\n```");
     expect(result.segments).toHaveLength(1);
@@ -70,6 +117,38 @@ describe("agent response extraction", () => {
     const oversized = extractAgentResponse(`\`\`\`drums\n${"x".repeat(MAX_IMPORT_BLOCK_BYTES + 1)}\n\`\`\``);
     expect(oversized.segments).toHaveLength(0);
     expect(oversized.errors.some((error) => error.includes("block exceeds"))).toBe(true);
+  });
+});
+
+describe("row-length diagnostics", () => {
+  const source = (hatPattern: string) => `Time: 3/4
+HH | ${hatPattern}
+BD | o-----------`;
+  const fingerprint = (hatPattern: string) => {
+    const parsed = parseDrumBlockWithWarnings(source(hatPattern));
+    return {
+      warnings: parsed.warnings,
+      hits: parsed.block.slots.map((slot) =>
+        slot.hits.map((hit) => `${hit.instrument.id}:${hit.articulation}`).sort()
+      )
+    };
+  };
+
+  it("keeps the trailing-length warning even though parser padding is musically identical", () => {
+    const complete = fingerprint("x-x-x-x-x-x-");
+    const truncated = fingerprint("x-x-x-x-x-x");
+
+    expect(truncated.warnings.map((warning) => warning.code)).toContain("row-length-mismatch");
+    expect(complete.warnings).toEqual([]);
+    expect(truncated.hits).toEqual(complete.hits);
+  });
+
+  it("demonstrates that a full-length mid-row omission can be clean but musically different", () => {
+    const complete = fingerprint("x-x-x-x-x-x-");
+    const omitted = fingerprint("x-x-x---x-x-");
+
+    expect(omitted.warnings).toEqual([]);
+    expect(omitted.hits).not.toEqual(complete.hits);
   });
 });
 

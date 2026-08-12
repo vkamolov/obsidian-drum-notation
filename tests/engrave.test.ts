@@ -83,6 +83,24 @@ function voiceTicks(notes: readonly { getTicks: () => { value: () => number } }[
   return notes.reduce((total, note) => total + note.getTicks().value(), 0);
 }
 
+describe("articulation engraving", () => {
+  it("attaches a separate grace note to a flam but not to a diddle", () => {
+    const block = parseDrumBlock("SD | fd--");
+    const bar = block.bars[0];
+    const visualBar = buildGridVisualBarNotes(
+      bar.slots,
+      block.timeSignature,
+      block.gridResolution,
+      false,
+      block.beamGrouping
+    );
+
+    expect(visualBar.noteSlots.map((slot) => slot.hits[0]?.articulation)).toEqual(["flam", "diddle"]);
+    expect(visualBar.hitNotes[0].getModifiersByType("GraceNoteGroup")).toHaveLength(1);
+    expect(visualBar.hitNotes[1].getModifiersByType("GraceNoteGroup")).toHaveLength(0);
+  });
+});
+
 describe("compound-meter beaming", () => {
   it.each([
     ["6/8", 16, 6, [3, 3]],

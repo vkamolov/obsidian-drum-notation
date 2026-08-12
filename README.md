@@ -789,6 +789,12 @@ drum-score images or visually exposed PDF pages into `drums` blocks, validates
 them locally against the same parser used here, and reports ambiguities and
 format workarounds. Audio transcription and hosted inference are not included.
 
+The importer keeps one shared, self-contained Agent Skill and publishes four
+packages from it: a strict Agent Plugins 1.0.0 package plus compatibility
+packages for Codex/OpenAI, Claude Code, and Gemini CLI. The client adapters only
+provide packaging metadata; transcription instructions, references, and the
+network-free validator remain single-source inside `skills/import-drum-score/`.
+
 Importer releases use tags such as `agent-plugin-v0.1.0`; they do not change
 the Obsidian plugin version or release assets.
 

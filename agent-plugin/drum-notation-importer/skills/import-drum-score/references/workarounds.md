@@ -7,6 +7,7 @@ Apply these rules consistently and record each use in the import report.
 | Two-bar repeat | Expand both bars explicitly; never emit `%2` | Appearance |
 | Multi-bar rest | Emit explicit empty/rest bars | Appearance |
 | Tie | Keep the initial onset and omit the tied reattack | Appearance for ordinary unsustained drums |
+| Explicit rest in one split voice while another voice sounds | Preserve the complete silent span with `-` in the corresponding instrument row; do not add an onset or alter the sounding voice; explain that the glyph cannot currently be forced | Appearance |
 | First/second ending | Flatten only when the complete route is unambiguous | Structure |
 | Meter change within a source line | Begin a new system with `Bar`, then `Time:` | Appearance/layout |
 | Per-system tempo | Split into separate `drums` blocks | Structure |

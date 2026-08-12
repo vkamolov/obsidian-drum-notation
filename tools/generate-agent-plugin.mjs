@@ -1,4 +1,4 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { PLUGIN_ROOT, stableJson } from "./plugin-paths.mjs";
 
@@ -23,6 +23,16 @@ const openai = {
   skills: "./skills/",
   interface: metadata.interface
 };
+const claude = {
+  $schema: "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  ...shared,
+  displayName: metadata.interface.displayName
+};
+const gemini = {
+  name: metadata.name,
+  version: metadata.version,
+  description: metadata.description
+};
 
 async function emit(relativePath, value) {
   const destination = path.join(PLUGIN_ROOT, relativePath);
@@ -36,9 +46,12 @@ async function emit(relativePath, value) {
     return;
   }
 
+  await mkdir(path.dirname(destination), { recursive: true });
   await writeFile(destination, expected);
 }
 
 await emit("plugin.json", portable);
 await emit(path.join(".codex-plugin", "plugin.json"), openai);
+await emit(path.join(".claude-plugin", "plugin.json"), claude);
+await emit("gemini-extension.json", gemini);
 console.log(check ? "Agent plugin manifests are current." : "Generated agent plugin manifests.");

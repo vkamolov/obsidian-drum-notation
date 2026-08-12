@@ -3,8 +3,14 @@ import {
   formatGridCountSpeechLabel,
   formatGridSelectionCountLabel,
   formatInstrumentCellAriaLabel,
-  formatStickingCellAriaLabel
+  formatStickingCellAriaLabel,
+  getInstrumentMoveOptions
 } from "../src/editor-grid";
+import { DRUM_KIT } from "../src/kit";
+import { parseDrumBlock } from "../src/parser";
+
+const HH = DRUM_KIT.find((instrument) => instrument.id === "closed-hat")!;
+const SN = DRUM_KIT.find((instrument) => instrument.id === "snare")!;
 
 describe("visual editor grid labels", () => {
   it("formats selected-cell count labels", () => {
@@ -29,5 +35,22 @@ describe("visual editor grid labels", () => {
     expect(formatStickingCellAriaLabel("beat 3 &")).toBe("Sticking, beat 3 &, empty");
     expect(formatStickingCellAriaLabel("beat 3 &", "right")).toBe("Sticking, beat 3 &, right hand");
     expect(formatStickingCellAriaLabel("beat 3 &", "both")).toBe("Sticking, beat 3 &, both hands");
+  });
+
+  it("offers compatible instrument moves and marks occupied targets", () => {
+    const block = parseDrumBlock("CR | x---\nHH | x---");
+    const options = getInstrumentMoveOptions(block, 0, HH);
+    const crash = options.find((option) => option.instrument.id === "crash");
+    const ride = options.find((option) => option.instrument.id === "ride");
+
+    expect(crash?.occupied).toBe(true);
+    expect(ride?.occupied).toBe(false);
+  });
+
+  it("excludes targets that cannot preserve the articulation", () => {
+    const block = parseDrumBlock("SN | g---");
+    const options = getInstrumentMoveOptions(block, 0, SN);
+
+    expect(options).toEqual([]);
   });
 });

@@ -1,11 +1,11 @@
 import esbuild from "esbuild";
 import { chmod, mkdir } from "node:fs/promises";
 import path from "node:path";
-import { PLUGIN_ROOT } from "./plugin-paths.mjs";
+import { PLUGIN_ROOT, SKILL_ROOT } from "./plugin-paths.mjs";
 import { getValidatorProvenance } from "./validator-provenance.mjs";
 
 const provenance = await getValidatorProvenance();
-const output = path.join(PLUGIN_ROOT, "scripts", "validate-drum-notation.mjs");
+const output = path.join(SKILL_ROOT, "scripts", "validate-drum-notation.mjs");
 await mkdir(path.dirname(output), { recursive: true });
 
 await esbuild.build({
