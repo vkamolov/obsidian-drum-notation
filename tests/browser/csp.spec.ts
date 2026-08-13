@@ -70,12 +70,19 @@ test("production CSP keeps score rendering self-contained", async ({ page }) => 
 
   await page.goto("/");
   await expect(page.locator("#pg-preview svg")).toBeVisible();
+  await page.evaluate(() => document.fonts.ready);
+  expect(await page.evaluate(() => document.fonts.check("10px Bravura"))).toBe(true);
+  expect(await page.evaluate(() => document.fonts.check("10px Academico"))).toBe(true);
+
   const noteheads = page.locator("#pg-preview svg .vf-notehead");
-  await expect(noteheads.first()).toBeVisible();
   expect(await noteheads.count()).toBeGreaterThan(0);
-  const noteheadBox = await noteheads.first().boundingBox();
-  expect(noteheadBox?.width ?? 0).toBeGreaterThan(0);
-  expect(noteheadBox?.height ?? 0).toBeGreaterThan(0);
+  await expect.poll(async () => {
+    const boxes = await noteheads.evaluateAll((elements) => elements.map((element) => {
+      const box = element.getBoundingClientRect();
+      return { width: box.width, height: box.height };
+    }));
+    return boxes.some((box) => box.width > 0 && box.height > 0);
+  }).toBe(true);
 
   const csp = await page.locator('meta[http-equiv="Content-Security-Policy"]').getAttribute("content");
   expect(csp).toContain("script-src 'self'");
@@ -86,10 +93,6 @@ test("production CSP keeps score rendering self-contained", async ({ page }) => 
     .toBe(validatorVersion.notationCoreVersion);
   expect(await page.locator('meta[name="drum-notation-core-digest"]').getAttribute("content"))
     .toBe(validatorVersion.notationCoreDigest);
-
-  await page.evaluate(() => document.fonts.ready);
-  expect(await page.evaluate(() => document.fonts.check("10px Bravura"))).toBe(true);
-  expect(await page.evaluate(() => document.fonts.check("10px Academico"))).toBe(true);
 
   const fetchBlocked = await page.evaluate(async () => {
     try {
