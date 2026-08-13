@@ -9,12 +9,12 @@
     {
       "name": "drum-notation-importer",
       "description": "Transcribe printed drum scores into validated Obsidian Drum Notation.",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "source": {
         "source": "git-subdir",
         "url": "https://github.com/vkamolov/obsidian-drum-notation.git",
         "path": "agent-plugin/drum-notation-importer",
-        "ref": "agent-plugin-v0.1.0"
+        "ref": "agent-plugin-v0.2.0"
       }
     }
   ]

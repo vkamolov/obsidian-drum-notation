@@ -23,6 +23,12 @@ describe("importer recognition guidance", () => {
     expect(skill).toContain("cymbal-position-convention");
     expect(skill).toContain("cymbal-position-evidence");
     expect(skill).toContain("cymbal-position-unresolved");
+    expect(skill).toMatch(/paired, non-empty section repeat that plays exactly twice/);
+    expect(skill).toContain("Keep a supported section-repeat span in one block");
+    expect(skill).toMatch(/Permit `%` (?:or|and) `%xN`/);
+    expect(skill).toMatch(/never attach a boundary directly to a standalone measure-repeat line/i);
+    expect(skill).toMatch(/Do not report a supported native section repeat as a workaround or loss/);
+    expect(skill).toMatch(/flatten only after explicit user approval/);
     expect(skill).toContain("<skill-directory>/scripts/validate-drum-notation.mjs");
     expect(skill).not.toContain("<plugin-root>/scripts/validate-drum-notation.mjs");
     expect(validator).toContain("#!/usr/bin/env node");
@@ -31,6 +37,8 @@ describe("importer recognition guidance", () => {
     expect(reference).toContain("separate grace notehead");
     expect(reference).toContain("slash through the primary note's stem");
     expect(reference).toContain("clean validator result alone cannot prove");
+    expect(reference).toContain("Keep the complete span in one `drums` block");
+    expect(reference).toContain("appearance loss");
   });
 
   it("keeps detailed playground guidance and a concise manifest starter prompt", () => {

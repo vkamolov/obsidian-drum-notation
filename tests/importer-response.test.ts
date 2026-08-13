@@ -13,8 +13,8 @@ import {
 const digest = "a".repeat(64);
 const report = JSON.stringify({
   schemaVersion: 1,
-  importerVersion: "0.1.0",
-  notationCoreVersion: "1.5.0",
+  importerVersion: "0.2.0",
+  notationCoreVersion: "1.6.0",
   notationCoreDigest: digest,
   validatorBuildDigest: "b".repeat(64),
   source: { kind: "image" },
@@ -34,7 +34,18 @@ describe("agent response extraction", () => {
   it("accepts a valid report and compares notation cores", () => {
     const result = extractAgentResponse(`\`\`\`drums\nHH | x-x-x-x-x-x-x-x-\n\`\`\`\n\`\`\`drum-import-report\n${report}\n\`\`\``);
     expect(result.reportState).toBe("valid");
-    expect(compareReportCore(result.report, "1.5.0", digest)).toBe("same");
+    expect(compareReportCore(result.report, "1.6.0", digest)).toBe("same");
+    expect(compareReportCore(result.report, "1.5.0", digest)).toBe("different");
+  });
+
+  it("shows notation-core skew for a legacy importer 0.1 report", () => {
+    const legacy = JSON.parse(report);
+    legacy.importerVersion = "0.1.0";
+    legacy.notationCoreVersion = "1.5.0";
+    legacy.notationCoreDigest = "c".repeat(64);
+    const result = extractAgentResponse(`\`\`\`drums\nHH | x-x-x-x-x-x-x-x-\n\`\`\`\n\`\`\`drum-import-report\n${JSON.stringify(legacy)}\n\`\`\``);
+
+    expect(result.reportState).toBe("valid");
     expect(compareReportCore(result.report, "1.6.0", digest)).toBe("different");
   });
 

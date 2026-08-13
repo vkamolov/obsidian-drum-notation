@@ -71,5 +71,6 @@ jobs:
           gh release create "$tag" \
             --title "$tag" \
             --draft \
+            --latest=false \
             --generate-notes \
             dist/agent-plugin/drum-notation-importer-*.tar.gz

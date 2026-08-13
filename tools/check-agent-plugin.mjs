@@ -157,7 +157,7 @@ if (await stat(path.join(PLUGIN_ROOT, "scripts", "validate-drum-notation.mjs")).
 for (const forbidden of ["agents", "mcp.json", ".mcp.json", "hooks", path.join("skills", "import-drum-score", "agents")]) {
   const forbiddenPath = path.join(PLUGIN_ROOT, forbidden);
   if (await stat(forbiddenPath).then(() => true).catch(() => false)) {
-    throw new Error(`${forbidden} is outside the 0.1 package scope`);
+    throw new Error(`${forbidden} is outside the current package scope`);
   }
 }
 
@@ -230,11 +230,22 @@ if (!claudeValidation.error && claudeValidation.status !== 0) {
 const obsidianRelease = await readFile(path.join(REPO_ROOT, ".github", "workflows", "release.yml"), "utf8");
 const importerRelease = await readFile(path.join(REPO_ROOT, ".github", "workflows", "release-agent-plugin.yml"), "utf8");
 const pagesRelease = await readFile(path.join(REPO_ROOT, ".github", "workflows", "pages.yml"), "utf8");
+const releaseGuide = await readFile(path.join(REPO_ROOT, "docs", "releasing.md"), "utf8");
 if (!/tags-ignore:\s*\n\s*- ["']agent-plugin-v\*["']/.test(obsidianRelease) || /\n\s+tags:\s*\n/.test(obsidianRelease)) {
   throw new Error("Obsidian release workflow must ignore agent-plugin-v* tags without a competing tags filter");
 }
 if (!/tags:\s*\n\s*- ["']agent-plugin-v\*["']/.test(importerRelease) || !importerRelease.includes("^agent-plugin-v[0-9]+\\.[0-9]+\\.[0-9]+$")) {
   throw new Error("Importer release workflow tag routing is stale");
+}
+if (!obsidianRelease.includes("gh release create") || !obsidianRelease.includes("--draft") || obsidianRelease.includes("--latest=true")) {
+  throw new Error("Obsidian release workflow must remain draft-based without relying on a create-time Latest flag");
+}
+if (!importerRelease.includes("gh release create") || !importerRelease.includes("--draft") || !importerRelease.includes("--latest=false")) {
+  throw new Error("Importer release workflow must create drafts with --latest=false");
+}
+if (!releaseGuide.includes('gh release edit "$tag" --draft=false --latest=true') ||
+  !releaseGuide.includes(`gh release edit ${expectedReleaseRef} --draft=false --latest=false`)) {
+  throw new Error("Release guide must retain explicit and opposite Latest policies for Obsidian and importer publication");
 }
 if (/\n\s+tags(?:-ignore)?:/.test(pagesRelease)) {
   throw new Error("Pages workflow must remain branch/manual only");

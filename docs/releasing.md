@@ -66,6 +66,11 @@ For each release:
    ```
 7. Inspect the draft GitHub release, artifact attestations, and attached files.
 8. Install the exact downloaded assets into a clean vault before publishing.
+9. Publish explicitly as the repository's Latest release:
+   ```bash
+   tag=0.9.0
+   gh release edit "$tag" --draft=false --latest=true
+   ```
 
 For beta testing before Community directory approval, publish `0.9.x` releases
 as GitHub pre-releases and distribute them with BRAT or manual installation.
@@ -125,21 +130,31 @@ installable by Agent Skills clients.
 
 For an importer release:
 
-1. Bump only the importer version in canonical metadata, then run
-   `npm run agent-plugin:generate` and `npm run agent-plugin:build`.
-2. Run the full shared checks above and `npm run agent-plugin:package`.
-3. Commit and push to `main`; confirm CI passes.
-4. Push an annotated tag such as:
+1. Bump only the importer version in canonical metadata. Update both repository
+   marketplace pins, the Claude marketplace version, README release links, and
+   archive names to the same version.
+2. Run `npm run agent-plugin:generate`, `npm run agent-plugin:build`, the full
+   shared checks above, and `npm run agent-plugin:package`.
+3. Commit the release preparation, then create an annotated tag such as:
    ```bash
-   git tag -a agent-plugin-v0.1.0 -m "agent-plugin-v0.1.0"
-   git push origin agent-plugin-v0.1.0
+   git tag -a agent-plugin-v0.2.0 -m "agent-plugin-v0.2.0"
    ```
-5. Inspect the draft release, attestation, and all four extracted packages
+4. Push `main` and the importer tag together so marketplace pins never point to
+   a missing remote tag:
+   ```bash
+   git push origin main agent-plugin-v0.2.0
+   ```
+5. Confirm main CI and the tag workflow pass. The workflow that creates the
+   importer draft must be present in the tagged commit because tag-triggered
+   workflows are resolved from that commit.
+6. Inspect the draft release, attestation, and all four extracted packages
    before publishing: portable, OpenAI, Claude, and Gemini CLI.
-6. After publishing, update the importer version and release tag in both
-   `.agents/plugins/marketplace.json` and `.claude-plugin/marketplace.json`,
-   then run `npm run check:agent-plugin` and push the marketplace update to
-   `main`.
+7. Publish without replacing the Obsidian release as Latest, then verify the
+   repository's Latest release still resolves to the current Obsidian version:
+   ```bash
+   gh release edit agent-plugin-v0.2.0 --draft=false --latest=false
+   gh api repos/vkamolov/obsidian-drum-notation/releases/latest --jq .tag_name
+   ```
 
 The Obsidian workflow ignores `agent-plugin-v*`; the importer workflow rejects
 a tag that does not exactly match importer metadata.

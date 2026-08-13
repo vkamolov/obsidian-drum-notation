@@ -68,6 +68,13 @@ Preserve supported explicit tuplet syntax from the canonical format rather than 
   on recognized instrument or sticking rows around the expanded section.
 - Do not infer a section repeat from visual proximity alone. Confirm both
   repeat barlines and the complete enclosed span, especially across systems.
+- Keep the complete span in one `drums` block. Use `Bar` and `Subtitle:` for
+  printed system and rehearsal breaks inside it.
+- `%` and `%xN` may occur inside a section. If a boundary would attach directly
+  to a standalone measure-repeat line, expand only that boundary bar into
+  explicit instrument rows and report the appearance loss.
+- A clearly preserved native section repeat is neither a workaround nor a
+  loss. Ask before output when a boundary or traversal count is ambiguous.
 - First/second endings, combined adjacent repeat boundaries, nested repeats,
   D.S./D.C., Segno, and Coda remain unsupported; ask or flatten only with the
   user's approval when those structures affect musical order.

@@ -818,10 +818,11 @@ a server.
 ## Drum Notation Importer Agent Plugin
 
 The repository also contains the independently versioned
-`drum-notation-importer` Agent Plugin. Version 0.1 transcribes clean printed
-drum-score images or visually exposed PDF pages into `drums` blocks, validates
-them locally against the same parser used here, and reports ambiguities and
-format workarounds. Audio transcription and hosted inference are not included.
+`drum-notation-importer` Agent Plugin. Version 0.2 transcribes clean printed
+drum-score images or visually exposed PDF pages into `drums` blocks, preserves
+supported two-pass section-repeat barlines, validates locally against the same
+parser used here, and reports ambiguities and format workarounds. Audio
+transcription and hosted inference are not included.
 
 The importer keeps one shared, self-contained Agent Skill and publishes four
 packages from it: a strict Agent Plugins 1.0.0 package plus compatibility
@@ -829,7 +830,7 @@ packages for Codex/OpenAI, Claude Code, and Gemini CLI. The client adapters only
 provide packaging metadata; transcription instructions, references, and the
 network-free validator remain single-source inside `skills/import-drum-score/`.
 
-Importer releases use tags such as `agent-plugin-v0.1.0`; they do not change
+Importer releases use tags such as `agent-plugin-v0.2.0`; they do not change
 the Obsidian plugin version or release assets.
 
 ### Install in ChatGPT desktop or Codex
@@ -860,14 +861,14 @@ session, after installation.
 ### Install in Gemini CLI
 
 Download and extract the Gemini package from the
-[`agent-plugin-v0.1.0` release](https://github.com/vkamolov/obsidian-drum-notation/releases/tag/agent-plugin-v0.1.0),
+[`agent-plugin-v0.2.0` release](https://github.com/vkamolov/obsidian-drum-notation/releases/tag/agent-plugin-v0.2.0),
 then install the extracted directory:
 
 ```bash
-gh release download agent-plugin-v0.1.0 \
+gh release download agent-plugin-v0.2.0 \
   --repo vkamolov/obsidian-drum-notation \
-  --pattern "drum-notation-importer-0.1.0-gemini.tar.gz"
-tar -xzf drum-notation-importer-0.1.0-gemini.tar.gz
+  --pattern "drum-notation-importer-0.2.0-gemini.tar.gz"
+tar -xzf drum-notation-importer-0.2.0-gemini.tar.gz
 gemini extensions install ./drum-notation-importer
 ```
 
