@@ -12,6 +12,7 @@ import {
   DrumBlock,
   DrumBar,
   DrumInstrument,
+  DrumSectionRepeat,
   DrumSystem
 } from "./types";
 import { getTupletDurationDenominator } from "./rhythm";
@@ -43,6 +44,7 @@ function serializeMinimalBlock(block: DrumBlock): string {
 
 function serializeSystems(block: DrumBlock): string[] {
   const lines: string[] = [];
+  const barIndexes = new Map(block.bars.map((bar, index) => [bar, index]));
 
   block.systems.forEach((system, index) => {
     if (index > 0) {
@@ -69,7 +71,7 @@ function serializeSystems(block: DrumBlock): string[] {
       lines.push(`Subtitle: ${system.subtitle}`);
     }
 
-    lines.push(...serializeSystem(system));
+    lines.push(...serializeSystem(system, block.sectionRepeats, barIndexes));
   });
 
   return lines;
@@ -198,7 +200,11 @@ function isManagedAuthoringLine(line: string): boolean {
   ]).has(normalizeLabel(line.slice(0, divider)));
 }
 
-function serializeSystem(system: DrumSystem): string[] {
+function serializeSystem(
+  system: DrumSystem,
+  sectionRepeats: readonly DrumSectionRepeat[],
+  barIndexes: ReadonlyMap<DrumBar, number>
+): string[] {
   const lines: string[] = [];
   let normalBars: DrumBar[] = [];
 
@@ -207,7 +213,7 @@ function serializeSystem(system: DrumSystem): string[] {
       return;
     }
 
-    lines.push(...serializeNormalBars(normalBars));
+    lines.push(...serializeNormalBars(normalBars, sectionRepeats, barIndexes));
     normalBars = [];
   };
 
@@ -250,7 +256,11 @@ function formatMeasureRepeat(count: number): string {
   return count > 1 ? `%x${count}` : "%";
 }
 
-function serializeNormalBars(bars: DrumBar[]): string[] {
+function serializeNormalBars(
+  bars: DrumBar[],
+  sectionRepeats: readonly DrumSectionRepeat[],
+  barIndexes: ReadonlyMap<DrumBar, number>
+): string[] {
   const rows: SystemRow[] = [];
   const stickingRow = toStickingRow(bars);
 
@@ -268,8 +278,11 @@ function serializeNormalBars(bars: DrumBar[]): string[] {
   }
 
   const lines: string[] = [];
+  const globalBarIndexes = bars.map((bar) => barIndexes.get(bar) ?? -1);
   for (const row of rows) {
-    lines.push(`${padRight(row.label, labelWidth)} | ${joinPatterns(row.patterns)}`);
+    lines.push(
+      `${padRight(row.label, labelWidth)} ${joinPatterns(row.patterns, globalBarIndexes, sectionRepeats)}`
+    );
   }
 
   return lines;
@@ -291,15 +304,30 @@ function padRight(value: string, width: number): string {
   return padded;
 }
 
-function joinPatterns(patterns: string[]): string {
+function joinPatterns(
+  patterns: string[],
+  globalBarIndexes: number[],
+  sectionRepeats: readonly DrumSectionRepeat[]
+): string {
   let result = "";
+  const starts = new Set(sectionRepeats.map((repeat) => repeat.startBarIndex));
+  const ends = new Set(sectionRepeats.map((repeat) => repeat.endBarIndex));
 
   for (let index = 0; index < patterns.length; index++) {
-    if (index > 0) {
-      result += " | ";
-    }
+    const globalBarIndex = globalBarIndexes[index] ?? -1;
+    const previousGlobalBarIndex = globalBarIndexes[index - 1] ?? -1;
+    const separator = index > 0 && ends.has(previousGlobalBarIndex)
+      ? "]"
+      : starts.has(globalBarIndex)
+        ? "["
+        : "|";
 
-    result += patterns[index];
+    result += `${index > 0 ? " " : ""}${separator} ${patterns[index]}`;
+  }
+
+  const finalGlobalBarIndex = globalBarIndexes[patterns.length - 1] ?? -1;
+  if (ends.has(finalGlobalBarIndex)) {
+    result += " ]";
   }
 
   return result;

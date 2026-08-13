@@ -2,15 +2,23 @@ export function allocateBarWidths(
   slotCounts: readonly number[],
   totalWidth: number,
   firstBarHeaderWidth: number,
-  minimumRhythmicWidth: number
+  minimumRhythmicWidth: number,
+  additionalFixedWidths: readonly number[] = []
 ): number[] {
   if (slotCounts.length === 0) {
     return [];
   }
 
   const width = Math.max(0, totalWidth);
-  const headerWidth = Math.min(width, Math.max(0, firstBarHeaderWidth));
-  const rhythmicWidth = Math.max(0, width - headerWidth);
+  const fixedWidths = slotCounts.map((_, index) =>
+    Math.max(0, additionalFixedWidths[index] ?? 0) + (index === 0 ? Math.max(0, firstBarHeaderWidth) : 0)
+  );
+  const fixedTotal = Math.min(width, fixedWidths.reduce((sum, fixed) => sum + fixed, 0));
+  const fixedScale = fixedTotal > 0 && fixedTotal < fixedWidths.reduce((sum, fixed) => sum + fixed, 0)
+    ? fixedTotal / fixedWidths.reduce((sum, fixed) => sum + fixed, 0)
+    : 1;
+  const normalizedFixedWidths = fixedWidths.map((fixed) => fixed * fixedScale);
+  const rhythmicWidth = Math.max(0, width - fixedTotal);
   const weights = slotCounts.map((count) => Math.max(0, count));
   const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
   const normalizedWeights = totalWeight > 0 ? weights : weights.map(() => 1);
@@ -21,7 +29,9 @@ export function allocateBarWidths(
       ? allocateWithMinimums(normalizedWeights, rhythmicWidth, minimum)
       : allocateProportionally(normalizedWeights, rhythmicWidth);
 
-  rhythmicWidths[0] += headerWidth;
+  rhythmicWidths.forEach((_, index) => {
+    rhythmicWidths[index] += normalizedFixedWidths[index];
+  });
   rhythmicWidths[rhythmicWidths.length - 1] += width - rhythmicWidths.reduce((sum, barWidth) => sum + barWidth, 0);
 
   return rhythmicWidths;

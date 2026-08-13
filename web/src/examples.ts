@@ -427,6 +427,56 @@ BD | o-------o-------
   },
 
   {
+    id: "basic-section-repeat",
+    name: "Basic section repeat",
+    category: "notation-features",
+    source: `Title: Basic section repeat
+Tempo: 100
+Time: 4/4
+Grid: 16
+HH [ x-x-x-x-x-x-x-x- | x-x-x-x-x-x-x-x- ]
+SD [ ----o-------o--- | ----o-------o--- ]
+BD [ o-------o-o----- | o-----o-o------- ]`
+  },
+
+  {
+    id: "cross-system-section-repeat",
+    name: "Cross-system section repeat",
+    category: "notation-features",
+    source: `Title: Cross-system section repeat
+Tempo: 96
+Time: 4/4
+Grid: 16
+Subtitle: Intro and repeat start
+HH | x-x-x-x-x-x-x-x- [ x-x-x-x-x-x-x-x-
+SD | ----o-------o--- [ ----o-------o---
+BD | o-------o------- [ o-----o-o-------
+
+Bar
+Subtitle: Repeat end and outro
+HH | x-x-x-x-x-x-x-x- ] x-x-x-x-x-x-x-x-
+SD | ----o-------o--- ] ----o-o-----o---
+BD | o-------o-o----- ] o---------o-----`
+  },
+
+  {
+    id: "section-repeat-with-compact-repeats",
+    name: "Section repeat with compact repeats",
+    category: "notation-features",
+    source: `Title: Section repeat with compact repeats
+Tempo: 90
+Time: 4/4
+Grid: 16
+HH [ x-x-x-x-x-x-x-x-
+SD [ ----o-------o---
+BD [ o-------o-o-----
+%x3
+HH | x-x-x-x-x-x-x-x- ]
+SD | ----o-o-----o--- ]
+BD | o---------o----- ]`
+  },
+
+  {
     id: "articulations",
     name: "Articulations",
     category: "notation-features",

@@ -930,7 +930,11 @@ function rebuildBlock(block: DrumBlock, views: SystemView[]): DrumBlock {
     views.map(toRowSection),
     views.map(toRepeatSection),
     views.map(toStickingSection),
-    views.map((view) => view.subtitle)
+    views.map((view) => view.subtitle),
+    [],
+    false,
+    [],
+    block.sectionRepeats
   );
 }
 

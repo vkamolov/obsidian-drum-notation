@@ -163,6 +163,23 @@ CR | c---`);
     const serialized = serializeDrumBlock(result.block);
     expect(serializeDrumBlock(parseDrumBlock(serialized))).toBe(serialized);
   });
+
+  it("preserves section repeat structure when replacing bar content", () => {
+    const source = parseDrumBlock("SD | O---");
+    const target = parseDrumBlock("HH [ x--- | -x-- ] --x-");
+    const payload = captureBarClipboardPayload(source, 0)!;
+    const result = pasteBarClipboardPayload(target, 1, payload);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+
+    expect(result.block.sectionRepeats).toEqual([{ startBarIndex: 0, endBarIndex: 1 }]);
+    expect(serializeDrumBlock(result.block)).toContain("[");
+    expect(serializeDrumBlock(result.block)).toContain("]");
+    expect(findHit(result.block, result.block.bars[1].startSlot, "snare")?.articulation).toBe("accent");
+  });
 });
 
 describe("session bar clipboard", () => {

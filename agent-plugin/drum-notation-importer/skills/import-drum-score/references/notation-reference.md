@@ -10,6 +10,9 @@ This is a curated transcription guide. The repository parser and serializer are 
 - Use `Bar` to begin a new rendered system.
 - Use `Subtitle: text` to label the current system.
 - Use `%` or `%xN` only for supported one-bar repeats. Never use `%2`.
+- Use zero-width `[` and `]` bar separators for a clearly observed section
+  repeat that plays exactly twice. They may span `Bar` systems, but must be
+  paired, disjoint, and non-nested. Align explicit markers across rows.
 
 ## Settings
 
@@ -55,6 +58,19 @@ System-level `Time:` and `Grouping:` may appear immediately after `Bar`. A late 
 ## Tuplets
 
 Preserve supported explicit tuplet syntax from the canonical format rather than forcing tuplets onto a straight grid. If the source's grouping or span cannot be represented confidently, ask the user. Validate every tuplet block because malformed syntax can otherwise resemble ordinary pattern text.
+
+## Repeat navigation
+
+- `%` and `%xN` repeat only the immediately preceding bar; section repeat
+  barlines repeat every bar between `[` and `]` twice; `Repeat:` repeats the
+  complete playback roadmap.
+- Do not attach `[` or `]` directly to a standalone `%` line. Put boundaries
+  on recognized instrument or sticking rows around the expanded section.
+- Do not infer a section repeat from visual proximity alone. Confirm both
+  repeat barlines and the complete enclosed span, especially across systems.
+- First/second endings, combined adjacent repeat boundaries, nested repeats,
+  D.S./D.C., Segno, and Coda remain unsupported; ask or flatten only with the
+  user's approval when those structures affect musical order.
 
 ## Normalization contract
 

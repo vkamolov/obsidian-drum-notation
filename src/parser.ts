@@ -26,6 +26,7 @@ import {
   DrumRow,
   DrumRowInput,
   DrumRhythmRegion,
+  DrumSectionRepeat,
   DrumSlot,
   DrumStickingInput,
   DrumSystem,
@@ -62,12 +63,31 @@ interface ParsedDrumRowInput extends DrumRowInput {
   lineNumber: number;
   generatedSegments?: ReadonlySet<number>;
   segmentLineNumbers?: ReadonlyMap<number, number>;
+  sectionRepeatStarts?: SectionMarkerEvent[];
+  sectionRepeatEnds?: SectionMarkerEvent[];
+  sectionRepeatIssue?: string;
 }
 
 interface ParsedDrumStickingInput extends DrumStickingInput {
   lineNumber: number;
   generatedSegments?: ReadonlySet<number>;
   segmentLineNumbers?: ReadonlyMap<number, number>;
+  sectionRepeatStarts?: SectionMarkerEvent[];
+  sectionRepeatEnds?: SectionMarkerEvent[];
+  sectionRepeatIssue?: string;
+}
+
+interface SectionMarkerEvent {
+  barIndex: number;
+  lineNumber: number;
+}
+
+interface ParsedRowSegments {
+  label: string;
+  patterns: string[];
+  sectionRepeatStarts: number[];
+  sectionRepeatEnds: number[];
+  sectionRepeatIssue?: string;
 }
 
 interface RowLengthWarningEntry {
@@ -161,6 +181,9 @@ function parseDrumBlockInternal(source: string, collectWarnings: boolean): Parse
   const repeatSections: Array<Array<MeasureRepeatInput | undefined>> = [];
   const subtitleSections: Array<string | undefined> = [];
   const systemSettingsSections: DrumSystemSettings[] = [];
+  const sectionRepeatStarts: SectionMarkerEvent[] = [];
+  const sectionRepeatEnds: SectionMarkerEvent[] = [];
+  let sectionRepeatMarkersInvalid = false;
   let currentRows: ParsedDrumRowInput[] = [];
   let currentSticking: ParsedDrumStickingInput | undefined;
   let currentRepeats: Array<MeasureRepeatInput | undefined> = [];
@@ -195,6 +218,49 @@ function parseDrumBlockInternal(source: string, collectWarnings: boolean): Parse
       currentSubtitle = undefined;
       currentRepeats = [];
       return;
+    }
+
+    const markerEntries = [
+      ...currentRows,
+      ...(currentSticking ? [currentSticking] : [])
+    ].filter((entry) =>
+      entry.sectionRepeatIssue ||
+      (entry.sectionRepeatStarts?.length ?? 0) > 0 ||
+      (entry.sectionRepeatEnds?.length ?? 0) > 0
+    );
+
+    markerEntries.forEach((entry) => {
+      if (entry.sectionRepeatIssue) {
+        sectionRepeatMarkersInvalid = true;
+        warn(entry.lineNumber, "invalid-section-repeat", entry.sectionRepeatIssue);
+      }
+    });
+
+    const validMarkerEntries = markerEntries.filter((entry) => !entry.sectionRepeatIssue);
+    const firstMarkerEntry = validMarkerEntries[0];
+
+    if (firstMarkerEntry) {
+      const signature = sectionMarkerSignature(firstMarkerEntry);
+      const mismatch = validMarkerEntries.find((entry) => sectionMarkerSignature(entry) !== signature);
+
+      if (mismatch) {
+        sectionRepeatMarkersInvalid = true;
+        warn(
+          mismatch.lineNumber,
+          "section-repeat-mismatch",
+          "Section repeat markers on this system do not align across rows; rendering and playback will remain linear."
+        );
+      } else {
+        const offset = barHistory.length;
+        sectionRepeatStarts.push(...(firstMarkerEntry.sectionRepeatStarts ?? []).map((event) => ({
+          ...event,
+          barIndex: offset + event.barIndex
+        })));
+        sectionRepeatEnds.push(...(firstMarkerEntry.sectionRepeatEnds ?? []).map((event) => ({
+          ...event,
+          barIndex: offset + event.barIndex
+        })));
+      }
     }
 
     syncRepeatMarkers(currentRows, currentSticking, currentRepeats);
@@ -334,7 +400,18 @@ function parseDrumBlockInternal(source: string, collectWarnings: boolean): Parse
       return;
     }
 
-    const measureRepeat = parseMeasureRepeatLine(line);
+    const attachedRepeatMarkers = /[\[\]]/.test(line)
+      ? parseMeasureRepeatLine(line.replace(/[\[\]]/g, "").trim())
+      : null;
+    if (attachedRepeatMarkers) {
+      sectionRepeatMarkersInvalid = true;
+      warn(
+        lineNumber,
+        "invalid-section-repeat",
+        "Section repeat markers cannot be attached directly to a standalone measure repeat; the measure repeat remains playable without section navigation."
+      );
+    }
+    const measureRepeat = parseMeasureRepeatLine(line) ?? attachedRepeatMarkers;
 
     if (measureRepeat) {
       const settings = resolvedSystemSettings[sourceSectionIndex] ?? mainSettings;
@@ -368,7 +445,7 @@ function parseDrumBlockInternal(source: string, collectWarnings: boolean): Parse
 
     if (sticking) {
       warnForUnsupportedStickingCharacters(line, lineNumber, warn);
-      const parsedSticking = { ...sticking, lineNumber };
+      const parsedSticking = withSectionMarkerLines(sticking, lineNumber);
       currentSticking =
         currentRepeats.length > 0
           ? appendStickingAfterRepeat(currentRows, currentSticking, currentRepeats.length, parsedSticking)
@@ -380,7 +457,7 @@ function parseDrumBlockInternal(source: string, collectWarnings: boolean): Parse
 
     if (row) {
       warnForUnsupportedPatternCharacters(line, row.label, lineNumber, warn);
-      const parsedRow = { ...row, lineNumber };
+      const parsedRow = withSectionMarkerLines(row, lineNumber);
 
       if (currentRepeats.length > 0) {
         appendRowAfterRepeat(currentRows, currentSticking, currentRepeats.length, parsedRow);
@@ -413,6 +490,13 @@ function parseDrumBlockInternal(source: string, collectWarnings: boolean): Parse
   );
   const effectiveMainSettings = systemSettingsSections[0] ?? mainSettings;
 
+  const sectionRepeats = resolveSectionRepeats(
+    sectionRepeatStarts,
+    sectionRepeatEnds,
+    barHistory.length,
+    sectionRepeatMarkersInvalid,
+    warn
+  );
   const block = finalizeDrumBlock(
     {
       tempo,
@@ -433,7 +517,8 @@ function parseDrumBlockInternal(source: string, collectWarnings: boolean): Parse
     subtitleSections,
     preparedRhythms.rhythmSections,
     preparedRhythms.containsTupletSyntax,
-    systemSettingsSections
+    systemSettingsSections,
+    sectionRepeats
   );
 
   warnings.sort((left, right) =>
@@ -593,7 +678,8 @@ export function finalizeDrumBlock(
   subtitleSections: Array<string | undefined> = [],
   rhythmSections: Array<Array<DrumRhythmRegion[] | undefined>> = [],
   containsTupletSyntax = false,
-  systemSettingsSections: DrumSystemSettings[] = []
+  systemSettingsSections: DrumSystemSettings[] = [],
+  sectionRepeats: DrumSectionRepeat[] = []
 ): DrumBlock {
   const systems = buildSystems(
     header,
@@ -622,7 +708,8 @@ export function finalizeDrumBlock(
     bars,
     rows,
     slots,
-    containsTupletSyntax
+    containsTupletSyntax,
+    sectionRepeats: sectionRepeats.map((repeat) => ({ ...repeat }))
   };
 }
 
@@ -703,51 +790,212 @@ function parseEmptyKnownSettingLine(line: string): { originalKey: string } | nul
 }
 
 function parseDrumRowInput(line: string): DrumRowInput | null {
-  const dividerIndex = line.indexOf("|");
+  const parsed = parseRowSegments(line);
 
-  if (dividerIndex <= 0) {
+  if (!parsed) {
     return null;
   }
 
-  const label = line.slice(0, dividerIndex).trim();
-  const instrument = INSTRUMENTS_BY_ALIAS.get(normalizeLabel(label));
-  const patterns = line
-    .slice(dividerIndex + 1)
-    .split("|")
-    .map((pattern) => pattern.replace(/\s+/g, "").trim())
-    .filter((pattern) => pattern.length > 0);
+  const instrument = INSTRUMENTS_BY_ALIAS.get(normalizeLabel(parsed.label));
 
-  if (!label || !instrument || patterns.length === 0) {
+  if (!instrument || parsed.patterns.length === 0) {
     return null;
   }
 
-  return { label, patterns, instrument };
+  return {
+    label: parsed.label,
+    patterns: parsed.patterns,
+    instrument,
+    sectionRepeatStarts: parsed.sectionRepeatStarts.map((barIndex) => ({ barIndex, lineNumber: 0 })),
+    sectionRepeatEnds: parsed.sectionRepeatEnds.map((barIndex) => ({ barIndex, lineNumber: 0 })),
+    ...(parsed.sectionRepeatIssue ? { sectionRepeatIssue: parsed.sectionRepeatIssue } : {})
+  } as DrumRowInput;
 }
 
 function parseStickingRowInput(line: string): DrumStickingInput | null {
-  const dividerIndex = line.indexOf("|");
+  const parsed = parseRowSegments(line);
 
-  if (dividerIndex <= 0) {
+  if (!parsed) {
     return null;
   }
 
-  const label = line.slice(0, dividerIndex).trim();
-
-  if (!STICKING_LABELS.has(normalizeLabel(label))) {
+  if (!STICKING_LABELS.has(normalizeLabel(parsed.label))) {
     return null;
   }
 
-  const patterns = line
-    .slice(dividerIndex + 1)
-    .split("|")
-    .map((pattern) => pattern.replace(/\s+/g, "").trim())
-    .filter((pattern) => pattern.length > 0);
-
-  if (!label || patterns.length === 0) {
+  if (parsed.patterns.length === 0) {
     return null;
   }
 
-  return { label, patterns };
+  return {
+    label: parsed.label,
+    patterns: parsed.patterns,
+    sectionRepeatStarts: parsed.sectionRepeatStarts.map((barIndex) => ({ barIndex, lineNumber: 0 })),
+    sectionRepeatEnds: parsed.sectionRepeatEnds.map((barIndex) => ({ barIndex, lineNumber: 0 })),
+    ...(parsed.sectionRepeatIssue ? { sectionRepeatIssue: parsed.sectionRepeatIssue } : {})
+  } as DrumStickingInput;
+}
+
+function parseRowSegments(line: string): ParsedRowSegments | null {
+  const firstSeparator = line.search(/[|\[\]]/);
+
+  if (firstSeparator <= 0) {
+    return null;
+  }
+
+  const label = line.slice(0, firstSeparator).trim();
+  if (!label) {
+    return null;
+  }
+
+  const patterns: string[] = [];
+  const sectionRepeatStarts: number[] = [];
+  const sectionRepeatEnds: number[] = [];
+  let sectionRepeatIssue: string | undefined;
+  let separatorIndex = firstSeparator;
+  let localSectionDepth = 0;
+
+  while (separatorIndex < line.length) {
+    const separator = line[separatorIndex];
+    const following = line.slice(separatorIndex + 1).search(/[|\[\]]/);
+    const nextSeparator = following < 0 ? line.length : separatorIndex + 1 + following;
+    const pattern = line.slice(separatorIndex + 1, nextSeparator).replace(/\s+/g, "").trim();
+
+    if (separator === "]") {
+      if (patterns.length === 0) {
+        sectionRepeatIssue ??= "A section repeat end marker must follow at least one bar; rendering and playback will remain linear.";
+      } else {
+        sectionRepeatEnds.push(patterns.length - 1);
+      }
+      localSectionDepth = Math.max(0, localSectionDepth - 1);
+    }
+
+    if (pattern.length > 0) {
+      if (separator === "[") {
+        if (localSectionDepth > 0) {
+          sectionRepeatIssue ??= "Nested or overlapping section repeats are not supported; rendering and playback will remain linear.";
+        }
+        localSectionDepth++;
+        sectionRepeatStarts.push(patterns.length);
+      }
+      patterns.push(pattern);
+    } else if (separator === "[") {
+      sectionRepeatIssue ??= "A section repeat start marker must be followed by a bar on the same row; rendering and playback will remain linear.";
+    } else if (nextSeparator < line.length) {
+      sectionRepeatIssue ??= "Adjacent section repeat separators are not supported; rendering and playback will remain linear.";
+    }
+
+    separatorIndex = nextSeparator;
+  }
+
+  return {
+    label,
+    patterns,
+    sectionRepeatStarts,
+    sectionRepeatEnds,
+    ...(sectionRepeatIssue ? { sectionRepeatIssue } : {})
+  };
+}
+
+function withSectionMarkerLines(input: DrumRowInput, lineNumber: number): ParsedDrumRowInput;
+function withSectionMarkerLines(input: DrumStickingInput, lineNumber: number): ParsedDrumStickingInput;
+function withSectionMarkerLines(
+  input: DrumRowInput | DrumStickingInput,
+  lineNumber: number
+): ParsedDrumRowInput | ParsedDrumStickingInput {
+  const candidate = input as (DrumRowInput | DrumStickingInput) & {
+    sectionRepeatStarts?: SectionMarkerEvent[];
+    sectionRepeatEnds?: SectionMarkerEvent[];
+    sectionRepeatIssue?: string;
+  };
+
+  return {
+    ...candidate,
+    lineNumber,
+    sectionRepeatStarts: candidate.sectionRepeatStarts?.map((event) => ({ ...event, lineNumber })),
+    sectionRepeatEnds: candidate.sectionRepeatEnds?.map((event) => ({ ...event, lineNumber }))
+  } as ParsedDrumRowInput | ParsedDrumStickingInput;
+}
+
+function sectionMarkerSignature(
+  entry: Pick<ParsedDrumRowInput, "sectionRepeatStarts" | "sectionRepeatEnds">
+): string {
+  const starts = (entry.sectionRepeatStarts ?? []).map((event) => event.barIndex).join(",");
+  const ends = (entry.sectionRepeatEnds ?? []).map((event) => event.barIndex).join(",");
+
+  return `${starts}|${ends}`;
+}
+
+function resolveSectionRepeats(
+  starts: SectionMarkerEvent[],
+  ends: SectionMarkerEvent[],
+  barCount: number,
+  alreadyInvalid: boolean,
+  warn: (line: number, code: ParseWarningCode, message: string, column?: number) => void
+): DrumSectionRepeat[] {
+  if (alreadyInvalid || (starts.length === 0 && ends.length === 0)) {
+    return [];
+  }
+
+  const events = [
+    ...starts.map((event) => ({ ...event, kind: "start" as const })),
+    ...ends.map((event) => ({ ...event, kind: "end" as const }))
+  ].sort((left, right) =>
+    left.barIndex - right.barIndex ||
+    (left.kind === right.kind ? 0 : left.kind === "end" ? -1 : 1)
+  );
+  const repeats: DrumSectionRepeat[] = [];
+  let open: SectionMarkerEvent | null = null;
+  let invalid = false;
+
+  for (const event of events) {
+    if (event.barIndex < 0 || event.barIndex >= barCount) {
+      invalid = true;
+      warn(event.lineNumber, "invalid-section-repeat", "Section repeat marker does not resolve to a playable bar; rendering and playback will remain linear.");
+      continue;
+    }
+
+    if (event.kind === "start") {
+      if (open) {
+        invalid = true;
+        warn(event.lineNumber, "invalid-section-repeat", "Nested or overlapping section repeats are not supported; rendering and playback will remain linear.");
+        continue;
+      }
+
+      const previous = repeats[repeats.length - 1];
+      if (previous && previous.endBarIndex + 1 === event.barIndex) {
+        invalid = true;
+        warn(event.lineNumber, "invalid-section-repeat", "Adjacent section repeats sharing one boundary are not supported yet; rendering and playback will remain linear.");
+        continue;
+      }
+
+      open = event;
+      continue;
+    }
+
+    if (!open) {
+      invalid = true;
+      warn(event.lineNumber, "invalid-section-repeat", "Section repeat end marker has no matching start marker; rendering and playback will remain linear.");
+      continue;
+    }
+
+    if (event.barIndex < open.barIndex) {
+      invalid = true;
+      warn(event.lineNumber, "invalid-section-repeat", "Section repeat end marker precedes its start marker; rendering and playback will remain linear.");
+      open = null;
+      continue;
+    }
+
+    repeats.push({ startBarIndex: open.barIndex, endBarIndex: event.barIndex });
+    open = null;
+  }
+
+  if (open) {
+    invalid = true;
+    warn(open.lineNumber, "invalid-section-repeat", "Section repeat start marker has no matching end marker; rendering and playback will remain linear.");
+  }
+
+  return invalid ? [] : repeats;
 }
 
 function warnForUnparsedPipeLine(
@@ -755,7 +1003,7 @@ function warnForUnparsedPipeLine(
   lineNumber: number,
   warn: (line: number, code: ParseWarningCode, message: string, column?: number) => void
 ): void {
-  const dividerIndex = line.indexOf("|");
+  const dividerIndex = line.search(/[|\[\]]/);
 
   if (dividerIndex <= 0) {
     return;
@@ -770,11 +1018,7 @@ function warnForUnparsedPipeLine(
   const normalizedLabel = normalizeLabel(label);
   const isKnownInstrument = INSTRUMENTS_BY_ALIAS.has(normalizedLabel);
   const isKnownSticking = STICKING_LABELS.has(normalizedLabel);
-  const patterns = line
-    .slice(dividerIndex + 1)
-    .split("|")
-    .map((pattern) => pattern.replace(/\s+/g, "").trim())
-    .filter((pattern) => pattern.length > 0);
+  const patterns = parseRowSegments(line)?.patterns ?? [];
 
   if ((isKnownInstrument || isKnownSticking) && patterns.length === 0) {
     warn(lineNumber, "empty-row", `${label} row has no usable pattern and is preserved as metadata.`, dividerIndex + 1);
@@ -813,7 +1057,7 @@ function warnForUnsupportedRowCharacters(
   isUnsupported: (char: string) => boolean,
   emit: (char: string, column: number) => void
 ): void {
-  const dividerIndex = line.indexOf("|");
+  const dividerIndex = line.search(/[|\[\]]/);
 
   if (dividerIndex < 0) {
     return;
@@ -829,7 +1073,7 @@ function warnForUnsupportedRowCharacters(
       continue;
     }
 
-    if (char === "|" || /\s/.test(char) || seen.has(char) || !isUnsupported(char)) {
+    if (char === "|" || char === "[" || char === "]" || /\s/.test(char) || seen.has(char) || !isUnsupported(char)) {
       continue;
     }
 
@@ -1191,6 +1435,7 @@ function appendRowAfterRepeat(
     target.patterns.push(pattern);
     markSourceSegment(target, segmentIndex, source.lineNumber);
   });
+  appendSectionMarkers(target, source, targetBarIndex);
 }
 
 function appendStickingAfterRepeat(
@@ -1224,8 +1469,25 @@ function appendStickingAfterRepeat(
     target.patterns.push(pattern);
     markSourceSegment(target, segmentIndex, source.lineNumber);
   });
+  appendSectionMarkers(target, source, targetBarIndex);
 
   return target;
+}
+
+function appendSectionMarkers(
+  target: ParsedDrumRowInput | ParsedDrumStickingInput,
+  source: ParsedDrumRowInput | ParsedDrumStickingInput,
+  offset: number
+): void {
+  target.sectionRepeatStarts = [
+    ...(target.sectionRepeatStarts ?? []),
+    ...(source.sectionRepeatStarts ?? []).map((event) => ({ ...event, barIndex: event.barIndex + offset }))
+  ];
+  target.sectionRepeatEnds = [
+    ...(target.sectionRepeatEnds ?? []),
+    ...(source.sectionRepeatEnds ?? []).map((event) => ({ ...event, barIndex: event.barIndex + offset }))
+  ];
+  target.sectionRepeatIssue ??= source.sectionRepeatIssue;
 }
 
 function appendSnapshotBar(

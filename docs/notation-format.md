@@ -24,7 +24,7 @@ A block is a sequence of lines. Each non-empty line is one of:
 | **Bar separator**| A line matching `[new] bar|measure [N][:...]`               | Starts a new system (line of music) |
 | **Measure repeat**| `%` or `Repeat bar`                                       | Repeats the previous bar |
 | **Sticking row** | `ST \| R-LB...`                                            | Slot-aligned right/left/both-hands annotation |
-| **Row**          | `LABEL \| pattern[ \| pattern…]`                            | One instrument voice |
+| **Row**          | `LABEL \| pattern[ \| pattern…]`                            | One instrument voice; `[` and `]` may replace bar separators for section repeats |
 
 Leading/trailing whitespace is ignored. Blank lines are ignored. Unknown lines
 never break parsing — they are retained as metadata, so hand-written notes
@@ -40,6 +40,8 @@ flagged because they can silently change playback feel. Short shorthand sketches
 such as `HH | x---` remain valid and warning-free.
 Invalid `Grouping:` values are also advisory: the score falls back to its normal
 meter grouping and continues rendering.
+Invalid or conflicting section repeat markers remain zero-width bar separators,
+but navigation is omitted so the surviving bars play linearly.
 Malformed tuplets, unsupported durations or unrepresentable written-beat spans, and tuplets
 whose ordered rhythm regions differ between rows are advisory too. The parser
 removes the wrapper syntax and uses a plain-grid fallback so rendering remains
@@ -474,9 +476,67 @@ This is also the canonical form used when visual editing places a normal bar
 after a repeat bar on the same staff line.
 
 `%2` is reserved for a future two-bar repeat symbol and is not modeled yet.
-Section repeat signs, first/second endings, D.S./D.C., Segno, and Coda roadmaps
-are not modeled yet either. They need span and playback-roadmap semantics beyond
-the current local one-bar repeat.
+First/second endings, D.S./D.C., Segno, and Coda roadmaps are not modeled yet.
+
+### Section repeat barlines
+
+`[` starts a section repeat and `]` ends it. Both are zero-width structural bar
+separators: they never consume a grid position. The opening marker can replace
+the initial `|` after a row label, while the closing marker also separates the
+last repeated bar from a following bar:
+
+```drums
+HH [ x--- | -x-- ] --x-
+SD [ ---- | --o- ] ----
+```
+
+The section above covers its first two bars and plays exactly twice. Markers
+may appear on one recognized instrument or sticking row, or on multiple rows
+when all explicit declarations agree. Serialization aligns the markers on
+every row that spans the relevant boundary and normalizes spacing. Because a
+marker may visually shift a row relative to unmarked source text, running the
+serializer is the canonical way to restore aligned columns.
+
+A section may cross rendered systems:
+
+```drums
+Subtitle: Intro and repeat start
+HH | x--- [ -x--
+SD | ---- [ --o-
+
+Bar
+Subtitle: Repeat end and outro
+HH | --x- ] ---x
+SD | ---- ] o---
+```
+
+Section repeats are playback navigation metadata rather than expanded model
+copies. Their original bars therefore remain editable. This intentionally
+differs from `%` and `%xN`: measure-repeat shorthand expands to read-only
+playable copies and can appear inside a section. Marker ranges are resolved
+after that `%` expansion, so `%x3` is performed three times during each of the
+section's two traversals. Its compact `1/3`, `2/3`, `3/3` progress runs again on
+the second traversal.
+
+`Repeat:` repeats the complete section-aware roadmap. **Loop All** loops that
+roadmap indefinitely, while **Loop Bar** ignores section navigation and loops
+only the selected bar. Count-in runs once when transport begins. If a section
+covers bars 2–4 and playback starts at bar 3, the order is `3, 4, 2, 3, 4`,
+then the bars after the section. Starting after a section never jumps back.
+
+Sections must be paired, non-empty, disjoint, and non-nested. Adjacent sections
+that would share a boundary are not supported yet, nor are markers attached
+directly to standalone `%` lines. Invalid, unmatched, nested, overlapping, or
+conflicting declarations produce an advisory warning and omit all section
+navigation from the block; their separated musical bars remain available in
+linear order.
+
+Note/sticking edits, articulations, row clearing, Copy/Paste, Undo, and Redo
+preserve section ranges. Add, Duplicate, Repeat/Unrepeat, New line, and Delete
+are disabled while a block contains section repeat markers. Edit `[` and `]`
+in the source text before restructuring bars. Other repeat counts, combined
+`REPEAT_BOTH` boundaries, endings, nested repeats, and visual marker authoring
+remain deferred.
 
 ---
 
@@ -713,6 +773,8 @@ To stay deterministic and diff-friendly, serialization **normalizes**:
 - System subtitles normalize to `Subtitle: text` before each system's rows.
 - One-bar measure repeats normalize to `%` and are not expanded back into row
   text.
+- Section repeat boundaries normalize to aligned `[` and `]` separators on
+  every row spanning each boundary.
 - Sticking annotations serialize as a canonical `ST` row and remain display-only.
 - Model-level bar edits serialize through the same row/bar invariants as parsed
   text. The visual editor presents them as **Add · Duplicate · Repeat · New
@@ -735,6 +797,9 @@ To stay deterministic and diff-friendly, serialization **normalizes**:
   - **Delete** removes the selected bar and removes its system when no bars
     remain. Deleting any member of compact `%xN` removes the complete counted
     group; separately declared `%` bars remain independently deletable.
+  - When section repeat markers are present, content edits and Copy/Paste remain
+    available, while structural bar actions are disabled to prevent shifting
+    marker ranges implicitly.
 
 This means a hand-authored block that uses `>` for accents or `.` for rests will
 come back from a serialize pass using `X`/`O` and `-`. That is expected. (A
@@ -753,8 +818,8 @@ The format has no explicit version field today. Guidelines for evolving it:
   prior behavior; unknown settings already degrade to metadata.
 - **Adding articulation characters** must not reuse an existing character's
   meaning, and should round-trip to a stable canonical glyph.
-- **Adding roadmap symbols** such as two-bar repeats, section repeats, voltas,
-  Segno, or Coda should define both text syntax and playback expansion rules.
+- **Adding roadmap symbols** such as two-bar repeats, voltas, Segno, or Coda
+  should define both text syntax and playback expansion rules.
 - A `Version:` setting may be introduced once a second producer exists (web app,
   visual editor, or importer), at which point the format becomes a shared
   contract and needs explicit schema-evolution rules. Until then a single

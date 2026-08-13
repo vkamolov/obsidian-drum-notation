@@ -83,6 +83,7 @@ import {
   CursorPosition,
   CountInMode,
   DrumBlock,
+  DrumPlaybackPosition,
   DrumSlot,
   MAX_MEASURE_REPEAT_COUNT,
   MetronomeMode,
@@ -151,6 +152,7 @@ interface RestoredEditSession {
     wasLoopingAll: boolean;
     slotIndex: number;
     barIndex: number;
+    position?: DrumPlaybackPosition;
   };
 }
 
@@ -777,7 +779,8 @@ export default class DrumNotationPlugin extends Plugin {
     const startPlayback = async (
       initialSlot = 0,
       recoverBeforeStart = false,
-      useCountIn = true
+      useCountIn = true,
+      initialPosition?: DrumPlaybackPosition
     ): Promise<boolean> => {
       if (!(await prepareTransportStart(recoverBeforeStart))) {
         return false;
@@ -807,6 +810,7 @@ export default class DrumNotationPlugin extends Plugin {
           startSlot: 0,
           endSlot: block.slots.length,
           initialSlot: currentSlotIndex,
+          ...(initialPosition ? { initialPosition } : {}),
           repeatCount: block.repeatCount,
           speedPercent: playbackSpeedPercent,
           mutedInstrumentIds,
@@ -897,7 +901,8 @@ export default class DrumNotationPlugin extends Plugin {
     const startLoopAll = async (
       initialSlot = 0,
       recoverBeforeStart = false,
-      useCountIn = true
+      useCountIn = true,
+      initialPosition?: DrumPlaybackPosition
     ): Promise<boolean> => {
       if (!(await prepareTransportStart(recoverBeforeStart))) {
         return false;
@@ -931,6 +936,7 @@ export default class DrumNotationPlugin extends Plugin {
           startSlot: 0,
           endSlot: block.slots.length,
           initialSlot: currentSlotIndex,
+          ...(initialPosition ? { initialPosition } : {}),
           loop: true,
           speedPercent: playbackSpeedPercent,
           mutedInstrumentIds,
@@ -959,18 +965,19 @@ export default class DrumNotationPlugin extends Plugin {
         return;
       }
 
-      const restartSlotIndex = this.activePlayer.getCurrentSlotIndex();
+      const restartPosition = this.activePlayer.getCurrentPlaybackPosition();
+      const restartSlotIndex = restartPosition.slotIndex;
       const wasLoopingBar = isLoopingBar;
       const wasLoopingAll = isLoopingAll;
       const restartBarIndex = barIndexForSlot(block, restartSlotIndex);
 
       this.stopActivePlayer(renderOwner);
       if (wasLoopingAll) {
-        await startLoopAll(restartSlotIndex, true, false);
+        await startLoopAll(restartSlotIndex, true, false, restartPosition);
       } else if (wasLoopingBar) {
         await startLoopBar(restartBarIndex, restartSlotIndex, true, false);
       } else {
-        await startPlayback(restartSlotIndex, true, false);
+        await startPlayback(restartSlotIndex, true, false, restartPosition);
       }
     };
 
@@ -1048,7 +1055,8 @@ export default class DrumNotationPlugin extends Plugin {
       wasLooping: boolean,
       wasLoopingAll: boolean,
       slotIndex: number,
-      barIndex: number
+      barIndex: number,
+      position?: DrumPlaybackPosition
     ) => {
       if (!wasPlaying || block.rows.length === 0) {
         return;
@@ -1061,11 +1069,11 @@ export default class DrumNotationPlugin extends Plugin {
       playbackRestartTimer = window.setTimeout(() => {
         playbackRestartTimer = null;
         if (wasLoopingAll) {
-          void startLoopAll(undefined, false, false);
+          void startLoopAll(slotIndex, false, false, position);
         } else if (wasLooping) {
           void startLoopBar(barIndex, undefined, false, false);
         } else {
-          void startPlayback(slotIndex, false, false);
+          void startPlayback(slotIndex, false, false, position);
         }
       }, PLAYBACK_RESTART_DEBOUNCE_MS);
     };
@@ -1127,7 +1135,10 @@ export default class DrumNotationPlugin extends Plugin {
                 wasLooping: isLoopingBar,
                 wasLoopingAll: isLoopingAll,
                 slotIndex: currentSlotIndex,
-                barIndex: selectedBarIndex
+                barIndex: selectedBarIndex,
+                ...(this.activePlayer
+                  ? { position: this.activePlayer.getCurrentPlaybackPosition() }
+                  : {})
               }
             });
           }
@@ -1185,6 +1196,7 @@ export default class DrumNotationPlugin extends Plugin {
       const wasLooping = isLoopingBar;
       const wasLoopingAll = isLoopingAll;
       const restartSlotIndex = currentSlotIndex;
+      const restartPosition = this.activePlayer?.getCurrentPlaybackPosition();
       const restartBarIndex = selectedBarIndex;
 
       if (wasPlaying) {
@@ -1203,7 +1215,7 @@ export default class DrumNotationPlugin extends Plugin {
       updateHeader();
       renderScore();
       scheduleWriteback();
-      schedulePlaybackRestart(wasPlaying, wasLooping, wasLoopingAll, restartSlotIndex, restartBarIndex);
+      schedulePlaybackRestart(wasPlaying, wasLooping, wasLoopingAll, restartSlotIndex, restartBarIndex, restartPosition);
 
       if (changedSlotIndex === undefined || wasPlaying) {
         selectEditSlot(null);
@@ -1488,7 +1500,8 @@ export default class DrumNotationPlugin extends Plugin {
             restored.playback.wasLooping,
             restored.playback.wasLoopingAll,
             restored.playback.slotIndex,
-            restored.playback.barIndex
+            restored.playback.barIndex,
+            restored.playback.position
           );
         }, 0);
       }

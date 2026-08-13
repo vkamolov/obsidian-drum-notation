@@ -51,6 +51,7 @@ import {
   CursorPosition,
   CountInMode,
   DrumBlock,
+  DrumPlaybackPosition,
   DrumSlot,
   GridResolution,
   LegendMode,
@@ -760,7 +761,8 @@ async function preparePlaybackStart(recoverBeforeStart: boolean): Promise<boolea
 async function play(
   initialSlot = 0,
   recoverBeforeStart = false,
-  useCountIn = true
+  useCountIn = true,
+  initialPosition?: DrumPlaybackPosition
 ): Promise<boolean> {
   if (!(await preparePlaybackStart(recoverBeforeStart))) {
     return false;
@@ -790,6 +792,7 @@ async function play(
       startSlot: 0,
       endSlot: block.slots.length,
       initialSlot: currentSlotIndex,
+      ...(initialPosition ? { initialPosition } : {}),
       repeatCount: block.repeatCount,
       speedPercent: playbackSpeedPercent,
       mutedInstrumentIds,
@@ -884,7 +887,8 @@ function loopAll(): void {
 async function startLoopAll(
   initialSlot = 0,
   recoverBeforeStart = false,
-  useCountIn = true
+  useCountIn = true,
+  initialPosition?: DrumPlaybackPosition
 ): Promise<boolean> {
   if (!(await preparePlaybackStart(recoverBeforeStart))) {
     return false;
@@ -916,6 +920,7 @@ async function startLoopAll(
       startSlot: 0,
       endSlot: block.slots.length,
       initialSlot: currentSlotIndex,
+      ...(initialPosition ? { initialPosition } : {}),
       loop: true,
       speedPercent: playbackSpeedPercent,
       mutedInstrumentIds,
@@ -937,18 +942,19 @@ function restartPlaybackAfterEdit(
   wasLooping: boolean,
   wasLoopingAll: boolean,
   restartSlotIndex: number,
-  restartBarIndex: number
+  restartBarIndex: number,
+  restartPosition?: DrumPlaybackPosition
 ): void {
   if (!wasPlaying || lastRenderError || !currentBlock || currentBlock.rows.length === 0) {
     return;
   }
 
   if (wasLoopingAll) {
-    void startLoopAll(undefined, false, false);
+    void startLoopAll(restartSlotIndex, false, false, restartPosition);
   } else if (wasLooping) {
     void startLoopBar(restartBarIndex, undefined, false, false);
   } else {
-    void play(restartSlotIndex, false, false);
+    void play(restartSlotIndex, false, false, restartPosition);
   }
 }
 
@@ -956,10 +962,18 @@ function capturePlaybackRestart(): (barIndex?: number) => void {
   const wasPlaying = player !== null;
   const wasLooping = isLooping;
   const wasLoopingAll = isLoopingAll;
-  const restartSlotIndex = player?.getCurrentSlotIndex() ?? currentSlotIndex;
+  const restartPosition = player?.getCurrentPlaybackPosition();
+  const restartSlotIndex = restartPosition?.slotIndex ?? currentSlotIndex;
   const restartBarIndex = selectedBarIndex;
 
-  return (barIndex = restartBarIndex) => restartPlaybackAfterEdit(wasPlaying, wasLooping, wasLoopingAll, restartSlotIndex, barIndex);
+  return (barIndex = restartBarIndex) => restartPlaybackAfterEdit(
+    wasPlaying,
+    wasLooping,
+    wasLoopingAll,
+    restartSlotIndex,
+    barIndex,
+    restartPosition
+  );
 }
 
 async function restartPlaybackForControlChange(): Promise<void> {
@@ -967,18 +981,19 @@ async function restartPlaybackForControlChange(): Promise<void> {
     return;
   }
 
-  const restartSlotIndex = player.getCurrentSlotIndex();
+  const restartPosition = player.getCurrentPlaybackPosition();
+  const restartSlotIndex = restartPosition.slotIndex;
   const wasLooping = isLooping;
   const wasLoopingAll = isLoopingAll;
   const restartBarIndex = barIndexForSlot(currentBlock, restartSlotIndex);
 
   stopPlayback();
   if (wasLoopingAll) {
-    await startLoopAll(restartSlotIndex, true, false);
+    await startLoopAll(restartSlotIndex, true, false, restartPosition);
   } else if (wasLooping) {
     await startLoopBar(restartBarIndex, restartSlotIndex, true, false);
   } else {
-    await play(restartSlotIndex, true, false);
+    await play(restartSlotIndex, true, false, restartPosition);
   }
 }
 

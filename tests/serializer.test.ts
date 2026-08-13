@@ -264,6 +264,34 @@ Bar
 %`);
   });
 
+  it("canonically aligns section repeat separators on every spanning row", () => {
+    const out = roundTrips(`HH [ x---|-x--]--x-
+SD |----|--o-|----`);
+
+    expect(out).toBe(`HH [ x--- | -x-- ] --x-
+SD [ ---- | --o- ] ----`);
+  });
+
+  it("round-trips a section repeat across systems", () => {
+    const out = roundTrips(`HH | x--- [ -x--
+Bar
+HH | --x- ] ---x`);
+
+    expect(out).toBe(`HH | x--- [ -x--
+Bar
+HH | --x- ] ---x`);
+  });
+
+  it("keeps compact measure repeats inside section boundaries", () => {
+    const out = roundTrips(`HH [ x---
+%x3
+HH | --x- ]`);
+
+    expect(out).toBe(`HH [ x---
+%x3
+HH | --x- ]`);
+  });
+
   it("round-trips 32nd-note grids", () => {
     roundTrips(`Grid: 32
 HH | xxxxxxxxxxxxxxxx`);

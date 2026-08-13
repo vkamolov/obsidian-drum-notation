@@ -1,6 +1,6 @@
-import { Beam, Dot, StaveNote, Stem, Tuplet } from "vexflow/bravura";
+import { Barline, BarlineType, Beam, Dot, Stave, StaveNote, Stem, Tuplet } from "vexflow/bravura";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { buildGridVisualBarNotes, buildSplitVisualBarNotes, getScoreSystemHeights } from "../src/engrave";
+import { applySectionRepeatBarlineTypes, buildGridVisualBarNotes, buildSplitVisualBarNotes, getScoreSystemHeights } from "../src/engrave";
 import { parseDrumBlock } from "../src/parser";
 import { GridResolution } from "../src/types";
 
@@ -466,5 +466,37 @@ HH | x---`);
 
     expect(getScoreSystemHeights(split)).toEqual([220, 122]);
     expect(getScoreSystemHeights(single)).toEqual([122, 122]);
+  });
+});
+
+describe("section repeat barlines", () => {
+  it("converts a mid-system NONE beginning modifier into REPEAT_BEGIN", () => {
+    const stave = new Stave(0, 0, 240, { leftBar: false, rightBar: true });
+
+    applySectionRepeatBarlineTypes(stave, 1, new Set([1]), new Set());
+
+    const types = stave.getModifiers()
+      .filter((modifier): modifier is Barline => modifier instanceof Barline)
+      .map((barline) => barline.getType());
+    expect(types).toContain(BarlineType.REPEAT_BEGIN);
+  });
+
+  it("applies beginning and ending repeat types to the affected staves", () => {
+    const beginning = new Stave(0, 0, 240, { leftBar: true, rightBar: true });
+    const ending = new Stave(0, 0, 240, { leftBar: false, rightBar: true });
+    const starts = new Set([2]);
+    const ends = new Set([4]);
+
+    applySectionRepeatBarlineTypes(beginning, 2, starts, ends);
+    applySectionRepeatBarlineTypes(ending, 4, starts, ends);
+
+    const beginningTypes = beginning.getModifiers()
+      .filter((modifier): modifier is Barline => modifier instanceof Barline)
+      .map((barline) => barline.getType());
+    const endingTypes = ending.getModifiers()
+      .filter((modifier): modifier is Barline => modifier instanceof Barline)
+      .map((barline) => barline.getType());
+    expect(beginningTypes).toContain(BarlineType.REPEAT_BEGIN);
+    expect(endingTypes).toContain(BarlineType.REPEAT_END);
   });
 });

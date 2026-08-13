@@ -61,6 +61,9 @@ describe("playground examples", () => {
           "System subtitles",
           "One-bar repeat",
           "Counted repeat",
+          "Basic section repeat",
+          "Cross-system section repeat",
+          "Section repeat with compact repeats",
           "Articulations",
           "Open and half-open hats",
           "Split drum voicing",
@@ -93,6 +96,18 @@ describe("playground examples", () => {
 
     expect(parsed.warnings).toEqual([]);
     expect(parsed.block.voicing).toBe("split");
+  });
+
+  it.each([
+    ["basic-section-repeat", { startBarIndex: 0, endBarIndex: 1 }],
+    ["cross-system-section-repeat", { startBarIndex: 1, endBarIndex: 2 }],
+    ["section-repeat-with-compact-repeats", { startBarIndex: 0, endBarIndex: 4 }]
+  ])("keeps the %s example warning-free with its declared range", (id, expectedRange) => {
+    const example = getPlaygroundExample(id as string);
+    const parsed = parseDrumBlockWithWarnings(example?.source ?? "");
+
+    expect(parsed.warnings).toEqual([]);
+    expect(parsed.block.sectionRepeats).toEqual([expectedRange]);
   });
 
   it("keeps every rudiment example parseable without advisory warnings", () => {

@@ -14,7 +14,7 @@ import {
   normalizePlaybackSpeedPercent,
   recoverAudioContext
 } from "../src/playback";
-import { DrumPlayer } from "../src/player";
+import { buildPlaybackRoadmap, DrumPlayer } from "../src/player";
 import { DrumHit } from "../src/types";
 
 class FakePlaybackBackend implements DrumPlaybackBackend {
@@ -840,6 +840,211 @@ HH | xxxx`);
     backend.currentTime = 20;
 
     expect(player.getCurrentSlotIndex()).toBe(3);
+  });
+});
+
+describe("section-repeat playback roadmap", () => {
+  let sectionScheduledTimers: Array<() => void>;
+
+  beforeEach(() => {
+    sectionScheduledTimers = [];
+
+    vi.stubGlobal("window", {
+      setTimeout: vi.fn((callback: TimerHandler, delay?: number) => {
+        if (typeof callback === "function") {
+          sectionScheduledTimers.push(callback);
+        }
+
+        return sectionScheduledTimers.length;
+      }),
+      clearTimeout: vi.fn()
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("expands section bars twice while keeping source slot indexes", () => {
+    const block = parseDrumBlock(`HH | xxxx [ xxxx | xxxx ] xxxx`);
+
+    expect(buildPlaybackRoadmap(block).map((entry) => ({
+      barIndex: entry.barIndex,
+      traversal: entry.sectionTraversal
+    }))).toEqual([
+      { barIndex: 0, traversal: 0 },
+      { barIndex: 1, traversal: 1 },
+      { barIndex: 2, traversal: 1 },
+      { barIndex: 1, traversal: 2 },
+      { barIndex: 2, traversal: 2 },
+      { barIndex: 3, traversal: 0 }
+    ]);
+  });
+
+  it("executes multiple disjoint sections in score order", () => {
+    const block = parseDrumBlock("HH [ xxxx | xxxx ] xxxx [ xxxx | xxxx ]");
+
+    expect(buildPlaybackRoadmap(block).map((entry) => entry.barIndex)).toEqual([
+      0, 1, 0, 1, 2, 3, 4, 3, 4
+    ]);
+  });
+
+  it("starts inside a section by completing its first traversal", async () => {
+    const block = parseDrumBlock(`HH | xxxx [ xxxx | xxxx | xxxx ] xxxx`);
+    const backend = new FakePlaybackBackend();
+    const onBarChange = vi.fn();
+    const player = new DrumPlayer(
+      {} as AudioContext,
+      block,
+      vi.fn(),
+      vi.fn(),
+      { initialSlot: block.bars[2].startSlot, onBarChange },
+      (() => backend) as DrumPlaybackBackendFactory
+    );
+
+    await player.play();
+    sectionScheduledTimers.forEach((timer) => timer());
+
+    expect(onBarChange.mock.calls.map(([barIndex]) => barIndex)).toEqual([2, 3, 1, 2, 3, 4]);
+  });
+
+  it("starting after a section does not jump backward", async () => {
+    const block = parseDrumBlock(`HH [ xxxx | xxxx ] xxxx`);
+    const backend = new FakePlaybackBackend();
+    const onBarChange = vi.fn();
+    const player = new DrumPlayer(
+      {} as AudioContext,
+      block,
+      vi.fn(),
+      vi.fn(),
+      { initialSlot: block.bars[2].startSlot, onBarChange },
+      (() => backend) as DrumPlaybackBackendFactory
+    );
+
+    await player.play();
+    sectionScheduledTimers.forEach((timer) => timer());
+
+    expect(onBarChange.mock.calls.map(([barIndex]) => barIndex)).toEqual([2]);
+  });
+
+  it("runs compact measure-repeat progress bars again on the second traversal", async () => {
+    const block = parseDrumBlock(`HH [ xxxx
+%x3
+HH | xxxx ]`);
+    const backend = new FakePlaybackBackend();
+    const onBarChange = vi.fn();
+    const player = new DrumPlayer(
+      {} as AudioContext,
+      block,
+      vi.fn(),
+      vi.fn(),
+      { onBarChange },
+      (() => backend) as DrumPlaybackBackendFactory
+    );
+
+    await player.play();
+    sectionScheduledTimers.forEach((timer) => timer());
+
+    expect(onBarChange.mock.calls.map(([barIndex]) => barIndex)).toEqual([
+      0, 1, 2, 3, 4,
+      0, 1, 2, 3, 4
+    ]);
+  });
+
+  it("reports the active roadmap occurrence during the second traversal", async () => {
+    const block = parseDrumBlock("Tempo: 100\nHH [ xxxx | xxxx ]");
+    const backend = new FakePlaybackBackend();
+    const player = new DrumPlayer(
+      {} as AudioContext,
+      block,
+      vi.fn(),
+      vi.fn(),
+      {},
+      (() => backend) as DrumPlaybackBackendFactory
+    );
+
+    await player.play();
+    backend.currentTime = 11.38;
+
+    expect(player.getCurrentPlaybackPosition()).toEqual({
+      slotIndex: 0,
+      roadmapEntryIndex: 2,
+      blockPassIndex: 0
+    });
+  });
+
+  it("restores a specific section traversal and falls back from an invalid position", async () => {
+    const block = parseDrumBlock("HH [ xxxx | xxxx ]");
+    const secondTraversalBackend = new FakePlaybackBackend();
+    const secondTraversalBars = vi.fn();
+    const secondTraversalPlayer = new DrumPlayer(
+      {} as AudioContext,
+      block,
+      vi.fn(),
+      vi.fn(),
+      {
+        initialPosition: {
+          slotIndex: block.bars[0].startSlot,
+          roadmapEntryIndex: 2,
+          blockPassIndex: 0
+        },
+        onBarChange: secondTraversalBars
+      },
+      (() => secondTraversalBackend) as DrumPlaybackBackendFactory
+    );
+
+    await secondTraversalPlayer.play();
+    const secondTraversalTimers = [...sectionScheduledTimers];
+    secondTraversalTimers.forEach((timer) => timer());
+    expect(secondTraversalBars.mock.calls.map(([barIndex]) => barIndex)).toEqual([0, 1]);
+
+    sectionScheduledTimers.length = 0;
+    const fallbackBackend = new FakePlaybackBackend();
+    const fallbackBars = vi.fn();
+    const fallbackPlayer = new DrumPlayer(
+      {} as AudioContext,
+      block,
+      vi.fn(),
+      vi.fn(),
+      {
+        initialPosition: {
+          slotIndex: block.bars[0].startSlot,
+          roadmapEntryIndex: 99,
+          blockPassIndex: 0
+        },
+        onBarChange: fallbackBars
+      },
+      (() => fallbackBackend) as DrumPlaybackBackendFactory
+    );
+
+    await fallbackPlayer.play();
+    sectionScheduledTimers.forEach((timer) => timer());
+    expect(fallbackBars.mock.calls.map(([barIndex]) => barIndex)).toEqual([0, 1, 0, 1]);
+  });
+
+  it("ignores section navigation for a selected-bar range", async () => {
+    const block = parseDrumBlock("HH [ xxxx | xxxx ]");
+    const backend = new FakePlaybackBackend();
+    const onBarChange = vi.fn();
+    const player = new DrumPlayer(
+      {} as AudioContext,
+      block,
+      vi.fn(),
+      vi.fn(),
+      {
+        startSlot: block.bars[1].startSlot,
+        endSlot: block.bars[1].startSlot + block.bars[1].slots.length,
+        loop: true,
+        onBarChange
+      },
+      (() => backend) as DrumPlaybackBackendFactory
+    );
+
+    await player.play();
+    const firstPassTimers = [...sectionScheduledTimers];
+    firstPassTimers.slice(0, -1).forEach((timer) => timer());
+
+    expect(onBarChange.mock.calls.map(([barIndex]) => barIndex)).toEqual([1]);
   });
 });
 

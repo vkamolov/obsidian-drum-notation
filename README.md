@@ -15,6 +15,9 @@ of compact diddles remain implicit.
 
 ## Release Notes
 
+- `1.6.0` adds editable, text-authored section repeats with `[` and `]`
+  bar separators, standard repeat barlines, and two-pass playback across one or
+  more rendered systems.
 - `1.5.0` adds optional split hands/feet engraving with `Voicing: split`,
   including synchronized up-stem and down-stem voices and shared rests, plus
   even diddle timing and smoothly overlapping buzz-roll strokes.
@@ -154,6 +157,9 @@ Visual edit mode is intentionally limited in v1:
 - One-bar repeat bars are selectable but their repeated body remains read-only.
   Use **Unrepeat** to open the repeat dialog, resize `%`/`%xN`, or retain one
   editable copy.
+- Blocks with section repeat markers keep note, sticking, articulation,
+  Copy/Paste, Undo, and Redo editing available. Structural bar actions are
+  disabled until the `[` and `]` markers are removed in the notation text.
 
 ## Embedding Grooves In Other Notes
 
@@ -717,6 +723,34 @@ BD | o-------o-o-----
 During **Play** and **Loop All**, the compact `x3` marker shows repeat progress
 as `1/3`, `2/3`, and `3/3`, then returns to `x3` outside playback. **Loop Bar**
 keeps the static count because it loops only one expanded bar.
+
+Use `[` and `]` as zero-width bar separators to repeat a complete section
+twice. The opening `[` may replace the first `|` after a row label, and `]`
+both closes the section and separates it from the following bar:
+
+````
+```drums
+Title: Two-bar section repeat
+HH [ x-x-x-x-x-x-x-x- | x-x-x-x-x-x-x-x- ] x-x-x-x-x-x-x-x-
+SD [ ----o-------o--- | ----o-------o--- ] ----o-o-----o---
+BD [ o-------o-o----- | o-----o-o------- ] o---------o-----
+```
+````
+
+Markers may be written on one recognized instrument/sticking row or aligned on
+several rows. Canonical serialization writes them on every row that spans the
+boundary. A section may cross `Bar` system separators and always plays exactly
+twice. Its bars remain normal editable source bars; this differs from `%` and
+`%xN`, whose generated copies are intentionally read-only. `Repeat:` repeats
+the resulting complete playback roadmap, while **Loop Bar** ignores section
+navigation and loops only the selected bar.
+
+Starting playback inside a section completes the remaining first traversal,
+then plays the whole second traversal. For a section covering bars 2–4,
+starting at bar 3 plays bars `3, 4, 2, 3, 4` before continuing. Starting after
+the section never jumps backward. Invalid, conflicting, nested, or unmatched
+markers produce an advisory warning; the bars remain rendered and playable in
+their normal linear order.
 
 Use **Loop Bar** in the rendered view to loop the bar containing the current cursor position. Click a note in another bar first, then press **Loop Bar** to loop that bar.
 

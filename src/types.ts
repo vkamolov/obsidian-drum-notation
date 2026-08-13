@@ -18,6 +18,12 @@ export interface DrumBlock extends DrumBlockHeader {
   rows: DrumRow[];
   slots: DrumSlot[];
   containsTupletSyntax: boolean;
+  sectionRepeats: DrumSectionRepeat[];
+}
+
+export interface DrumSectionRepeat {
+  startBarIndex: number;
+  endBarIndex: number;
 }
 
 export interface ParseResult {
@@ -47,6 +53,8 @@ export type ParseWarningCode =
   | "unsupported-tuplet-span"
   | "late-system-setting"
   | "repeat-meter-mismatch"
+  | "invalid-section-repeat"
+  | "section-repeat-mismatch"
   | "removed-setting";
 
 // The pre-structure form of a row: a label, the instrument it resolved to,
@@ -129,6 +137,7 @@ export interface PlaybackOptions {
   startSlot?: number;
   endSlot?: number;
   initialSlot?: number;
+  initialPosition?: DrumPlaybackPosition;
   loop?: boolean;
   repeatCount?: number;
   speedPercent?: number;
@@ -136,6 +145,12 @@ export interface PlaybackOptions {
   metronomeMode?: MetronomeMode;
   countInMode?: CountInMode;
   onBarChange?: (barIndex: number) => void;
+}
+
+export interface DrumPlaybackPosition {
+  slotIndex: number;
+  roadmapEntryIndex: number;
+  blockPassIndex: number;
 }
 
 export interface DrumRow {

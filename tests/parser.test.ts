@@ -711,6 +711,102 @@ SD | --o-`);
   });
 });
 
+describe("parseDrumBlock - section repeats", () => {
+  it("resolves block-start and inline markers without consuming rhythmic positions", () => {
+    const block = parseDrumBlock(`HH [ x--- | -x-- ] --x-
+SD [ ---- | --o- ] ----`);
+
+    expect(block.bars).toHaveLength(3);
+    expect(block.slots).toHaveLength(12);
+    expect(block.sectionRepeats).toEqual([{ startBarIndex: 0, endBarIndex: 1 }]);
+    expect(block.bars.map((bar) => bar.rows.find((row) => row.instrument.id === "closed-hat")?.pattern)).toEqual([
+      "x---",
+      "-x--",
+      "--x-"
+    ]);
+  });
+
+  it("resolves a repeat across systems", () => {
+    const block = parseDrumBlock(`HH | x--- [ -x--
+Bar
+HH | --x- ] ---x`);
+
+    expect(block.systems).toHaveLength(2);
+    expect(block.sectionRepeats).toEqual([{ startBarIndex: 1, endBarIndex: 2 }]);
+  });
+
+  it("resolves markers after compact measure-repeat expansion", () => {
+    const block = parseDrumBlock(`HH [ x---
+%x3
+HH | --x- ]`);
+
+    expect(block.bars).toHaveLength(5);
+    expect(block.sectionRepeats).toEqual([{ startBarIndex: 0, endBarIndex: 4 }]);
+    expect(block.bars.slice(1, 4).every((bar) => bar.measureRepeat === 1)).toBe(true);
+  });
+
+  it("keeps a directly marked measure repeat playable but omits section navigation", () => {
+    const parsed = parseDrumBlockWithWarnings(`HH | x---
+[%x2]`);
+
+    expect(parsed.block.bars).toHaveLength(3);
+    expect(parsed.block.sectionRepeats).toEqual([]);
+    expect(parsed.warnings).toContainEqual(expect.objectContaining({
+      code: "invalid-section-repeat",
+      line: 2
+    }));
+  });
+
+  it("accepts a declaration on one row and agreeing declarations on several rows", () => {
+    const oneRow = parseDrumBlock(`HH [ x--- | -x-- ]
+SD | ---- | --o-`);
+    const severalRows = parseDrumBlock(`HH [ x--- | -x-- ]
+SD [ ---- | --o- ]`);
+
+    expect(oneRow.sectionRepeats).toEqual([{ startBarIndex: 0, endBarIndex: 1 }]);
+    expect(severalRows.sectionRepeats).toEqual(oneRow.sectionRepeats);
+  });
+
+  it("supports multiple disjoint sections", () => {
+    const block = parseDrumBlock("HH [ x--- | -x-- ] --x- [ ---x | x-x- ]");
+
+    expect(block.sectionRepeats).toEqual([
+      { startBarIndex: 0, endBarIndex: 1 },
+      { startBarIndex: 3, endBarIndex: 4 }
+    ]);
+  });
+
+  it("warns and keeps playback linear when row declarations conflict", () => {
+    const parsed = parseDrumBlockWithWarnings(`HH [ x--- | -x-- ] --x-
+SD | ---- [ --o- | ---- ]`);
+
+    expect(parsed.block.bars).toHaveLength(3);
+    expect(parsed.block.sectionRepeats).toEqual([]);
+    expect(parsed.warnings).toContainEqual(expect.objectContaining({
+      code: "section-repeat-mismatch",
+      line: 2
+    }));
+  });
+
+  it.each([
+    ["unmatched start", "HH [ x--- | -x--"],
+    ["unmatched end", "HH | x--- ] -x--"],
+    ["nested", "HH [ x--- [ -x-- ] --x- ]"],
+    ["adjacent", "HH [ x--- ] [ -x-- ]"]
+  ])("warns and omits invalid %s navigation", (_name, source) => {
+    const parsed = parseDrumBlockWithWarnings(source);
+
+    expect(parsed.block.sectionRepeats).toEqual([]);
+    expect(parsed.warnings.some((warning) => warning.code === "invalid-section-repeat")).toBe(true);
+  });
+
+  it("does not report repeat markers as unsupported pattern characters", () => {
+    const parsed = parseDrumBlockWithWarnings("HH [ x--- | -x-- ]");
+
+    expect(parsed.warnings.some((warning) => warning.code === "unsupported-pattern-character")).toBe(false);
+  });
+});
+
 describe("getBarRange", () => {
   it("returns the declared bar containing a slot", () => {
     const block = parseDrumBlock(TEMPLATE);

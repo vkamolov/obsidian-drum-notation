@@ -115,6 +115,8 @@ const GESTURE_LONG_PRESS_MOVE_PX = 10;
 const GESTURE_SUPPRESS_CLICK_MS = 900;
 const STICKING_CYCLE: StickingHand[] = ["right", "left", "both"];
 const GRID_GESTURE_HINT_TEXT = "Tip: long-press deletes · double-tap cycles";
+const SECTION_REPEAT_STRUCTURE_MESSAGE =
+  "Structural bar actions are unavailable while section repeat markers are present. Edit [ and ] in the notation text.";
 const SVG_NS = "http://www.w3.org/2000/svg";
 
 type BarActionIcon = "add" | "duplicate" | "copy" | "paste" | "new-line" | "repeat" | "unrepeat" | "delete";
@@ -746,10 +748,18 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
   };
 
   const addBarAfterSelection = () => {
+    if (working.sectionRepeats.length > 0) {
+      notifyAction(SECTION_REPEAT_STRUCTURE_MESSAGE);
+      return;
+    }
     applyChange(insertBarAfter(working, selectedBarIndex), undefined, selectedBarIndex + 1);
   };
 
   const duplicateSelectedBar = () => {
+    if (working.sectionRepeats.length > 0) {
+      notifyAction(SECTION_REPEAT_STRUCTURE_MESSAGE);
+      return;
+    }
     applyChange(duplicateBar(working, selectedBarIndex), undefined, selectedBarIndex + 1);
   };
 
@@ -796,10 +806,18 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
   };
 
   const addBarOnNewSystem = () => {
+    if (working.sectionRepeats.length > 0) {
+      notifyAction(SECTION_REPEAT_STRUCTURE_MESSAGE);
+      return;
+    }
     applyChange(splitSystemAfterBar(working, selectedBarIndex), undefined, selectedBarIndex + 1);
   };
 
   const deleteSelectedBar = async () => {
+    if (working.sectionRepeats.length > 0) {
+      notifyAction(SECTION_REPEAT_STRUCTURE_MESSAGE);
+      return;
+    }
     const bar = selectedBar();
 
     if (!bar) {
@@ -824,6 +842,10 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
   };
 
   const toggleSelectedBarRepeat = async () => {
+    if (working.sectionRepeats.length > 0) {
+      notifyAction(SECTION_REPEAT_STRUCTURE_MESSAGE);
+      return;
+    }
     const bar = selectedBar();
 
     if (!bar) {
@@ -1017,12 +1039,13 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     }
 
     const actions = root.createDiv({ cls: "pg-grid-editor__bar-actions" });
-    createBarAction(actions, "Add", "add", "Add bar after", addBarAfterSelection);
-    createBarAction(actions, "Duplicate", "duplicate", "Duplicate bar after", duplicateSelectedBar);
+    const structuralActionsDisabled = working.sectionRepeats.length > 0;
+    const addButton = createBarAction(actions, "Add", "add", "Add bar after", addBarAfterSelection);
+    const duplicateButton = createBarAction(actions, "Duplicate", "duplicate", "Duplicate bar after", duplicateSelectedBar);
 
     const isRepeat = !!selectedBar()?.measureRepeat;
     const repeatCount = isRepeat ? getBarRepeatGroupCount(working, selectedBarIndex) : 0;
-    createBarAction(
+    const repeatButton = createBarAction(
       actions,
       isRepeat ? "Unrepeat" : "Repeat",
       isRepeat ? "unrepeat" : "repeat",
@@ -1035,7 +1058,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
         void toggleSelectedBarRepeat();
       }
     );
-    createBarAction(actions, "New line", "new-line", "Start new line after selected bar", addBarOnNewSystem);
+    const newLineButton = createBarAction(actions, "New line", "new-line", "Start new line after selected bar", addBarOnNewSystem);
 
     createBarActionSeparator(actions);
     createBarAction(actions, "Copy", "copy", "Copy selected bar", copySelectedBar);
@@ -1045,9 +1068,17 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     pasteButton.disabled = options.barClipboard.get() === null;
 
     createBarActionSeparator(actions);
-    createBarAction(actions, "Delete", "delete", repeatCount > 1 ? `Delete repeat group x${repeatCount}` : "Delete bar", () => {
+    const deleteButton = createBarAction(actions, "Delete", "delete", repeatCount > 1 ? `Delete repeat group x${repeatCount}` : "Delete bar", () => {
       void deleteSelectedBar();
     }, "pg-grid-editor__bar-action--delete");
+
+    if (structuralActionsDisabled) {
+      [addButton, duplicateButton, repeatButton, newLineButton, deleteButton].forEach((button) => {
+        button.disabled = true;
+        button.title = SECTION_REPEAT_STRUCTURE_MESSAGE;
+        button.setAttr("aria-label", SECTION_REPEAT_STRUCTURE_MESSAGE);
+      });
+    }
   };
 
   const renderSelectedCellTools = (root: HTMLElement) => {

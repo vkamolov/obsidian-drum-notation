@@ -1,4 +1,4 @@
-import { Beam, Dot, Element as VexFlowElement, Formatter, GraceNote, GraceNoteGroup, Modifier, Parenthesis, Renderer, RepeatNote, Stave, StaveNote, Stem, Tickable, TimeSignature, Tuplet, Voice } from "vexflow/bravura";
+import { BarlineType, Beam, Dot, Element as VexFlowElement, Formatter, GraceNote, GraceNoteGroup, Modifier, Parenthesis, Renderer, RepeatNote, Stave, StaveNote, Stem, Tickable, TimeSignature, Tuplet, Voice } from "vexflow/bravura";
 import { DRUM_KIT } from "./kit";
 import {
   compareVexKeys,
@@ -154,6 +154,9 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
   });
   const cursorPositions: Array<ScoreRenderResult["cursorPositions"][number]> = [];
   const barRegions: ScoreRenderResult["barRegions"] = [];
+  const globalBarIndexes = new Map(block.bars.map((bar, index) => [bar, index]));
+  const sectionRepeatStarts = new Set(block.sectionRepeats.map((repeat) => repeat.startBarIndex));
+  const sectionRepeatEnds = new Set(block.sectionRepeats.map((repeat) => repeat.endBarIndex));
 
   container.setCssProps({
     "--drum-score-min-height": `${Math.max(baseLayout.systemHeight, systemLayouts.reduce((sum, layout) => sum + layout.systemHeight, 0))}px`
@@ -203,11 +206,26 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
       layout
     );
     const firstBarHeaderWidth = headerProbe.getModifierXShift();
+    const repeatBarlineWidths = visualBars.map((entry, visualBarIndex) => {
+      const globalBarIndex = globalBarIndexes.get(entry.bar) ?? -1;
+      const includeHeader = visualBarIndex === 0;
+      const normalProbe = createScoreStave(0, 200, includeHeader, scoreSystem.timeSignature, showTimeSignature, layout);
+      const repeatProbe = createScoreStave(0, 200, includeHeader, scoreSystem.timeSignature, showTimeSignature, layout);
+
+      applySectionRepeatBarlineTypes(repeatProbe, globalBarIndex, sectionRepeatStarts, sectionRepeatEnds);
+
+      return Math.max(
+        0,
+        repeatProbe.getNoteStartX() - normalProbe.getNoteStartX() +
+          (normalProbe.getNoteEndX() - repeatProbe.getNoteEndX())
+      );
+    });
     const barWidths = allocateBarWidths(
       visualBars.map((entry) => entry.bar.durationQuarter),
       staveWidth,
       firstBarHeaderWidth,
-      layout.barMinWidth
+      layout.barMinWidth,
+      repeatBarlineWidths
     );
     const systemTop = system.offsetTop + scoreSurface.offsetTop;
 
@@ -226,12 +244,15 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
         showTimeSignature,
         layout
       );
+      const globalBarIndex = globalBarIndexes.get(bar) ?? -1;
+
+      applySectionRepeatBarlineTypes(stave, globalBarIndex, sectionRepeatStarts, sectionRepeatEnds);
 
       stave.setContext(context).draw();
       stave.setNoteStartX(stave.getNoteStartX() + layout.noteStartPadding);
 
-      const barIndexes = entry.repeatedBars.map((repeatedBar) => block.bars.indexOf(repeatedBar)).filter((index) => index >= 0);
-      const firstBarIndex = barIndexes[0] ?? block.bars.indexOf(bar);
+      const barIndexes = entry.repeatedBars.map((repeatedBar) => globalBarIndexes.get(repeatedBar) ?? -1).filter((index) => index >= 0);
+      const firstBarIndex = barIndexes[0] ?? globalBarIndex;
       const staveTop = stave.getYForLine(0);
       const staveBottom = stave.getYForLine(stave.getNumLines() - 1);
       const hitPadding = 8;
@@ -441,6 +462,21 @@ function createScoreStave(
   }
 
   return stave;
+}
+
+export function applySectionRepeatBarlineTypes(
+  stave: Stave,
+  globalBarIndex: number,
+  starts: ReadonlySet<number>,
+  ends: ReadonlySet<number>
+): void {
+  if (starts.has(globalBarIndex)) {
+    stave.setBegBarType(BarlineType.REPEAT_BEGIN);
+  }
+
+  if (ends.has(globalBarIndex)) {
+    stave.setEndBarType(BarlineType.REPEAT_END);
+  }
 }
 
 function getVisualBarEntries(bars: DrumBar[]): VisualBarEntry[] {

@@ -720,4 +720,13 @@ SD | --o-`);
 
     expect(serializeDrumBlock(parseDrumBlock(text))).toBe(text);
   });
+
+  it("preserves section repeat ranges through content-only edits", () => {
+    const block = parseDrumBlock("HH [ x--- | -x-- ] --x-");
+    const edited = setHit(block, block.bars[1].startSlot + 2, SD, "accent");
+
+    expect(edited.sectionRepeats).toEqual([{ startBarIndex: 0, endBarIndex: 1 }]);
+    expect(serializeDrumBlock(edited)).toContain("[");
+    expect(serializeDrumBlock(edited)).toContain("]");
+  });
 });

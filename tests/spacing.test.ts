@@ -47,4 +47,11 @@ describe("allocateBarWidths", () => {
 
     expect(widths.reduce((sum, width) => sum + width, 0)).toBe(413);
   });
+
+  it("reserves fixed width for repeat barlines on any bar", () => {
+    const widths = allocateBarWidths([16, 16], 400, 60, 84, [10, 12]);
+
+    expect(widths).toEqual([229, 171]);
+    expect(widths.reduce((sum, width) => sum + width, 0)).toBe(400);
+  });
 });
