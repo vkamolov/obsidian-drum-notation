@@ -42,6 +42,8 @@ const metadata = JSON.parse(await readFile(path.join(PLUGIN_ROOT, "metadata.json
 const openai = JSON.parse(await readFile(path.join(PLUGIN_ROOT, ".codex-plugin", "plugin.json"), "utf8"));
 const claude = JSON.parse(await readFile(path.join(PLUGIN_ROOT, ".claude-plugin", "plugin.json"), "utf8"));
 const gemini = JSON.parse(await readFile(path.join(PLUGIN_ROOT, "gemini-extension.json"), "utf8"));
+const openaiMarketplace = JSON.parse(await readFile(path.join(REPO_ROOT, ".agents", "plugins", "marketplace.json"), "utf8"));
+const claudeMarketplace = JSON.parse(await readFile(path.join(REPO_ROOT, ".claude-plugin", "marketplace.json"), "utf8"));
 const sharedFields = ["name", "version", "description", "author", "homepage", "repository", "license", "keywords"];
 for (const field of sharedFields) {
   if (JSON.stringify(portable[field]) !== JSON.stringify(openai[field]) ||
@@ -97,6 +99,39 @@ if (!iconBytes.subarray(0, 8).equals(pngSignature) || iconBytes.readUInt32BE(16)
 }
 if (!/^\d+\.\d+\.\d+$/.test(metadata.version)) {
   throw new Error(`Importer version must be exact semver: ${metadata.version}`);
+}
+
+const expectedMarketplaceName = "obsidian-drum-notation";
+const expectedRepositoryUrl = `${metadata.repository}.git`;
+const expectedReleaseRef = `agent-plugin-v${metadata.version}`;
+const expectedSourcePath = "agent-plugin/drum-notation-importer";
+const openaiMarketplacePlugin = openaiMarketplace.plugins?.[0];
+if (openaiMarketplace.name !== expectedMarketplaceName ||
+  openaiMarketplace.interface?.displayName !== "Obsidian Drum Notation" ||
+  openaiMarketplace.plugins?.length !== 1 ||
+  openaiMarketplacePlugin?.name !== metadata.name ||
+  openaiMarketplacePlugin?.source?.source !== "git-subdir" ||
+  openaiMarketplacePlugin?.source?.url !== expectedRepositoryUrl ||
+  openaiMarketplacePlugin?.source?.path?.replace(/^\.\//, "") !== expectedSourcePath ||
+  openaiMarketplacePlugin?.source?.ref !== expectedReleaseRef ||
+  openaiMarketplacePlugin?.policy?.installation !== "AVAILABLE" ||
+  openaiMarketplacePlugin?.policy?.authentication !== "ON_INSTALL" ||
+  openaiMarketplacePlugin?.category !== metadata.interface.category) {
+  throw new Error("OpenAI/Codex marketplace entry is stale or invalid");
+}
+const claudeMarketplacePlugin = claudeMarketplace.plugins?.[0];
+if (claudeMarketplace.name !== expectedMarketplaceName ||
+  claudeMarketplace.owner?.name !== metadata.author.name ||
+  claudeMarketplace.description !== "Agent plugins for Obsidian Drum Notation." ||
+  claudeMarketplace.plugins?.length !== 1 ||
+  claudeMarketplacePlugin?.name !== metadata.name ||
+  claudeMarketplacePlugin?.description !== metadata.description ||
+  claudeMarketplacePlugin?.version !== metadata.version ||
+  claudeMarketplacePlugin?.source?.source !== "git-subdir" ||
+  claudeMarketplacePlugin?.source?.url !== expectedRepositoryUrl ||
+  claudeMarketplacePlugin?.source?.path?.replace(/^\.\//, "") !== expectedSourcePath ||
+  claudeMarketplacePlugin?.source?.ref !== expectedReleaseRef) {
+  throw new Error("Claude marketplace entry is stale or invalid");
 }
 
 const reportSchema = JSON.parse(await readFile(path.join(PLUGIN_ROOT, "skills", "import-drum-score", "references", "drum-import-report.schema.json"), "utf8"));

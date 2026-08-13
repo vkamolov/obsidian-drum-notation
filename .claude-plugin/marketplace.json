@@ -1,0 +1,21 @@
+{
+  "name": "obsidian-drum-notation",
+  "owner": {
+    "name": "vkamolov",
+    "url": "https://github.com/vkamolov"
+  },
+  "description": "Agent plugins for Obsidian Drum Notation.",
+  "plugins": [
+    {
+      "name": "drum-notation-importer",
+      "description": "Transcribe printed drum scores into validated Obsidian Drum Notation.",
+      "version": "0.1.0",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/vkamolov/obsidian-drum-notation.git",
+        "path": "agent-plugin/drum-notation-importer",
+        "ref": "agent-plugin-v0.1.0"
+      }
+    }
+  ]
+}

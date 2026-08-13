@@ -136,6 +136,10 @@ For an importer release:
    ```
 5. Inspect the draft release, attestation, and all four extracted packages
    before publishing: portable, OpenAI, Claude, and Gemini CLI.
+6. After publishing, update the importer version and release tag in both
+   `.agents/plugins/marketplace.json` and `.claude-plugin/marketplace.json`,
+   then run `npm run check:agent-plugin` and push the marketplace update to
+   `main`.
 
 The Obsidian workflow ignores `agent-plugin-v*`; the importer workflow rejects
 a tag that does not exactly match importer metadata.
@@ -152,6 +156,8 @@ a tag that does not exactly match importer metadata.
 - Production bundles retain the VexFlow/license notice.
 - Portable, OpenAI, Claude, and Gemini CLI manifests, validator provenance,
   kit reference, and notation-reference acknowledgment are current.
+- OpenAI/Codex and Claude marketplace entries point to the current published
+  importer tag and match canonical importer metadata.
 - Production CSP tests pass in Chromium and WebKit with visible noteheads and
   no off-origin requests.
 - Manual install works using only `main.js`, `manifest.json`, and `styles.css`.

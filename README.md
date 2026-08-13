@@ -798,6 +798,49 @@ network-free validator remain single-source inside `skills/import-drum-score/`.
 Importer releases use tags such as `agent-plugin-v0.1.0`; they do not change
 the Obsidian plugin version or release assets.
 
+### Install in ChatGPT desktop or Codex
+
+Add this repository as a plugin marketplace, then install the importer:
+
+```bash
+codex plugin marketplace add vkamolov/obsidian-drum-notation --ref main
+codex plugin add drum-notation-importer@obsidian-drum-notation
+```
+
+Restart ChatGPT desktop or Codex after installation. This repository
+marketplace is separate from the public ChatGPT plugin directory; it makes the
+importer available directly from GitHub while directory review is pending.
+
+### Install in Claude Code
+
+Add this repository as a Claude plugin marketplace, then install the importer:
+
+```bash
+claude plugin marketplace add vkamolov/obsidian-drum-notation
+claude plugin install drum-notation-importer@obsidian-drum-notation
+```
+
+Start a new Claude Code session, or run `/reload-plugins` in an existing
+session, after installation.
+
+### Install in Gemini CLI
+
+Download and extract the Gemini package from the
+[`agent-plugin-v0.1.0` release](https://github.com/vkamolov/obsidian-drum-notation/releases/tag/agent-plugin-v0.1.0),
+then install the extracted directory:
+
+```bash
+gh release download agent-plugin-v0.1.0 \
+  --repo vkamolov/obsidian-drum-notation \
+  --pattern "drum-notation-importer-0.1.0-gemini.tar.gz"
+tar -xzf drum-notation-importer-0.1.0-gemini.tar.gz
+gemini extensions install ./drum-notation-importer
+```
+
+Restart Gemini CLI after installation. The importer contains no credentials,
+provider API calls, telemetry, or remote inference; the host agent performs
+image understanding and the bundled validator runs locally.
+
 ## License And Third-Party Notices
 
 Drum Notation is released under the MIT License. Production builds include

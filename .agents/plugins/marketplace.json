@@ -1,0 +1,22 @@
+{
+  "name": "obsidian-drum-notation",
+  "interface": {
+    "displayName": "Obsidian Drum Notation"
+  },
+  "plugins": [
+    {
+      "name": "drum-notation-importer",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/vkamolov/obsidian-drum-notation.git",
+        "path": "./agent-plugin/drum-notation-importer",
+        "ref": "agent-plugin-v0.1.0"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}
