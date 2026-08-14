@@ -140,6 +140,15 @@ interface DeclarativeSettingTabRuntime {
   refreshDomState?: () => void;
 }
 
+// Keep Obsidian 1.13+ settings calls behind this optional interface: direct access conflicts with
+// minAppVersion 1.5.0, while assigning `this` to a local violates Obsidian source checks.
+function callDeclarativeSettingTabMethod(
+  runtime: DeclarativeSettingTabRuntime,
+  method: keyof DeclarativeSettingTabRuntime
+): void {
+  runtime[method]?.();
+}
+
 function isSettingsRecord(value: unknown): value is Partial<DrumNotationSettings> {
   return typeof value === "object" && value !== null;
 }
@@ -2830,13 +2839,11 @@ class DrumNotationSettingTab extends PluginSettingTab {
   }
 
   private safeUpdate(): void {
-    const runtime: DeclarativeSettingTabRuntime = this;
-    runtime.update?.();
+    callDeclarativeSettingTabMethod(this, "update");
   }
 
   private safeRefreshDomState(): void {
-    const runtime: DeclarativeSettingTabRuntime = this;
-    runtime.refreshDomState?.();
+    callDeclarativeSettingTabMethod(this, "refreshDomState");
   }
 }
 
