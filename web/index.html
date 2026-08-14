@@ -154,7 +154,26 @@
       </section>
     </section>
 
-    <main class="pg-main">
+    <div id="pg-verify-divider" class="pg-verify-divider" hidden>
+      <div
+        id="pg-verify-resizer"
+        class="pg-verify-resizer"
+        role="separator"
+        aria-label="Resize verification controls and comparison workspace"
+        aria-controls="pg-verify-panel pg-main"
+        aria-orientation="horizontal"
+        tabindex="0"
+        title="Drag to resize · double-click to restore"
+      ></div>
+      <button
+        id="pg-toggle-verify-workspace"
+        class="pg-verify-workspace-toggle"
+        type="button"
+        aria-pressed="false"
+      >Full screen</button>
+    </div>
+
+    <main id="pg-main" class="pg-main">
       <section id="pg-source-pane" class="pg-pane pg-pane--source" hidden>
         <div class="pg-pane__head pg-pane__head--actions">
           <span>source image</span>
@@ -180,7 +199,7 @@
       </section>
     </main>
 
-    <footer class="pg-footer">
+    <footer id="pg-footer" class="pg-footer">
       <div id="pg-notes" class="pg-issues"></div>
 
       <details class="pg-advanced">

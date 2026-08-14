@@ -112,6 +112,10 @@ the **first** import in `app.ts`. `engrave.ts` itself was **not** changed.
 - Advanced diagnostics: parsed-model summary and live `serializeDrumBlock`
   normalized output are still available behind a collapsed details panel. Parser
   or render warnings remain visible only when there is something to fix.
+- Agent verification includes a keyboard-accessible horizontal splitter between
+  its intake controls and the source/notation/preview workspace. Drag it upward
+  to enlarge the comparison area, double-click to restore its default size, or
+  use **Full screen** and **Restore** (Escape also restores) for focused review.
 - Grouped native example picker (`examples.ts`) organized by purpose, including
   ten core rudiment exercises. Copy for Obsidian, Copy normalized in diagnostics,
   and light/dark theme toggle (persisted). If the browser blocks

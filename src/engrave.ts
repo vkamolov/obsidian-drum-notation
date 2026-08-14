@@ -23,8 +23,9 @@ export type RenderedNoteElements = Array<SVGGElement[] | undefined>;
 const LEGEND_HIGHLIGHT_MIN_MS = 90;
 const LEGEND_HIGHLIGHT_MAX_MS = 320;
 const REST_FONT_SCALE = 0.9;
-const SPLIT_SYSTEM_HEIGHT = 220;
-const SPLIT_STICKING_LANE_GAP = 136;
+const COMPACT_SPLIT_SYSTEM_HEIGHT = 180;
+const EXPANDED_SPLIT_SYSTEM_HEIGHT = 220;
+const EXPANDED_SPLIT_STICKING_LANE_GAP = 136;
 
 interface NotationLayout {
   systemHeight: number;
@@ -90,6 +91,14 @@ interface VisualBarNotes {
   beams: Beam[];
   tuplets: Tuplet[];
   tupletEntries: VisualTupletEntry[];
+  lowerVoice?: VisualVoiceProjection;
+}
+
+interface VisualVoiceProjection {
+  hitNotes: StaveNote[];
+  noteSlots: DrumSlot[];
+  beams: Beam[];
+  tuplets: Tuplet[];
 }
 
 interface VisualTupletEntry {
@@ -102,6 +111,16 @@ interface VisualBarEntry {
   bar: DrumBar;
   repeatedBars: DrumBar[];
   repeatCount: number;
+}
+
+interface PreparedVisualBar {
+  entry: VisualBarEntry;
+  visualBar: VisualBarNotes;
+}
+
+interface PreparedVisualSystem {
+  bars: PreparedVisualBar[];
+  layout: NotationLayout;
 }
 
 interface PendingHitTarget {
@@ -146,12 +165,8 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
   const cssWidth = getScoreWidth(container);
   const baseLayout = getNotationLayout();
   const width = cssWidth / baseLayout.renderScale;
-  const systemHeights = getScoreSystemHeights(block);
-  const systemLayouts = block.systems.map((scoreSystem, systemIndex) => {
-    const layout = getSystemNotationLayout(block, collectSystemSlots(scoreSystem.bars));
-
-    return { ...layout, systemHeight: systemHeights[systemIndex] ?? layout.systemHeight };
-  });
+  const preparedSystems = prepareVisualSystems(block);
+  const systemLayouts = preparedSystems.map((preparedSystem) => preparedSystem.layout);
   const cursorPositions: Array<ScoreRenderResult["cursorPositions"][number]> = [];
   const barRegions: ScoreRenderResult["barRegions"] = [];
   const globalBarIndexes = new Map(block.bars.map((bar, index) => [bar, index]));
@@ -165,7 +180,13 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
   let previousBarAnchors: Array<{ notes: Tickable[]; cursorPosition: CursorPosition } | undefined> = [];
 
   block.systems.forEach((scoreSystem, systemIndex) => {
-    const layout = systemLayouts[systemIndex] ?? baseLayout;
+    const preparedSystem = preparedSystems[systemIndex];
+
+    if (!preparedSystem) {
+      return;
+    }
+
+    const layout = preparedSystem.layout;
     const height = layout.systemHeight;
     const system = container.createDiv({ cls: "drum-notation__system" });
 
@@ -192,7 +213,8 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
     context.setStrokeStyle("currentColor");
     context.setLineWidth(layout.strokeWidth);
 
-    const visualBars = getVisualBarEntries(scoreSystem.bars);
+    const preparedVisualBars = preparedSystem.bars;
+    const visualBars = preparedVisualBars.map((preparedBar) => preparedBar.entry);
     const staveX = layout.staveX;
     const staveWidth = width - layout.staveX - layout.staveRightPadding;
     const showTimeSignature = systemIndex === 0 ||
@@ -232,7 +254,8 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
     let currentX = staveX;
     const pendingHitTargets: PendingHitTarget[] = [];
 
-    visualBars.forEach((entry, barIndex) => {
+    preparedVisualBars.forEach((preparedBar, barIndex) => {
+      const { entry, visualBar } = preparedBar;
       const bar = entry.bar;
       const isFirstBarInSystem = barIndex === 0;
       const barWidth = barWidths[barIndex] ?? 0;
@@ -270,15 +293,6 @@ export function renderVexflowScore(block: DrumBlock, container: HTMLElement): Sc
         });
       }
 
-      const visualBar = buildVisualBarNotes(
-        bar,
-        bar.measureRepeat,
-        scoreSystem.timeSignature,
-        block.gridResolution,
-        block.legendMode !== "off",
-        scoreSystem.beamGrouping,
-        block.voicing
-      );
       const notes = visualBar.notes;
       notes.forEach((note) => {
         if (layout.noteFontSize !== undefined) {
@@ -1321,37 +1335,94 @@ function getNotationLayout(): NotationLayout {
   };
 }
 
-function getSystemNotationLayout(block: DrumBlock, slots: readonly DrumSlot[]): NotationLayout {
+function getSystemNotationLayout(
+  block: DrumBlock,
+  bars: readonly DrumBar[],
+  visualBars: readonly VisualBarNotes[]
+): NotationLayout {
   const layout = getNotationLayout();
-  const hasLowerVoiceContent = block.voicing === "split" && slots.some((slot) =>
-    slot.hits.some((hit) => hit.instrument.notationVoice === "lower")
-  );
+  const lowerVoices = visualBars.flatMap((visualBar) => visualBar.lowerVoice ? [visualBar.lowerVoice] : []);
+  const hasLowerVoiceContent = block.voicing === "split" && lowerVoices.some((voice) => voice.hitNotes.length > 0);
 
   if (!hasLowerVoiceContent) {
     return layout;
   }
 
+  const hasSticking = bars.some((bar) => bar.slots.some((slot) => slot.sticking !== undefined));
+  const hasLowerTuplet = lowerVoices.some((voice) => voice.tuplets.length > 0);
+  const hasLowerArticulation = lowerVoices.some((voice) => voice.noteSlots.some((slot) =>
+    slot.hits.some((hit) => hit.articulation !== "normal")
+  ));
+  const beamedLowerNotes = new Set(
+    lowerVoices.flatMap((voice) => voice.beams.flatMap((beam) => beam.getNotes()))
+  );
+  const hasIsolatedFlaggedLowerNote = lowerVoices.some((voice) => voice.hitNotes.some((note) => {
+    const durationDenominator = Number.parseInt(note.getDuration(), 10);
+
+    return Number.isFinite(durationDenominator) &&
+      durationDenominator >= 8 &&
+      !beamedLowerNotes.has(note);
+  }));
+
+  if (!hasSticking && !hasLowerTuplet && !hasLowerArticulation && !hasIsolatedFlaggedLowerNote) {
+    return {
+      ...layout,
+      systemHeight: COMPACT_SPLIT_SYSTEM_HEIGHT
+    };
+  }
+
   return {
     ...layout,
-    systemHeight: SPLIT_SYSTEM_HEIGHT,
-    stickingLaneGap: SPLIT_STICKING_LANE_GAP
+    systemHeight: EXPANDED_SPLIT_SYSTEM_HEIGHT,
+    stickingLaneGap: EXPANDED_SPLIT_STICKING_LANE_GAP
   };
 }
 
-function collectSystemSlots(bars: readonly DrumBar[]): DrumSlot[] {
-  const slots: DrumSlot[] = [];
+function prepareVisualBars(
+  block: DrumBlock,
+  bars: DrumBar[],
+  timeSignature: string,
+  beamGrouping: readonly number[] | undefined
+): PreparedVisualBar[] {
+  return getVisualBarEntries(bars).map((entry) => ({
+    entry,
+    visualBar: buildVisualBarNotes(
+      entry.bar,
+      entry.bar.measureRepeat,
+      timeSignature,
+      block.gridResolution,
+      block.legendMode !== "off",
+      beamGrouping,
+      block.voicing
+    )
+  }));
+}
 
-  for (const bar of bars) {
-    slots.push(...bar.slots);
-  }
+function prepareVisualSystems(block: DrumBlock): PreparedVisualSystem[] {
+  return block.systems.map((scoreSystem) => {
+    // Clearance classification is intentionally width-independent. Build the
+    // musical objects first, select a profile from their rhythmic structure,
+    // then apply layout-dependent styling only in the draw loop.
+    const bars = prepareVisualBars(
+      block,
+      scoreSystem.bars,
+      scoreSystem.timeSignature,
+      scoreSystem.beamGrouping
+    );
 
-  return slots;
+    return {
+      bars,
+      layout: getSystemNotationLayout(
+        block,
+        scoreSystem.bars,
+        bars.map((preparedBar) => preparedBar.visualBar)
+      )
+    };
+  });
 }
 
 export function getScoreSystemHeights(block: DrumBlock): number[] {
-  return block.systems.map((scoreSystem) =>
-    getSystemNotationLayout(block, collectSystemSlots(scoreSystem.bars)).systemHeight
-  );
+  return prepareVisualSystems(block).map((preparedSystem) => preparedSystem.layout.systemHeight);
 }
 
 function slimTupletText(tuplet: Tuplet, layout: NotationLayout): void {
@@ -1444,7 +1515,7 @@ export function buildSplitVisualBarNotes(
   }
 
   if (!hasUpperHits) {
-    return buildGridVisualBarNotes(
+    const lower = buildGridVisualBarNotes(
       bar.slots,
       timeSignature,
       gridResolution,
@@ -1453,6 +1524,11 @@ export function buildSplitVisualBarNotes(
       bar.rhythmRegions,
       Stem.DOWN
     );
+
+    return {
+      ...lower,
+      lowerVoice: getVisualVoiceProjection(lower)
+    };
   }
 
   const upper = buildGridVisualBarNotes(
@@ -1518,7 +1594,17 @@ export function buildSplitVisualBarNotes(
     cursorSlots,
     beams: [...upper.beams, ...lower.beams],
     tuplets,
-    tupletEntries: []
+    tupletEntries: [],
+    lowerVoice: getVisualVoiceProjection(lower)
+  };
+}
+
+function getVisualVoiceProjection(visualBar: VisualBarNotes): VisualVoiceProjection {
+  return {
+    hitNotes: visualBar.hitNotes,
+    noteSlots: visualBar.noteSlots,
+    beams: visualBar.beams,
+    tuplets: visualBar.tuplets
   };
 }
 

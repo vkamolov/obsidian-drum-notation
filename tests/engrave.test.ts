@@ -455,17 +455,61 @@ BD | 3(o--)3(o--)3(o--)3(o--)`).visualBar;
     expect(Reflect.get(Reflect.get(lower.tuplets[0], "options"), "location")).toBe(Tuplet.LOCATION_BOTTOM);
   });
 
-  it("uses taller geometry only for systems containing lower-voice notes", () => {
-    const split = parseDrumBlock(`Voicing: split
-BD | o---
-Bar
+  it("uses normal geometry for single voicing and split systems without lower hits", () => {
+    const splitUpperOnly = parseDrumBlock(`Voicing: split
 HH | x---`);
-    const single = parseDrumBlock(`BD | o---
-Bar
-HH | x---`);
+    const singleLower = parseDrumBlock("BD | o---");
 
-    expect(getScoreSystemHeights(split)).toEqual([220, 122]);
-    expect(getScoreSystemHeights(single)).toEqual([122, 122]);
+    expect(getScoreSystemHeights(splitUpperOnly)).toEqual([122]);
+    expect(getScoreSystemHeights(singleLower)).toEqual([122]);
+  });
+
+  it.each([
+    ["quarter-note kick", "BD | o---o---o---o---"],
+    ["second kick", "BD2 | o---o---o---o---"],
+    ["hi-hat foot", "HF | x---x---x---x---"],
+    ["foot splash", "HFS | x---x---x---x---"],
+    ["beamed Grid-16 subdivisions", "BD | oooo------------"],
+    ["beamed Grid-32 subdivisions", `Grid: 32
+BD2 | oooooooo------------------------`]
+  ])("uses compact split geometry for %s", (_label, source) => {
+    const block = parseDrumBlock(`Voicing: split
+${source}`);
+
+    expect(getScoreSystemHeights(block)).toEqual([180]);
+  });
+
+  it.each([
+    ["an isolated lower flag", "BD | --o-------------"],
+    ["a lower articulation", "BD | O---o---o---o---"],
+    ["a lower tuplet", "BD | 3(ooo)3(ooo)3(ooo)3(ooo)"],
+    ["sticking", `ST | R---L---R---L---
+BD | o---o---o---o---`]
+  ])("uses expanded split geometry for %s", (_label, source) => {
+    const block = parseDrumBlock(`Voicing: split
+${source}`);
+
+    expect(getScoreSystemHeights(block)).toEqual([220]);
+  });
+
+  it("expands the whole system when one contained bar needs extra clearance", () => {
+    const block = parseDrumBlock(`Voicing: split
+BD | o---o---o---o--- | --o-------------`);
+
+    expect(getScoreSystemHeights(block)).toEqual([220]);
+  });
+
+  it("sums alternating normal, compact, and expanded system profiles", () => {
+    const block = parseDrumBlock(`Voicing: split
+HH | x---x---x---x---
+Bar
+BD | o---o---o---o---
+Bar
+BD | --o-------------`);
+    const heights = getScoreSystemHeights(block);
+
+    expect(heights).toEqual([122, 180, 220]);
+    expect(heights.reduce((sum, height) => sum + height, 0)).toBe(522);
   });
 });
 

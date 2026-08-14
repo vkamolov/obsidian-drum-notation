@@ -50,7 +50,7 @@ body {
 
 body {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
   grid-template-columns: minmax(0, 1fr);
   height: 100vh;
   font-family:
@@ -123,6 +123,8 @@ body {
   grid-template-columns: minmax(15rem, 0.75fr) minmax(24rem, 1.25fr);
   grid-auto-rows: max-content;
   gap: 0.65rem 1rem;
+  height: var(--pg-verify-panel-height, auto);
+  min-height: 0;
   min-width: 0;
   max-height: 42vh;
   overflow: auto;
@@ -133,6 +135,98 @@ body {
 
 .pg-verify-panel[hidden] {
   display: none;
+}
+
+.pg-verify-panel.is-collapsed {
+  padding-block: 0;
+  border-bottom: 0;
+}
+
+.pg-verify-divider {
+  grid-row: 3;
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  height: 1.55rem;
+  border-bottom: 1px solid var(--pg-border);
+  background: var(--pg-panel);
+}
+
+.pg-verify-divider[hidden] {
+  display: none;
+}
+
+.pg-verify-resizer {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  cursor: row-resize;
+  touch-action: none;
+  user-select: none;
+}
+
+.pg-verify-resizer::before {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 3rem;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--pg-border);
+  content: "";
+  transform: translate(-50%, -50%);
+}
+
+.pg-verify-resizer:hover::before,
+.pg-verify-resizer:focus-visible::before {
+  background: var(--pg-accent);
+}
+
+.pg-verify-resizer:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--pg-accent) 35%, transparent);
+  outline-offset: -2px;
+}
+
+.pg-verify-workspace-toggle {
+  min-width: 5.3rem;
+  margin: 0.16rem 0.35rem 0.16rem 0;
+  padding: 0 0.55rem;
+  border: 1px solid var(--pg-border);
+  border-radius: 5px;
+  color: var(--pg-muted);
+  background: var(--pg-bg);
+  font: inherit;
+  font-size: 0.7rem;
+  cursor: pointer;
+}
+
+.pg-verify-workspace-toggle:hover,
+.pg-verify-workspace-toggle:focus-visible {
+  color: var(--pg-accent);
+  border-color: var(--pg-accent);
+  outline: none;
+}
+
+body.pg-verify-workspace-maximized {
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+body.pg-verify-workspace-maximized .pg-topbar,
+body.pg-verify-workspace-maximized .pg-verify-panel {
+  display: none;
+}
+
+body.pg-verify-workspace-maximized .pg-verify-divider {
+  grid-row: 1;
+}
+
+body.pg-verify-workspace-maximized .pg-verify-resizer {
+  cursor: default;
+  pointer-events: none;
+}
+
+body.pg-verify-workspace-maximized .pg-verify-resizer::before {
+  opacity: 0;
 }
 
 .pg-verify-onboarding {
@@ -773,7 +867,7 @@ body {
 
 /* ---- main split ---- */
 .pg-main {
-  grid-row: 3;
+  grid-row: 4;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
   min-height: 0;
@@ -783,6 +877,10 @@ body {
 
 body.pg-verifying .pg-main {
   grid-template-columns: minmax(15rem, 0.8fr) minmax(0, 1fr) minmax(0, 1.35fr);
+}
+
+body.pg-verify-workspace-maximized .pg-main {
+  grid-row: 2;
 }
 
 .pg-pane {
@@ -1074,10 +1172,14 @@ body.pg-verifying .pg-main {
 
 /* ---- status / diagnostics ---- */
 .pg-footer {
-  grid-row: 4;
+  grid-row: 5;
   min-width: 0;
   border-top: 1px solid var(--pg-border);
   background: var(--pg-panel);
+}
+
+body.pg-verify-workspace-maximized .pg-footer {
+  grid-row: 3;
 }
 
 .pg-issues {

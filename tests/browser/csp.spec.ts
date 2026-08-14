@@ -108,6 +108,89 @@ test("production CSP keeps score rendering self-contained", async ({ page }) => 
   expect(await page.evaluate(() => window.__cspViolations.filter((entry) => !entry.startsWith("connect-src:")))).toEqual([]);
 });
 
+test("verification comparison workspace can be resized and maximized", async ({ page }) => {
+  await page.setViewportSize({ width: 1200, height: 900 });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Verify agent result" }).click();
+
+  const panel = page.locator("#pg-verify-panel");
+  const divider = page.locator("#pg-verify-divider");
+  const separator = page.getByRole("separator", { name: "Resize verification controls and comparison workspace" });
+  const main = page.locator("#pg-main");
+  const topbar = page.locator(".pg-topbar");
+  await expect(divider).toBeVisible();
+
+  const initialPanel = await panel.boundingBox();
+  const initialMain = await main.boundingBox();
+  const separatorBounds = await separator.boundingBox();
+  expect(initialPanel).not.toBeNull();
+  expect(initialMain).not.toBeNull();
+  expect(separatorBounds).not.toBeNull();
+  await page.mouse.move(separatorBounds!.x + separatorBounds!.width / 2, separatorBounds!.y + separatorBounds!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(separatorBounds!.x + separatorBounds!.width / 2, separatorBounds!.y - 100);
+  await page.mouse.up();
+
+  const resizedPanel = await panel.boundingBox();
+  const resizedMain = await main.boundingBox();
+  expect(resizedPanel!.height).toBeLessThan(initialPanel!.height - 70);
+  expect(resizedMain!.y).toBeLessThan(initialMain!.y - 70);
+
+  await separator.focus();
+  await page.keyboard.press("End");
+  const requestedHeight = (await panel.boundingBox())!.height;
+  expect(requestedHeight).toBeGreaterThan(300);
+
+  await page.setViewportSize({ width: 1200, height: 400 });
+  await expect(separator).toHaveAttribute("aria-valuemax", "168");
+  await expect.poll(async () => (await panel.boundingBox())!.height).toBeLessThanOrEqual(169);
+  const constrainedValues = await separator.evaluate((element) => ({
+    now: Number(element.getAttribute("aria-valuenow")),
+    max: Number(element.getAttribute("aria-valuemax"))
+  }));
+  expect(constrainedValues.now).toBeLessThanOrEqual(constrainedValues.max);
+
+  await page.setViewportSize({ width: 1200, height: 900 });
+  await expect.poll(async () => (await panel.boundingBox())!.height).toBeCloseTo(requestedHeight, 0);
+
+  await page.setViewportSize({ width: 1200, height: 500 });
+  await separator.focus();
+  await page.keyboard.press("ArrowUp");
+  const constrainedRequestedHeight = (await panel.boundingBox())!.height;
+  expect(constrainedRequestedHeight).toBeLessThan(210);
+  await page.setViewportSize({ width: 1200, height: 900 });
+  await expect.poll(async () => (await panel.boundingBox())!.height).toBeCloseTo(constrainedRequestedHeight, 0);
+
+  await separator.focus();
+  await page.keyboard.press("Home");
+  expect((await panel.boundingBox())!.height).toBeLessThanOrEqual(1);
+  const collapsedMain = await main.boundingBox();
+  const topbarBounds = await topbar.boundingBox();
+  const dividerBounds = await divider.boundingBox();
+  expect(Math.abs(collapsedMain!.y - (topbarBounds!.y + topbarBounds!.height + dividerBounds!.height))).toBeLessThanOrEqual(2);
+
+  const fullScreenButton = page.getByRole("button", { name: "Full screen" });
+  await fullScreenButton.focus();
+  await page.keyboard.press("Enter");
+  await expect(topbar).toBeHidden();
+  const restoreButton = page.getByRole("button", { name: "Restore" });
+  await expect(restoreButton).toBeVisible();
+  await expect(restoreButton).toBeFocused();
+  expect((await main.boundingBox())!.y).toBeLessThan(collapsedMain!.y);
+
+  await page.keyboard.press("Escape");
+  await expect(topbar).toBeVisible();
+  await expect(page.getByRole("button", { name: "Full screen" })).toBeVisible();
+  await separator.dblclick();
+  expect((await panel.boundingBox())!.height).toBeGreaterThan(100);
+  await expect.poll(() => page.evaluate(() => document.body.style.getPropertyValue("--pg-verify-panel-height"))).toBe("auto");
+  await page.setViewportSize({ width: 1200, height: 600 });
+  await expect.poll(() => page.evaluate(() => document.body.style.getPropertyValue("--pg-verify-panel-height"))).toBe("auto");
+
+  await page.getByRole("button", { name: "Playground", exact: true }).click();
+  await expect(divider).toBeHidden();
+});
+
 test("verification mode keeps source and report ephemeral", async ({ page }) => {
   const revokedObjectUrls: string[] = [];
   await page.exposeFunction("__recordObjectUrlRevoke", (url: string) => {

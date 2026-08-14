@@ -102,6 +102,8 @@ const THEME_KEY = "drum-playground.theme";
 const TIP_KEY = "drum-playground.dismissedFirstRunTip";
 const AUDIO_RECOVERY_WARNING =
   "Audio was interrupted by the mobile system. Try Play again, or relaunch Obsidian if playback stays silent.";
+const VERIFY_PANEL_MAX_VIEWPORT_RATIO = 0.42;
+const VERIFY_PANEL_KEYBOARD_STEP_PX = 32;
 const activeDocument: Document = window.document;
 const STORAGE_GLOBAL_KEY = "local" + "Storage";
 
@@ -150,6 +152,9 @@ const notesOut = $<HTMLDivElement>("pg-notes");
 const playgroundModeBtn = $<HTMLButtonElement>("pg-mode-playground");
 const verifyModeBtn = $<HTMLButtonElement>("pg-mode-verify");
 const verifyPanel = $<HTMLElement>("pg-verify-panel");
+const verifyDivider = $<HTMLDivElement>("pg-verify-divider");
+const verifyResizer = $<HTMLDivElement>("pg-verify-resizer");
+const toggleVerifyWorkspaceBtn = $<HTMLButtonElement>("pg-toggle-verify-workspace");
 const importPrompt = $<HTMLPreElement>("pg-import-prompt");
 const copyPromptBtn = $<HTMLButtonElement>("pg-copy-prompt");
 const sourceFileInput = $<HTMLInputElement>("pg-source-file");
@@ -234,6 +239,9 @@ let focusedCropBlob: Blob | null = null;
 let focusedCropSourceRect: CropRect | null = null;
 let cropDragStart: CropPoint | null = null;
 let cropDragPointerId: number | null = null;
+let verifyResizePointerId: number | null = null;
+let verifyResizePointerOffset = 0;
+let verificationPanelRequestedHeight: number | null = null;
 
 barClipboard.subscribe(() => {
   gridEditorMessage = null;
@@ -1517,6 +1525,66 @@ function formatParseWarning(warning: ParseWarning): string {
 }
 
 /* ---------- agent-result verification ---------- */
+function getVerificationPanelMaxHeight(): number {
+  return Math.max(0, Math.round(activeDocument.documentElement.clientHeight * VERIFY_PANEL_MAX_VIEWPORT_RATIO));
+}
+
+function updateVerificationResizerAccessibility(): void {
+  const height = Math.round(verifyPanel.getBoundingClientRect().height);
+  const maxHeight = getVerificationPanelMaxHeight();
+  verifyResizer.setAttribute("aria-valuemin", "0");
+  verifyResizer.setAttribute("aria-valuemax", String(maxHeight));
+  verifyResizer.setAttribute("aria-valuenow", String(height));
+  verifyResizer.setAttribute(
+    "aria-valuetext",
+    height === 0 ? "Verification controls collapsed" : `Verification controls ${height} pixels high`
+  );
+}
+
+function reconcileVerificationPanelHeight(): void {
+  const boundedHeight = verificationPanelRequestedHeight === null
+    ? null
+    : Math.max(0, Math.min(getVerificationPanelMaxHeight(), verificationPanelRequestedHeight));
+  const value = boundedHeight === null ? "auto" : `${boundedHeight}px`;
+
+  if (activeDocument.body.style.getPropertyValue("--pg-verify-panel-height") !== value) {
+    activeDocument.body.setCssProps({ "--pg-verify-panel-height": value });
+  }
+  verifyPanel.classList.toggle("is-collapsed", boundedHeight === 0);
+  updateVerificationResizerAccessibility();
+}
+
+function setVerificationPanelHeight(height: number | null): void {
+  verificationPanelRequestedHeight = height === null
+    ? null
+    : Math.max(0, Math.min(getVerificationPanelMaxHeight(), Math.round(height)));
+  reconcileVerificationPanelHeight();
+}
+
+function setVerificationWorkspaceMaximized(maximized: boolean): void {
+  activeDocument.body.classList.toggle("pg-verify-workspace-maximized", maximized);
+  toggleVerifyWorkspaceBtn.textContent = maximized ? "Restore" : "Full screen";
+  toggleVerifyWorkspaceBtn.setAttribute("aria-pressed", String(maximized));
+  toggleVerifyWorkspaceBtn.title = maximized ? "Restore verification controls" : "Expand comparison workspace to full screen";
+  verifyResizer.tabIndex = maximized ? -1 : 0;
+}
+
+function resizeVerificationPanelFromPointer(clientY: number): void {
+  const panelTop = verifyPanel.getBoundingClientRect().top;
+  setVerificationPanelHeight(clientY - verifyResizePointerOffset - panelTop);
+}
+
+function finishVerificationPanelResize(pointerId: number): void {
+  if (verifyResizePointerId !== pointerId) {
+    return;
+  }
+  if (verifyResizer.hasPointerCapture(pointerId)) {
+    verifyResizer.releasePointerCapture(pointerId);
+  }
+  verifyResizePointerId = null;
+  verifyResizePointerOffset = 0;
+}
+
 function appendReportMessageGroup(title: string, messages: ImportReportMessage[], tone: "warning" | "ambiguity"): void {
   const group = reportDetailsContent.createDiv({ cls: `pg-report-group pg-report-group--${tone}` });
   group.createEl("h3", { text: title });
@@ -1745,12 +1813,14 @@ function enterVerificationMode(): void {
   verificationActive = true;
   activeDocument.body.classList.add("pg-verifying");
   verifyPanel.hidden = false;
+  verifyDivider.hidden = false;
   sourcePane.hidden = false;
   playgroundModeBtn.classList.remove("is-active");
   playgroundModeBtn.setAttribute("aria-pressed", "false");
   verifyModeBtn.classList.add("is-active");
   verifyModeBtn.setAttribute("aria-pressed", "true");
   exampleSelect.disabled = true;
+  reconcileVerificationPanelHeight();
   renderSegmentTabs();
   renderVerificationSignals();
 }
@@ -1763,8 +1833,10 @@ function exitVerificationModeToDraft(): void {
   stopPlayback();
   exitEditMode();
   verificationActive = false;
+  setVerificationWorkspaceMaximized(false);
   activeDocument.body.classList.remove("pg-verifying");
   verifyPanel.hidden = true;
+  verifyDivider.hidden = true;
   sourcePane.hidden = true;
   playgroundModeBtn.classList.add("is-active");
   playgroundModeBtn.setAttribute("aria-pressed", "true");
@@ -2510,6 +2582,9 @@ function init(): void {
     if (event.key === "Escape") {
       setMetronomeMenuOpen(false);
       setMuteMenuOpen(false);
+      if (activeDocument.body.classList.contains("pg-verify-workspace-maximized")) {
+        setVerificationWorkspaceMaximized(false);
+      }
     }
   });
   editBtn.addEventListener("click", () => {
@@ -2536,6 +2611,50 @@ function init(): void {
 
   playgroundModeBtn.addEventListener("click", exitVerificationModeToDraft);
   verifyModeBtn.addEventListener("click", enterVerificationMode);
+  verifyResizer.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0 || activeDocument.body.classList.contains("pg-verify-workspace-maximized")) {
+      return;
+    }
+    event.preventDefault();
+    verifyResizePointerId = event.pointerId;
+    verifyResizePointerOffset = event.clientY - verifyPanel.getBoundingClientRect().bottom;
+    verifyResizer.setPointerCapture(event.pointerId);
+  });
+  verifyResizer.addEventListener("pointermove", (event) => {
+    if (verifyResizePointerId === event.pointerId) {
+      resizeVerificationPanelFromPointer(event.clientY);
+    }
+  });
+  verifyResizer.addEventListener("pointerup", (event) => finishVerificationPanelResize(event.pointerId));
+  verifyResizer.addEventListener("pointercancel", (event) => finishVerificationPanelResize(event.pointerId));
+  verifyResizer.addEventListener("lostpointercapture", (event) => {
+    if (verifyResizePointerId !== event.pointerId) {
+      return;
+    }
+    verifyResizePointerId = null;
+    verifyResizePointerOffset = 0;
+  });
+  verifyResizer.addEventListener("dblclick", () => setVerificationPanelHeight(null));
+  verifyResizer.addEventListener("keydown", (event) => {
+    const currentHeight = verifyPanel.getBoundingClientRect().height;
+    let nextHeight: number | null = null;
+    if (event.key === "ArrowUp") {
+      nextHeight = currentHeight - VERIFY_PANEL_KEYBOARD_STEP_PX;
+    } else if (event.key === "ArrowDown") {
+      nextHeight = currentHeight + VERIFY_PANEL_KEYBOARD_STEP_PX;
+    } else if (event.key === "Home") {
+      nextHeight = 0;
+    } else if (event.key === "End") {
+      nextHeight = getVerificationPanelMaxHeight();
+    }
+    if (nextHeight !== null) {
+      event.preventDefault();
+      setVerificationPanelHeight(nextHeight);
+    }
+  });
+  toggleVerifyWorkspaceBtn.addEventListener("click", () => {
+    setVerificationWorkspaceMaximized(!activeDocument.body.classList.contains("pg-verify-workspace-maximized"));
+  });
   copyPromptBtn.addEventListener("click", () => {
     void copyText(copyPromptBtn, importPrompt.textContent ?? "");
   });
@@ -2603,6 +2722,7 @@ function init(): void {
   });
   window.addEventListener("pagehide", clearSourceImage);
   window.addEventListener("beforeunload", clearSourceImage);
+  window.addEventListener("resize", reconcileVerificationPanelHeight);
 
   // Refit the score to the pane width (debounced; skip no-op width changes).
   let lastWidth = 0;
@@ -2620,6 +2740,8 @@ function init(): void {
     refit();
   });
   observer.observe(preview.parentElement ?? preview);
+  const verificationPanelObserver = new ResizeObserver(reconcileVerificationPanelHeight);
+  verificationPanelObserver.observe(verifyPanel);
 
   renderPreview();
 }
