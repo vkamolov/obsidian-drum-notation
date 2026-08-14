@@ -33,6 +33,29 @@ be committed.
 
 Use the web commands after playground/editor changes.
 
+## Obsidian Source Checks
+
+Keep new code compatible with Obsidian's automated source checks:
+
+- Do not disable or suppress `obsidianmd/*` rules.
+- Use Obsidian DOM helpers instead of direct DOM creation where required.
+- Use `activeDocument` and `activeWindow` for pop-out compatibility.
+- Avoid direct use of APIs newer than `minAppVersion` unless they are guarded
+  through a typed compatibility boundary.
+- At third-party library boundaries, prevent `any` or `error` types from
+  propagating. Prefer small local structural interfaces, `unknown` validation,
+  and explicitly typed loops where necessary.
+- Do not use checker workarounds that weaken runtime validation or obscure
+  behavior.
+
+Before publishing a release:
+
+1. Run the complete local test, build, and security suite.
+2. Create or update the draft release.
+3. Run Obsidian's automated source check against the draft.
+4. Resolve new errors and warnings before publishing, unless a warning is
+   confirmed and documented as unavoidable.
+
 ## Source Layout
 
 - `main.ts` is the Obsidian adapter and UI entry point.

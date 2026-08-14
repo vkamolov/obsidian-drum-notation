@@ -1341,7 +1341,13 @@ function getSystemNotationLayout(
   visualBars: readonly VisualBarNotes[]
 ): NotationLayout {
   const layout = getNotationLayout();
-  const lowerVoices = visualBars.flatMap((visualBar) => visualBar.lowerVoice ? [visualBar.lowerVoice] : []);
+  const lowerVoices: VisualVoiceProjection[] = [];
+
+  for (const visualBar of visualBars) {
+    if (visualBar.lowerVoice) {
+      lowerVoices.push(visualBar.lowerVoice);
+    }
+  }
   const hasLowerVoiceContent = block.voicing === "split" && lowerVoices.some((voice) => voice.hitNotes.length > 0);
 
   if (!hasLowerVoiceContent) {
@@ -1353,9 +1359,15 @@ function getSystemNotationLayout(
   const hasLowerArticulation = lowerVoices.some((voice) => voice.noteSlots.some((slot) =>
     slot.hits.some((hit) => hit.articulation !== "normal")
   ));
-  const beamedLowerNotes = new Set(
-    lowerVoices.flatMap((voice) => voice.beams.flatMap((beam) => beam.getNotes()))
-  );
+  const beamedLowerNotes = new Set<Tickable>();
+
+  for (const voice of lowerVoices) {
+    for (const beam of voice.beams) {
+      for (const note of beam.getNotes()) {
+        beamedLowerNotes.add(note);
+      }
+    }
+  }
   const hasIsolatedFlaggedLowerNote = lowerVoices.some((voice) => voice.hitNotes.some((note) => {
     const durationDenominator = Number.parseInt(note.getDuration(), 10);
 
