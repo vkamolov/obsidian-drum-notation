@@ -68,10 +68,22 @@ interface ParsedDrumRowInput extends DrumRowInput {
   sectionRepeatIssue?: string;
 }
 
+interface UnnumberedParsedDrumRowInput extends DrumRowInput {
+  sectionRepeatStarts?: SectionMarkerEvent[];
+  sectionRepeatEnds?: SectionMarkerEvent[];
+  sectionRepeatIssue?: string;
+}
+
 interface ParsedDrumStickingInput extends DrumStickingInput {
   lineNumber: number;
   generatedSegments?: ReadonlySet<number>;
   segmentLineNumbers?: ReadonlyMap<number, number>;
+  sectionRepeatStarts?: SectionMarkerEvent[];
+  sectionRepeatEnds?: SectionMarkerEvent[];
+  sectionRepeatIssue?: string;
+}
+
+interface UnnumberedParsedDrumStickingInput extends DrumStickingInput {
   sectionRepeatStarts?: SectionMarkerEvent[];
   sectionRepeatEnds?: SectionMarkerEvent[];
   sectionRepeatIssue?: string;
@@ -164,6 +176,28 @@ const FALSE_BOOLEAN_VALUES = new Set(["off", "false", "no", "n", "0", "hide", "h
 const USED_LEGEND_VALUES = new Set(["on", "true", "yes", "y", "1", "show", "visible", "used", "current", "present"]);
 const ALL_LEGEND_VALUES = new Set(["all", "full", "kit", "complete", "supported", "everything"]);
 const OFF_LEGEND_VALUES = new Set(["off", "false", "no", "n", "0", "hide", "hidden", "none"]);
+
+function isRowSeparator(char: string): boolean {
+  return char === "|" || char === "[" || char === "]";
+}
+
+function findRowSeparator(value: string, startIndex = 0): number {
+  for (let index = startIndex; index < value.length; index++) {
+    if (isRowSeparator(value[index])) {
+      return index;
+    }
+  }
+
+  return -1;
+}
+
+function containsSectionRepeatMarker(value: string): boolean {
+  return value.includes("[") || value.includes("]");
+}
+
+function stripSectionRepeatMarkers(value: string): string {
+  return [...value].filter((char) => char !== "[" && char !== "]").join("");
+}
 
 export function parseDrumBlock(source: string): DrumBlock {
   return parseDrumBlockInternal(source, false).block;
@@ -400,8 +434,8 @@ function parseDrumBlockInternal(source: string, collectWarnings: boolean): Parse
       return;
     }
 
-    const attachedRepeatMarkers = /[\[\]]/.test(line)
-      ? parseMeasureRepeatLine(line.replace(/[\[\]]/g, "").trim())
+    const attachedRepeatMarkers = containsSectionRepeatMarker(line)
+      ? parseMeasureRepeatLine(stripSectionRepeatMarkers(line).trim())
       : null;
     if (attachedRepeatMarkers) {
       sectionRepeatMarkersInvalid = true;
@@ -789,7 +823,7 @@ function parseEmptyKnownSettingLine(line: string): { originalKey: string } | nul
   return { originalKey };
 }
 
-function parseDrumRowInput(line: string): DrumRowInput | null {
+function parseDrumRowInput(line: string): UnnumberedParsedDrumRowInput | null {
   const parsed = parseRowSegments(line);
 
   if (!parsed) {
@@ -809,10 +843,10 @@ function parseDrumRowInput(line: string): DrumRowInput | null {
     sectionRepeatStarts: parsed.sectionRepeatStarts.map((barIndex) => ({ barIndex, lineNumber: 0 })),
     sectionRepeatEnds: parsed.sectionRepeatEnds.map((barIndex) => ({ barIndex, lineNumber: 0 })),
     ...(parsed.sectionRepeatIssue ? { sectionRepeatIssue: parsed.sectionRepeatIssue } : {})
-  } as DrumRowInput;
+  };
 }
 
-function parseStickingRowInput(line: string): DrumStickingInput | null {
+function parseStickingRowInput(line: string): UnnumberedParsedDrumStickingInput | null {
   const parsed = parseRowSegments(line);
 
   if (!parsed) {
@@ -833,11 +867,11 @@ function parseStickingRowInput(line: string): DrumStickingInput | null {
     sectionRepeatStarts: parsed.sectionRepeatStarts.map((barIndex) => ({ barIndex, lineNumber: 0 })),
     sectionRepeatEnds: parsed.sectionRepeatEnds.map((barIndex) => ({ barIndex, lineNumber: 0 })),
     ...(parsed.sectionRepeatIssue ? { sectionRepeatIssue: parsed.sectionRepeatIssue } : {})
-  } as DrumStickingInput;
+  };
 }
 
 function parseRowSegments(line: string): ParsedRowSegments | null {
-  const firstSeparator = line.search(/[|\[\]]/);
+  const firstSeparator = findRowSeparator(line);
 
   if (firstSeparator <= 0) {
     return null;
@@ -857,8 +891,8 @@ function parseRowSegments(line: string): ParsedRowSegments | null {
 
   while (separatorIndex < line.length) {
     const separator = line[separatorIndex];
-    const following = line.slice(separatorIndex + 1).search(/[|\[\]]/);
-    const nextSeparator = following < 0 ? line.length : separatorIndex + 1 + following;
+    const following = findRowSeparator(line, separatorIndex + 1);
+    const nextSeparator = following < 0 ? line.length : following;
     const pattern = line.slice(separatorIndex + 1, nextSeparator).replace(/\s+/g, "").trim();
 
     if (separator === "]") {
@@ -897,24 +931,32 @@ function parseRowSegments(line: string): ParsedRowSegments | null {
   };
 }
 
-function withSectionMarkerLines(input: DrumRowInput, lineNumber: number): ParsedDrumRowInput;
-function withSectionMarkerLines(input: DrumStickingInput, lineNumber: number): ParsedDrumStickingInput;
+function withSectionMarkerLines(input: UnnumberedParsedDrumRowInput, lineNumber: number): ParsedDrumRowInput;
+function withSectionMarkerLines(input: UnnumberedParsedDrumStickingInput, lineNumber: number): ParsedDrumStickingInput;
 function withSectionMarkerLines(
-  input: DrumRowInput | DrumStickingInput,
+  input: UnnumberedParsedDrumRowInput | UnnumberedParsedDrumStickingInput,
   lineNumber: number
 ): ParsedDrumRowInput | ParsedDrumStickingInput {
-  const candidate = input as (DrumRowInput | DrumStickingInput) & {
-    sectionRepeatStarts?: SectionMarkerEvent[];
-    sectionRepeatEnds?: SectionMarkerEvent[];
-    sectionRepeatIssue?: string;
-  };
+  const sectionRepeatStarts = input.sectionRepeatStarts?.map((event) => ({ ...event, lineNumber }));
+  const sectionRepeatEnds = input.sectionRepeatEnds?.map((event) => ({ ...event, lineNumber }));
 
-  return {
-    ...candidate,
+  if ("instrument" in input) {
+    const result: ParsedDrumRowInput = {
+      ...input,
+      lineNumber,
+      ...(sectionRepeatStarts ? { sectionRepeatStarts } : {}),
+      ...(sectionRepeatEnds ? { sectionRepeatEnds } : {})
+    };
+    return result;
+  }
+
+  const result: ParsedDrumStickingInput = {
+    ...input,
     lineNumber,
-    sectionRepeatStarts: candidate.sectionRepeatStarts?.map((event) => ({ ...event, lineNumber })),
-    sectionRepeatEnds: candidate.sectionRepeatEnds?.map((event) => ({ ...event, lineNumber }))
-  } as ParsedDrumRowInput | ParsedDrumStickingInput;
+    ...(sectionRepeatStarts ? { sectionRepeatStarts } : {}),
+    ...(sectionRepeatEnds ? { sectionRepeatEnds } : {})
+  };
+  return result;
 }
 
 function sectionMarkerSignature(
@@ -1003,7 +1045,7 @@ function warnForUnparsedPipeLine(
   lineNumber: number,
   warn: (line: number, code: ParseWarningCode, message: string, column?: number) => void
 ): void {
-  const dividerIndex = line.search(/[|\[\]]/);
+  const dividerIndex = findRowSeparator(line);
 
   if (dividerIndex <= 0) {
     return;
@@ -1057,7 +1099,7 @@ function warnForUnsupportedRowCharacters(
   isUnsupported: (char: string) => boolean,
   emit: (char: string, column: number) => void
 ): void {
-  const dividerIndex = line.search(/[|\[\]]/);
+  const dividerIndex = findRowSeparator(line);
 
   if (dividerIndex < 0) {
     return;

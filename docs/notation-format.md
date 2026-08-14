@@ -102,6 +102,28 @@ Unsupported meters, malformed groups, zero values, or totals that do not match
 the effective meter numerator produce an advisory warning and fall back to
 normal meter grouping.
 
+### Vault authoring defaults
+
+The Obsidian plugin can store vault-local defaults for the title, tempo, time
+signature, grouping, grid, voicing, repeat count, cursor, highlighting, rests,
+and legend. These values are authoring aids, not part of parsing: they seed the
+text produced by **Insert notation block** and **Create first bar**. Core
+scaffold headers remain visible, and other non-canonical choices are serialized
+as ordinary headers. A block therefore keeps the same meaning when copied to
+another vault.
+
+Existing playable blocks never inherit vault defaults. An empty or
+metadata-only `drums` fence is treated as an unfinished scaffold: missing
+supported headers start from the authoring defaults, while every explicitly
+written supported header takes precedence, including an explicit canonical
+value such as `Cursor: off` or `Grouping: auto`. Invalid explicit values retain
+the parser's documented warning and fallback behavior rather than silently
+using the vault default. Unknown metadata remains in source order.
+
+The constants listed in the table above remain the canonical format defaults.
+Changing vault authoring defaults does not change minimal serialization,
+parsing, rendering, or playback of existing notation.
+
 ### Drum voicing
 
 `Voicing: single` is the default and engraves the complete kit in one up-stem

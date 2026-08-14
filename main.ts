@@ -28,6 +28,15 @@ import {
 } from "./src/engrave";
 import { DrumBarClipboardStore } from "./src/bar-clipboard";
 import {
+  DEFAULT_DRUM_AUTHORING_DEFAULTS,
+  DrumAuthoringDefaults,
+  formatAuthoringGrouping,
+  getExplicitAuthoringHeaderKeys,
+  normalizeDrumAuthoringDefaults,
+  parseAuthoringGrouping,
+  parseAuthoringTimeSignature
+} from "./src/authoring-defaults";
+import {
   GridEditorHandle,
   GridEditorSessionState,
   mountGridEditor,
@@ -102,12 +111,29 @@ const AUDIO_RECOVERY_NOTICE =
 interface DrumNotationSettings {
   enableVisualEditMode: boolean;
   dismissedFirstRunTip: boolean;
+  authoringDefaults: DrumAuthoringDefaults;
 }
 
 const DEFAULT_SETTINGS: DrumNotationSettings = {
   enableVisualEditMode: false,
-  dismissedFirstRunTip: false
+  dismissedFirstRunTip: false,
+  authoringDefaults: DEFAULT_DRUM_AUTHORING_DEFAULTS
 };
+
+type DrumSettingsControlKey =
+  | "enableVisualEditMode"
+  | "authoringTitle"
+  | "authoringTempo"
+  | "authoringTimeNumerator"
+  | "authoringTimeDenominator"
+  | "authoringGrouping"
+  | "authoringGrid"
+  | "authoringVoicing"
+  | "authoringRepeatCount"
+  | "authoringShowCursor"
+  | "authoringShowHighlight"
+  | "authoringShowRests"
+  | "authoringLegendMode";
 
 function isSettingsRecord(value: unknown): value is Partial<DrumNotationSettings> {
   return typeof value === "object" && value !== null;
@@ -120,7 +146,8 @@ function loadSavedSettings(value: unknown): Partial<DrumNotationSettings> {
 
   return {
     ...(typeof value.enableVisualEditMode === "boolean" ? { enableVisualEditMode: value.enableVisualEditMode } : {}),
-    ...(typeof value.dismissedFirstRunTip === "boolean" ? { dismissedFirstRunTip: value.dismissedFirstRunTip } : {})
+    ...(typeof value.dismissedFirstRunTip === "boolean" ? { dismissedFirstRunTip: value.dismissedFirstRunTip } : {}),
+    authoringDefaults: normalizeDrumAuthoringDefaults(value.authoringDefaults)
   };
 }
 
@@ -166,7 +193,10 @@ type EditAvailability =
     };
 
 export default class DrumNotationPlugin extends Plugin {
-  settings: DrumNotationSettings = { ...DEFAULT_SETTINGS };
+  settings: DrumNotationSettings = {
+    ...DEFAULT_SETTINGS,
+    authoringDefaults: { ...DEFAULT_DRUM_AUTHORING_DEFAULTS }
+  };
   private activePlayer: DrumPlayer | null = null;
   private activePlaybackReset: (() => void) | null = null;
   private activePlaybackOwner: symbol | null = null;
@@ -197,13 +227,15 @@ export default class DrumNotationPlugin extends Plugin {
       editorCallback: (editor: Editor) => {
         new DrumSetupModal(this.app, {
           mode: "command",
-          initialValues: DEFAULT_DRUM_SETUP_VALUES,
+          initialValues: getDrumSetupValues({ authoringDefaults: this.settings.authoringDefaults }),
           onSubmit: async (values) => {
             const from = editor.getCursor("from");
             const to = editor.getCursor("to");
             const before = editor.getLine(from.line).slice(0, from.ch);
             const after = editor.getLine(to.line).slice(to.ch);
-            const body = serializeInitialDrumBlock(values);
+            const body = serializeInitialDrumBlock(values, {
+              authoringDefaults: this.settings.authoringDefaults
+            });
 
             editor.replaceSelection(formatDrumsFenceInsertion(body, before, after));
             new Notice("Created drum notation");
@@ -224,7 +256,10 @@ export default class DrumNotationPlugin extends Plugin {
     const savedData = (await this.loadData()) as unknown;
     this.settings = {
       ...DEFAULT_SETTINGS,
-      ...loadSavedSettings(savedData)
+      ...loadSavedSettings(savedData),
+      authoringDefaults: normalizeDrumAuthoringDefaults(
+        isSettingsRecord(savedData) ? savedData.authoringDefaults : undefined
+      )
     };
   }
 
@@ -473,7 +508,11 @@ export default class DrumNotationPlugin extends Plugin {
 
       new DrumSetupModal(this.app, {
         mode: "first-bar",
-        initialValues: getDrumSetupValues(block),
+        initialValues: getDrumSetupValues({
+          existing: block,
+          authoringDefaults: this.settings.authoringDefaults,
+          explicitHeaderKeys: getExplicitAuthoringHeaderKeys(sourceBody)
+        }),
         onSubmit: async (values) => {
           const createAvailability = getCurrentCreateAvailability();
           if (!createAvailability.ok) {
@@ -489,7 +528,11 @@ export default class DrumNotationPlugin extends Plugin {
             return false;
           }
 
-          const nextBody = serializeInitialDrumBlock(values, block);
+          const nextBody = serializeInitialDrumBlock(values, {
+            existing: block,
+            authoringDefaults: this.settings.authoringDefaults,
+            explicitHeaderKeys: getExplicitAuthoringHeaderKeys(sourceBody)
+          });
           const sessionKey = this.getEditSessionKey(ctx.sourcePath, section.lineStart);
           let failure: ReplaceDrumsBlockFailure | null = null;
           let wrote = false;
@@ -2305,19 +2348,305 @@ class DrumNotationSettingTab extends PluginSettingTab {
     super(app, drumPlugin);
   }
 
-  getSettingDefinitions(): SettingDefinitionItem<keyof DrumNotationSettings>[] {
+  getSettingDefinitions(): SettingDefinitionItem<DrumSettingsControlKey>[] {
     return [
       {
-        name: "Enable visual edit mode",
-        desc: "Show the visual editor in Reading view and allow it to write changes back to top-level drums code blocks.",
-        aliases: ["visual editor", "edit notation"],
-        control: {
-          type: "toggle",
-          key: "enableVisualEditMode",
-          defaultValue: false
-        }
+        type: "group",
+        heading: "Editor",
+        items: [
+          {
+            name: "Enable visual edit mode",
+            desc: "Show the visual editor in Reading view and allow it to write changes back to top-level drums code blocks.",
+            aliases: ["visual editor", "edit notation"],
+            control: {
+              type: "toggle",
+              key: "enableVisualEditMode",
+              defaultValue: false
+            }
+          }
+        ]
+      },
+      {
+        type: "group",
+        heading: "New notation: Rhythm",
+        items: [
+          {
+            name: "Title",
+            desc: "Default title for newly inserted or scaffolded notation.",
+            aliases: ["groove name", "new notation title"],
+            control: {
+              type: "text",
+              key: "authoringTitle",
+              defaultValue: DEFAULT_DRUM_AUTHORING_DEFAULTS.title,
+              validate: validateAuthoringTitle
+            }
+          },
+          {
+            name: "Tempo",
+            desc: "Default playback tempo in BPM.",
+            aliases: ["BPM", "beats per minute"],
+            control: {
+              type: "number",
+              key: "authoringTempo",
+              defaultValue: DEFAULT_DRUM_AUTHORING_DEFAULTS.tempo,
+              min: 30,
+              max: 260,
+              step: 1,
+              validate: (value) => validateIntegerRange(value, 30, 260, "Tempo")
+            }
+          },
+          {
+            name: "Time numerator",
+            desc: "Top number of the default time signature.",
+            aliases: ["meter", "beats per bar"],
+            control: {
+              type: "number",
+              key: "authoringTimeNumerator",
+              defaultValue: 4,
+              min: 1,
+              max: 32,
+              step: 1,
+              validate: (value) => validateIntegerRange(value, 1, 32, "Time numerator")
+            }
+          },
+          {
+            name: "Time denominator",
+            desc: "Bottom number of the default time signature.",
+            aliases: ["meter", "note value"],
+            control: {
+              type: "dropdown",
+              key: "authoringTimeDenominator",
+              defaultValue: "4",
+              options: TIME_DENOMINATOR_OPTIONS
+            }
+          },
+          {
+            name: "Grouping",
+            desc: "Default beam grouping for /8 and /16 meters. Use auto for meter-based grouping.",
+            aliases: ["beam grouping", "asymmetric meter"],
+            control: {
+              type: "text",
+              key: "authoringGrouping",
+              defaultValue: "auto",
+              placeholder: "auto",
+              disabled: () => !this.supportsAuthoringGrouping(),
+              validate: (value) => this.validateGrouping(value)
+            }
+          },
+          {
+            name: "Grid",
+            desc: "Default source subdivision: one character per sixteenth or thirty-second note.",
+            aliases: ["subdivision", "resolution"],
+            control: {
+              type: "dropdown",
+              key: "authoringGrid",
+              defaultValue: "16",
+              options: { "16": "16", "32": "32" }
+            }
+          }
+        ]
+      },
+      {
+        type: "group",
+        heading: "New notation: Engraving",
+        items: [
+          {
+            name: "Voicing",
+            desc: "Use one up-stem voice or split hand and foot instruments into separate voices.",
+            aliases: ["stems", "two voice", "hands and feet"],
+            control: {
+              type: "dropdown",
+              key: "authoringVoicing",
+              defaultValue: "single",
+              options: { single: "Single", split: "Split hands/feet" }
+            }
+          },
+          {
+            name: "Show cursor",
+            desc: "Add Cursor: on to newly created notation.",
+            aliases: ["playback cursor"],
+            control: {
+              type: "toggle",
+              key: "authoringShowCursor",
+              defaultValue: false
+            }
+          },
+          {
+            name: "Highlight notes",
+            desc: "Highlight sounding notes in newly created notation.",
+            aliases: ["note highlight", "playback highlight"],
+            control: {
+              type: "toggle",
+              key: "authoringShowHighlight",
+              defaultValue: true
+            }
+          },
+          {
+            name: "Show rests",
+            desc: "Show inferred rest symbols in newly created notation.",
+            aliases: ["visible rests"],
+            control: {
+              type: "toggle",
+              key: "authoringShowRests",
+              defaultValue: true
+            }
+          },
+          {
+            name: "Legend",
+            desc: "Default instrument color legend for newly created notation.",
+            aliases: ["instrument legend", "kit legend", "color legend"],
+            control: {
+              type: "dropdown",
+              key: "authoringLegendMode",
+              defaultValue: "off",
+              options: { off: "Off", used: "Used instruments", all: "Full kit" }
+            }
+          }
+        ]
+      },
+      {
+        type: "group",
+        heading: "New notation: Playback",
+        items: [
+          {
+            name: "Repeat count",
+            desc: "Default number of complete block passes when Play is pressed.",
+            aliases: ["repeats", "play count"],
+            control: {
+              type: "number",
+              key: "authoringRepeatCount",
+              defaultValue: 1,
+              min: 1,
+              max: 64,
+              step: 1,
+              validate: (value) => validateIntegerRange(value, 1, 64, "Repeat count")
+            }
+          },
+          {
+            name: "Reset authoring defaults",
+            desc: "Restore all new-notation defaults without changing visual edit mode or the dismissed first-run tip.",
+            aliases: ["restore defaults", "reset new notation"],
+            render: (setting) => {
+              setting.addButton((button) => {
+                button.setButtonText("Reset").onClick(() => this.resetAuthoringDefaults());
+              });
+            }
+          }
+        ]
       }
     ];
+  }
+
+  getControlValue(key: DrumSettingsControlKey): unknown {
+    const defaults = this.drumPlugin.settings.authoringDefaults;
+    const time = parseAuthoringTimeSignature(defaults.timeSignature) ?? { numerator: 4, denominator: 4 };
+
+    switch (key) {
+      case "enableVisualEditMode": return this.drumPlugin.settings.enableVisualEditMode;
+      case "authoringTitle": return defaults.title;
+      case "authoringTempo": return defaults.tempo;
+      case "authoringTimeNumerator": return time.numerator;
+      case "authoringTimeDenominator": return String(time.denominator);
+      case "authoringGrouping": return formatAuthoringGrouping(defaults.beamGrouping);
+      case "authoringGrid": return String(defaults.gridResolution);
+      case "authoringVoicing": return defaults.voicing;
+      case "authoringRepeatCount": return defaults.repeatCount;
+      case "authoringShowCursor": return defaults.showCursor;
+      case "authoringShowHighlight": return defaults.showHighlight;
+      case "authoringShowRests": return defaults.showRests;
+      case "authoringLegendMode": return defaults.legendMode;
+    }
+  }
+
+  async setControlValue(key: DrumSettingsControlKey, value: unknown): Promise<void> {
+    if (key === "enableVisualEditMode") {
+      if (typeof value === "boolean") {
+        this.drumPlugin.settings.enableVisualEditMode = value;
+        await this.drumPlugin.saveSettings();
+      }
+      return;
+    }
+
+    const current = this.drumPlugin.settings.authoringDefaults;
+    const next: DrumAuthoringDefaults = {
+      ...current,
+      ...(current.beamGrouping ? { beamGrouping: [...current.beamGrouping] } : {})
+    };
+    const time = parseAuthoringTimeSignature(current.timeSignature) ?? { numerator: 4, denominator: 4 };
+    const previousGrouping = formatAuthoringGrouping(current.beamGrouping);
+    let timeChanged = false;
+
+    switch (key) {
+      case "authoringTitle":
+        if (typeof value !== "string" || validateAuthoringTitle(value)) return;
+        next.title = value.trim();
+        break;
+      case "authoringTempo":
+        if (typeof value !== "number" || validateIntegerRange(value, 30, 260, "Tempo")) return;
+        next.tempo = value;
+        break;
+      case "authoringTimeNumerator":
+        if (typeof value !== "number" || validateIntegerRange(value, 1, 32, "Time numerator")) return;
+        next.timeSignature = `${value}/${time.denominator}`;
+        timeChanged = true;
+        break;
+      case "authoringTimeDenominator": {
+        const denominator = Number(value);
+        if (!isAuthoringTimeDenominator(denominator)) return;
+        next.timeSignature = `${time.numerator}/${denominator}`;
+        timeChanged = true;
+        break;
+      }
+      case "authoringGrouping": {
+        if (typeof value !== "string") return;
+        const grouping = parseAuthoringGrouping(value, current.timeSignature);
+        if (grouping === null) return;
+        next.beamGrouping = grouping;
+        break;
+      }
+      case "authoringGrid":
+        if (value !== "16" && value !== "32") return;
+        next.gridResolution = value === "32" ? 32 : 16;
+        break;
+      case "authoringVoicing":
+        if (value !== "single" && value !== "split") return;
+        next.voicing = value;
+        break;
+      case "authoringRepeatCount":
+        if (typeof value !== "number" || validateIntegerRange(value, 1, 64, "Repeat count")) return;
+        next.repeatCount = value;
+        break;
+      case "authoringShowCursor":
+        if (typeof value !== "boolean") return;
+        next.showCursor = value;
+        break;
+      case "authoringShowHighlight":
+        if (typeof value !== "boolean") return;
+        next.showHighlight = value;
+        break;
+      case "authoringShowRests":
+        if (typeof value !== "boolean") return;
+        next.showRests = value;
+        break;
+      case "authoringLegendMode":
+        if (value !== "off" && value !== "used" && value !== "all") return;
+        next.legendMode = value;
+        break;
+    }
+
+    this.drumPlugin.settings.authoringDefaults = normalizeDrumAuthoringDefaults(next);
+    await this.drumPlugin.saveSettings();
+
+    if (timeChanged) {
+      const groupingChanged = previousGrouping !== formatAuthoringGrouping(
+        this.drumPlugin.settings.authoringDefaults.beamGrouping
+      );
+      if (groupingChanged) {
+        this.safeUpdate();
+      } else {
+        this.safeRefreshDomState();
+      }
+    }
   }
 
   // Obsidian versions before 1.13 do not use declarative setting definitions.
@@ -2326,6 +2655,8 @@ class DrumNotationSettingTab extends PluginSettingTab {
 
     containerEl.empty();
 
+    new Setting(containerEl).setName("Editor").setHeading();
+
     new Setting(containerEl)
       .setName("Enable visual edit mode")
       .setDesc("Show the visual editor in Reading view and allow it to write changes back to top-level drums code blocks.")
@@ -2333,9 +2664,193 @@ class DrumNotationSettingTab extends PluginSettingTab {
         toggle
           .setValue(this.drumPlugin.settings.enableVisualEditMode)
           .onChange(async (value) => {
-            this.drumPlugin.settings.enableVisualEditMode = value;
-            await this.drumPlugin.saveSettings();
+            await this.setControlValue("enableVisualEditMode", value);
+          });
+      });
+
+    new Setting(containerEl).setName("New notation: Rhythm").setHeading();
+    this.addLegacyText("Title", "Default title for newly inserted or scaffolded notation.", "authoringTitle");
+    this.addLegacyNumber("Tempo", "Default playback tempo in BPM.", "authoringTempo", 30, 260);
+    this.addLegacyNumber("Time numerator", "Top number of the default time signature.", "authoringTimeNumerator", 1, 32, true);
+    this.addLegacyDropdown(
+      "Time denominator",
+      "Bottom number of the default time signature.",
+      "authoringTimeDenominator",
+      TIME_DENOMINATOR_OPTIONS,
+      true
+    );
+    this.addLegacyText(
+      "Grouping",
+      "Default beam grouping for /8 and /16 meters. Use auto for meter-based grouping.",
+      "authoringGrouping",
+      !this.supportsAuthoringGrouping()
+    );
+    this.addLegacyDropdown(
+      "Grid",
+      "Default source subdivision.",
+      "authoringGrid",
+      { "16": "16", "32": "32" }
+    );
+
+    new Setting(containerEl).setName("New notation: Engraving").setHeading();
+    this.addLegacyDropdown(
+      "Voicing",
+      "Use one up-stem voice or split hand and foot instruments into separate voices.",
+      "authoringVoicing",
+      { single: "Single", split: "Split hands/feet" }
+    );
+    this.addLegacyToggle("Show cursor", "Add Cursor: on to newly created notation.", "authoringShowCursor");
+    this.addLegacyToggle("Highlight notes", "Highlight sounding notes in newly created notation.", "authoringShowHighlight");
+    this.addLegacyToggle("Show rests", "Show inferred rest symbols in newly created notation.", "authoringShowRests");
+    this.addLegacyDropdown(
+      "Legend",
+      "Default instrument color legend for newly created notation.",
+      "authoringLegendMode",
+      { off: "Off", used: "Used instruments", all: "Full kit" }
+    );
+
+    new Setting(containerEl).setName("New notation: Playback").setHeading();
+    this.addLegacyNumber(
+      "Repeat count",
+      "Default number of complete block passes when Play is pressed.",
+      "authoringRepeatCount",
+      1,
+      64
+    );
+    new Setting(containerEl)
+      .setName("Reset authoring defaults")
+      .setDesc("Restore all new-notation defaults without changing visual edit mode or the dismissed first-run tip.")
+      .addButton((button) => {
+        button.setButtonText("Reset").onClick(async () => {
+          await this.resetAuthoringDefaults();
+          this.display();
+        });
+      });
+  }
+
+  private supportsAuthoringGrouping(): boolean {
+    const time = parseAuthoringTimeSignature(this.drumPlugin.settings.authoringDefaults.timeSignature);
+    return time?.denominator === 8 || time?.denominator === 16;
+  }
+
+  private validateGrouping(value: string): string | void {
+    if (!this.supportsAuthoringGrouping()) {
+      return;
+    }
+
+    return parseAuthoringGrouping(value, this.drumPlugin.settings.authoringDefaults.timeSignature) === null
+      ? "Grouping must contain positive values that add up to the time numerator."
+      : undefined;
+  }
+
+  private async resetAuthoringDefaults(): Promise<void> {
+    this.drumPlugin.settings.authoringDefaults = { ...DEFAULT_DRUM_AUTHORING_DEFAULTS };
+    await this.drumPlugin.saveSettings();
+    this.safeUpdate();
+    new Notice("New notation defaults restored");
+  }
+
+  private addLegacyText(
+    name: string,
+    description: string,
+    key: DrumSettingsControlKey,
+    disabled = false
+  ): void {
+    new Setting(this.containerEl)
+      .setName(name)
+      .setDesc(description)
+      .addText((text) => {
+        text
+          .setValue(String(this.getControlValue(key)))
+          .setDisabled(disabled)
+          .onChange((value) => {
+            if (key === "authoringGrouping" && this.validateGrouping(value)) return;
+            if (key === "authoringTitle" && validateAuthoringTitle(value)) return;
+            void this.setControlValue(key, value);
           });
       });
   }
+
+  private addLegacyNumber(
+    name: string,
+    description: string,
+    key: DrumSettingsControlKey,
+    min: number,
+    max: number,
+    refreshAfterChange = false
+  ): void {
+    new Setting(this.containerEl)
+      .setName(name)
+      .setDesc(description)
+      .addText((text) => {
+        text.inputEl.setAttrs({ type: "number", min: String(min), max: String(max), step: "1" });
+        text.setValue(String(this.getControlValue(key))).onChange(async (rawValue) => {
+          const value = Number(rawValue);
+          if (validateIntegerRange(value, min, max, name)) return;
+          await this.setControlValue(key, value);
+          if (refreshAfterChange) this.display();
+        });
+      });
+  }
+
+  private addLegacyDropdown(
+    name: string,
+    description: string,
+    key: DrumSettingsControlKey,
+    options: Record<string, string>,
+    refreshAfterChange = false
+  ): void {
+    new Setting(this.containerEl)
+      .setName(name)
+      .setDesc(description)
+      .addDropdown((dropdown) => {
+        dropdown.addOptions(options).setValue(String(this.getControlValue(key))).onChange(async (value) => {
+          await this.setControlValue(key, value);
+          if (refreshAfterChange) this.display();
+        });
+      });
+  }
+
+  private addLegacyToggle(name: string, description: string, key: DrumSettingsControlKey): void {
+    new Setting(this.containerEl)
+      .setName(name)
+      .setDesc(description)
+      .addToggle((toggle) => {
+        toggle.setValue(this.getControlValue(key) === true).onChange((value) => this.setControlValue(key, value));
+      });
+  }
+
+  private safeUpdate(): void {
+    if (typeof this.update === "function") {
+      this.update();
+    }
+  }
+
+  private safeRefreshDomState(): void {
+    if (typeof this.refreshDomState === "function") {
+      this.refreshDomState();
+    }
+  }
+}
+
+const TIME_DENOMINATOR_OPTIONS: Record<string, string> = {
+  "2": "2",
+  "4": "4",
+  "8": "8",
+  "16": "16",
+  "32": "32"
+};
+
+function validateAuthoringTitle(value: string): string | void {
+  return value.trim() ? undefined : "Title cannot be empty.";
+}
+
+function validateIntegerRange(value: number, min: number, max: number, label: string): string | void {
+  return Number.isInteger(value) && value >= min && value <= max
+    ? undefined
+    : `${label} must be a whole number from ${min} to ${max}.`;
+}
+
+function isAuthoringTimeDenominator(value: number): value is DrumSetupTimeDenominator {
+  return value === 2 || value === 4 || value === 8 || value === 16 || value === 32;
 }

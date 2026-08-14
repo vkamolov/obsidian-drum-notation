@@ -3,6 +3,11 @@ import { getSlotsPerBar, isValidBeamGrouping } from "./music";
 import { finalizeDrumBlock } from "./parser";
 import { serializeDrumBlock } from "./serializer";
 import {
+  DEFAULT_DRUM_AUTHORING_DEFAULTS,
+  DrumAuthoringDefaults,
+  DrumAuthoringHeaderKey
+} from "./authoring-defaults";
+import {
   DEFAULT_GRID_RESOLUTION,
   DEFAULT_LEGEND_MODE,
   DEFAULT_REPEAT_COUNT,
@@ -30,6 +35,12 @@ export interface DrumSetupValues {
   grid: GridResolution;
 }
 
+export interface DrumSetupContext {
+  existing?: DrumBlock;
+  authoringDefaults?: DrumAuthoringDefaults;
+  explicitHeaderKeys?: ReadonlySet<DrumAuthoringHeaderKey>;
+}
+
 export const DEFAULT_DRUM_SETUP_VALUES: DrumSetupValues = {
   title: "New groove",
   tempo: DEFAULT_TEMPO,
@@ -44,19 +55,32 @@ const SETUP_INSTRUMENTS: Array<{ label: string; instrument: DrumInstrument }> = 
   { label: "BD", instrument: getInstrument("kick") }
 ];
 
-export function getDrumSetupValues(block?: DrumBlock): DrumSetupValues {
+export function getDrumSetupValues(context: DrumSetupContext = {}): DrumSetupValues {
+  const defaults = context.authoringDefaults ?? DEFAULT_DRUM_AUTHORING_DEFAULTS;
+  const defaultTime = parseTimeSignature(defaults.timeSignature);
+  const block = context.existing;
+  const explicitKeys = context.explicitHeaderKeys;
+
   if (!block) {
-    return { ...DEFAULT_DRUM_SETUP_VALUES };
+    return {
+      title: defaults.title,
+      tempo: defaults.tempo,
+      timeNumerator: defaultTime[0],
+      timeDenominator: normalizeTimeDenominator(defaultTime[1]),
+      grid: defaults.gridResolution
+    };
   }
 
   const [timeNumerator, rawDenominator] = parseTimeSignature(block.timeSignature);
 
   return {
-    title: getSetupTitle(block),
-    tempo: block.tempo,
-    timeNumerator,
-    timeDenominator: normalizeTimeDenominator(rawDenominator),
-    grid: block.gridResolution
+    title: explicitKeys?.has("title") ? getSetupTitle(block) : defaults.title,
+    tempo: explicitKeys?.has("tempo") ? block.tempo : defaults.tempo,
+    timeNumerator: explicitKeys?.has("timeSignature") ? timeNumerator : defaultTime[0],
+    timeDenominator: explicitKeys?.has("timeSignature")
+      ? normalizeTimeDenominator(rawDenominator)
+      : normalizeTimeDenominator(defaultTime[1]),
+    grid: explicitKeys?.has("gridResolution") ? block.gridResolution : defaults.gridResolution
   };
 }
 
@@ -77,9 +101,9 @@ export function getDrumSetupSlotCount(values: DrumSetupValues): number {
   return getSlotsPerBar(`${values.timeNumerator}/${values.timeDenominator}`, values.grid);
 }
 
-export function createInitialDrumBlock(values: DrumSetupValues, existing?: DrumBlock): DrumBlock {
+export function createInitialDrumBlock(values: DrumSetupValues, context: DrumSetupContext = {}): DrumBlock {
   const normalized = normalizeSetupValues(values);
-  const baseHeader = existing ? toHeader(existing) : defaultHeader();
+  const baseHeader = getScaffoldHeader(context);
   const { beamGrouping, ...baseHeaderWithoutGrouping } = baseHeader;
   const timeSignature = `${normalized.timeNumerator}/${normalized.timeDenominator}`;
   const slotCount = getDrumSetupSlotCount(normalized);
@@ -109,8 +133,8 @@ export function createInitialDrumBlock(values: DrumSetupValues, existing?: DrumB
   );
 }
 
-export function serializeInitialDrumBlock(values: DrumSetupValues, existing?: DrumBlock): string {
-  return serializeDrumBlock(createInitialDrumBlock(values, existing), { mode: "authoring" });
+export function serializeInitialDrumBlock(values: DrumSetupValues, context: DrumSetupContext = {}): string {
+  return serializeDrumBlock(createInitialDrumBlock(values, context), { mode: "authoring" });
 }
 
 export function wrapDrumsFence(body: string): string {
@@ -184,6 +208,44 @@ function defaultHeader(): DrumBlockHeader {
     gridResolution: DEFAULT_GRID_RESOLUTION,
     metadata: []
   };
+}
+
+function getScaffoldHeader(context: DrumSetupContext): DrumBlockHeader {
+  const defaults = context.authoringDefaults ?? DEFAULT_DRUM_AUTHORING_DEFAULTS;
+  const existing = context.existing;
+  const explicitKeys = context.explicitHeaderKeys;
+  const header: DrumBlockHeader = {
+    ...defaultHeader(),
+    tempo: defaults.tempo,
+    timeSignature: defaults.timeSignature,
+    ...(defaults.beamGrouping ? { beamGrouping: [...defaults.beamGrouping] } : {}),
+    repeatCount: defaults.repeatCount,
+    showCursor: defaults.showCursor,
+    showHighlight: defaults.showHighlight,
+    showRests: defaults.showRests,
+    voicing: defaults.voicing,
+    legendMode: defaults.legendMode,
+    gridResolution: defaults.gridResolution,
+    metadata: existing ? [...existing.metadata] : []
+  };
+
+  if (!existing || !explicitKeys) {
+    return header;
+  }
+
+  const existingHeader = toHeader(existing);
+  if (explicitKeys.has("tempo")) header.tempo = existingHeader.tempo;
+  if (explicitKeys.has("timeSignature")) header.timeSignature = existingHeader.timeSignature;
+  if (explicitKeys.has("beamGrouping")) header.beamGrouping = existingHeader.beamGrouping;
+  if (explicitKeys.has("repeatCount")) header.repeatCount = existingHeader.repeatCount;
+  if (explicitKeys.has("showCursor")) header.showCursor = existingHeader.showCursor;
+  if (explicitKeys.has("showHighlight")) header.showHighlight = existingHeader.showHighlight;
+  if (explicitKeys.has("showRests")) header.showRests = existingHeader.showRests;
+  if (explicitKeys.has("voicing")) header.voicing = existingHeader.voicing;
+  if (explicitKeys.has("legendMode")) header.legendMode = existingHeader.legendMode;
+  if (explicitKeys.has("gridResolution")) header.gridResolution = existingHeader.gridResolution;
+
+  return header;
 }
 
 function toHeader(block: DrumBlock): DrumBlockHeader {

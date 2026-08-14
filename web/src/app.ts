@@ -1534,7 +1534,7 @@ function appendReportWorkaroundGroup(workarounds: ImportReportWorkaround[]): voi
   const list = group.createEl("ul");
   for (const workaround of workarounds) {
     const item = list.createEl("li");
-    item.createEl("span", {
+    item.createSpan({
       cls: `pg-report-loss pg-report-loss--${workaround.loss}`,
       text: workaround.loss
     });
@@ -1923,7 +1923,8 @@ async function generateFocusedCrop(): Promise<void> {
   }
 
   clearFocusedCropResult();
-  const canvas = activeDocument.createElement("canvas");
+  const canvas = activeDocument.body.createEl("canvas");
+  canvas.remove();
   canvas.width = output.width;
   canvas.height = output.height;
   const context = canvas.getContext("2d");
@@ -1998,10 +1999,12 @@ function downloadFocusedCrop(): void {
   }
 
   const downloadUrl = URL.createObjectURL(focusedCropBlob);
-  const link = activeDocument.createElement("a");
-  link.href = downloadUrl;
-  link.download = "drum-score-focused-crop.png";
+  const link = activeDocument.body.createEl("a", {
+    href: downloadUrl,
+    attr: { download: "drum-score-focused-crop.png" }
+  });
   link.click();
+  link.remove();
   window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 0);
   setCropStatus("Focused crop downloaded. Attach it to a new importer request with the retry prompt.");
 }

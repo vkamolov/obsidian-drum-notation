@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { parseDrumBlock } from "../src/parser";
 import {
+  DEFAULT_DRUM_AUTHORING_DEFAULTS,
+  getExplicitAuthoringHeaderKeys
+} from "../src/authoring-defaults";
+import {
   createInitialDrumBlock,
   DEFAULT_DRUM_SETUP_VALUES,
   formatDrumsFenceInsertion,
@@ -63,7 +67,18 @@ Rests: off`);
         timeDenominator: 8,
         grid: 32
       },
-      existing
+      {
+        existing,
+        explicitHeaderKeys: getExplicitAuthoringHeaderKeys(`Title: Old title
+Author: Sam
+Comment: Keep this
+Time: 6/8
+Grouping: 3+3
+Repeat: 3
+Legend: used
+Cursor: on
+Rests: off`)
+      }
     );
 
     expect(block.metadata).toEqual(["Title: New title", "Author: Sam", "Comment: Keep this"]);
@@ -81,7 +96,12 @@ Rests: off`);
     const existing = parseDrumBlock(`Voicing: split
 HH | ----
 BD | ----`);
-    const block = createInitialDrumBlock(DEFAULT_DRUM_SETUP_VALUES, existing);
+    const block = createInitialDrumBlock(DEFAULT_DRUM_SETUP_VALUES, {
+      existing,
+      explicitHeaderKeys: getExplicitAuthoringHeaderKeys(`Voicing: split
+HH | ----
+BD | ----`)
+    });
 
     expect(block.voicing).toBe("split");
   });
@@ -92,7 +112,13 @@ Tempo: 88
 Time: 5/8
 Grid: 32`);
 
-    expect(getDrumSetupValues(existing)).toEqual({
+    expect(getDrumSetupValues({
+      existing,
+      explicitHeaderKeys: getExplicitAuthoringHeaderKeys(`Title: Practice fill
+Tempo: 88
+Time: 5/8
+Grid: 32`)
+    })).toEqual({
       title: "Practice fill",
       tempo: 88,
       timeNumerator: 5,
@@ -118,7 +144,96 @@ Grid: 16
 HH | ----------------
 SD | ----------------
 BD | ----------------`);
-    expect(serializeInitialDrumBlock(getDrumSetupValues(parsed), parsed)).toBe(source);
+    const context = {
+      existing: parsed,
+      explicitHeaderKeys: getExplicitAuthoringHeaderKeys(source)
+    };
+    expect(serializeInitialDrumBlock(getDrumSetupValues(context), context)).toBe(source);
+  });
+
+  it("uses authoring defaults for a new scaffold and serializes non-format defaults", () => {
+    const authoringDefaults = {
+      ...DEFAULT_DRUM_AUTHORING_DEFAULTS,
+      title: "Practice",
+      tempo: 84,
+      timeSignature: "7/8",
+      beamGrouping: [2, 2, 3],
+      gridResolution: 32 as const,
+      voicing: "split" as const,
+      repeatCount: 2,
+      showCursor: true,
+      showHighlight: false,
+      showRests: false,
+      legendMode: "used" as const
+    };
+    const context = { authoringDefaults };
+    const source = serializeInitialDrumBlock(getDrumSetupValues(context), context);
+    const parsed = parseDrumBlock(source);
+
+    expect(parsed.timeSignature).toBe("7/8");
+    expect(parsed.beamGrouping).toEqual([2, 2, 3]);
+    expect(parsed.voicing).toBe("split");
+    expect(parsed.repeatCount).toBe(2);
+    expect(parsed.showCursor).toBe(true);
+    expect(parsed.showHighlight).toBe(false);
+    expect(parsed.showRests).toBe(false);
+    expect(parsed.legendMode).toBe("used");
+    expect(source).toContain("Grouping: 2+2+3");
+    expect(source).toContain("Voicing: split");
+  });
+
+  it("overlays only explicit scaffold headers on vault authoring defaults", () => {
+    const source = `Title: Explicit title
+Cursor: off
+Grouping: auto
+Author: Sam`;
+    const existing = parseDrumBlock(source);
+    const authoringDefaults = {
+      ...DEFAULT_DRUM_AUTHORING_DEFAULTS,
+      title: "Vault title",
+      tempo: 72,
+      timeSignature: "7/8",
+      beamGrouping: [2, 2, 3],
+      gridResolution: 32 as const,
+      voicing: "split" as const,
+      showCursor: true,
+      legendMode: "all" as const
+    };
+    const context = {
+      existing,
+      authoringDefaults,
+      explicitHeaderKeys: getExplicitAuthoringHeaderKeys(source)
+    };
+    const block = createInitialDrumBlock(getDrumSetupValues(context), context);
+
+    expect(block.metadata).toEqual(["Title: Explicit title", "Author: Sam"]);
+    expect(block.tempo).toBe(72);
+    expect(block.timeSignature).toBe("7/8");
+    expect(block.gridResolution).toBe(32);
+    expect(block.beamGrouping).toBeUndefined();
+    expect(block.voicing).toBe("split");
+    expect(block.showCursor).toBe(false);
+    expect(block.legendMode).toBe("all");
+  });
+
+  it("uses parser fallback for invalid explicit settings instead of vault defaults", () => {
+    const source = `Tempo: too-fast
+Voicing: sideways`;
+    const existing = parseDrumBlock(source);
+    const authoringDefaults = {
+      ...DEFAULT_DRUM_AUTHORING_DEFAULTS,
+      tempo: 72,
+      voicing: "split" as const
+    };
+    const context = {
+      existing,
+      authoringDefaults,
+      explicitHeaderKeys: getExplicitAuthoringHeaderKeys(source)
+    };
+    const block = createInitialDrumBlock(getDrumSetupValues(context), context);
+
+    expect(block.tempo).toBe(100);
+    expect(block.voicing).toBe("single");
   });
 
   it("wraps a complete drums fence and keeps adjacent text on separate lines", () => {

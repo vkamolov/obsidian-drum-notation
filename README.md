@@ -15,6 +15,10 @@ of compact diddles remain implicit.
 
 ## Release Notes
 
+- `1.7.0` adds searchable, grouped Obsidian settings for new-notation
+  authoring defaults. The defaults seed serialized text when inserting a block
+  or creating its first bar; existing playable notation remains portable and
+  vault-independent.
 - `1.6.0` adds editable, text-authored section repeats with `[` and `]`
   bar separators, standard repeat barlines, and two-pass playback across one or
   more rendered systems.
@@ -80,10 +84,12 @@ You can start without writing drum rows manually:
 - In an open Markdown editor, run **Drum Notation: Insert notation block** from
   the Command palette. Choose the title, tempo, time signature, and grid, then
   the plugin inserts a complete fenced `drums` block with one empty HH/SD/BD
-  bar at the cursor.
+  bar at the cursor. The setup window starts from the authoring defaults in the
+  plugin settings.
 - If you already created an empty top-level `drums` block, switch to Reading
   view and press **Create first bar** in the rendered block. Existing Title,
-  Tempo, Time, and Grid values prefill the setup window.
+  Tempo, Time, and Grid values prefill the setup window; omitted values start
+  from the vault's authoring defaults.
 
 The setup window shows the calculated bar length before creating it, such as
 `7/8 · Grid 16 · 14 slots`. When visual edit mode is enabled, creating the
@@ -193,6 +199,29 @@ embedded section of another file. Open the source note, such as
 `Groove Library`, to edit the notation visually.
 
 ## Settings
+
+### Obsidian plugin settings
+
+The **Drum Notation** settings page keeps visual editing under **Editor** and
+groups defaults for newly created notation under **New notation: Rhythm**,
+**Engraving**, and **Playback**. You can set the initial title, tempo, meter,
+grouping, grid, voicing, repeat count, cursor, highlighting, rests, and legend
+without looking up every notation header first. The settings are searchable in
+Obsidian 1.13 and later.
+
+These are authoring defaults, not hidden rendering preferences. They are used
+only by **Insert notation block** and **Create first bar**, then represented in
+the generated `drums` text. Title, Tempo, Time, and Grid stay visible in the
+new scaffold; other values are emitted when they differ from format defaults.
+Existing playable blocks and ordinary text parsing never inherit them. In an
+empty or metadata-only scaffold, explicitly written supported headers take
+precedence; for example, `Cursor: off` overrides a vault default of on, and
+`Grouping: auto` clears a configured grouping. Unknown metadata is preserved.
+
+Use **Reset authoring defaults** to restore the new-notation values without
+changing visual edit mode or the dismissed first-session tip.
+
+### Notation block settings
 
 Put settings at the top of the block:
 
