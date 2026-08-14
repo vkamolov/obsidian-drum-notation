@@ -135,6 +135,11 @@ type DrumSettingsControlKey =
   | "authoringShowRests"
   | "authoringLegendMode";
 
+interface DeclarativeSettingTabRuntime {
+  update?: () => void;
+  refreshDomState?: () => void;
+}
+
 function isSettingsRecord(value: unknown): value is Partial<DrumNotationSettings> {
   return typeof value === "object" && value !== null;
 }
@@ -2651,6 +2656,10 @@ class DrumNotationSettingTab extends PluginSettingTab {
 
   // Obsidian versions before 1.13 do not use declarative setting definitions.
   display(): void {
+    this.renderLegacySettings();
+  }
+
+  private renderLegacySettings(): void {
     const { containerEl } = this;
 
     containerEl.empty();
@@ -2723,7 +2732,7 @@ class DrumNotationSettingTab extends PluginSettingTab {
       .addButton((button) => {
         button.setButtonText("Reset").onClick(async () => {
           await this.resetAuthoringDefaults();
-          this.display();
+          this.renderLegacySettings();
         });
       });
   }
@@ -2788,7 +2797,7 @@ class DrumNotationSettingTab extends PluginSettingTab {
           const value = Number(rawValue);
           if (validateIntegerRange(value, min, max, name)) return;
           await this.setControlValue(key, value);
-          if (refreshAfterChange) this.display();
+          if (refreshAfterChange) this.renderLegacySettings();
         });
       });
   }
@@ -2806,7 +2815,7 @@ class DrumNotationSettingTab extends PluginSettingTab {
       .addDropdown((dropdown) => {
         dropdown.addOptions(options).setValue(String(this.getControlValue(key))).onChange(async (value) => {
           await this.setControlValue(key, value);
-          if (refreshAfterChange) this.display();
+          if (refreshAfterChange) this.renderLegacySettings();
         });
       });
   }
@@ -2821,15 +2830,13 @@ class DrumNotationSettingTab extends PluginSettingTab {
   }
 
   private safeUpdate(): void {
-    if (typeof this.update === "function") {
-      this.update();
-    }
+    const runtime: DeclarativeSettingTabRuntime = this;
+    runtime.update?.();
   }
 
   private safeRefreshDomState(): void {
-    if (typeof this.refreshDomState === "function") {
-      this.refreshDomState();
-    }
+    const runtime: DeclarativeSettingTabRuntime = this;
+    runtime.refreshDomState?.();
   }
 }
 
