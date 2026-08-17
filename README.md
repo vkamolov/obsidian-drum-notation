@@ -2,98 +2,78 @@
 
 [![CI](https://github.com/vkamolov/obsidian-drum-notation/actions/workflows/ci.yml/badge.svg)](https://github.com/vkamolov/obsidian-drum-notation/actions/workflows/ci.yml)
 
-Render drum kit patterns as graphical SVG percussion staff notation in Obsidian, with playback.
+Keep grooves, fills, rudiments, exercises, and song charts beside the rest of
+your notes. Drum Notation turns compact patterns into clear percussion staff
+notation that you can hear, loop, slow down, speed up, edit, reuse, and export.
 
-Try the [interactive web playground](https://vkamolov.github.io/obsidian-drum-notation/),
-or see the
-[full notation format reference](https://github.com/vkamolov/obsidian-drum-notation/blob/main/docs/notation-format.md).
+Whether you are learning your first groove, building a lesson notebook, or
+preparing a mixed-meter setlist, the notation stays readable as Markdown and
+playable inside your vault.
 
-The playground example picker includes a **Rudiments** group with ten core
-exercises covering rolls, paradiddles, flams, drags, and buzz strokes. In these
-examples, `ST` identifies the main hand; grace-note hands and the second stroke
-of compact diddles remain implicit.
+![Drum Notation in Obsidian showing a playable two-bar groove and visual editor](https://raw.githubusercontent.com/vkamolov/obsidian-drum-notation/main/docs/assets/drum-notation-overview.png)
 
-## Release Notes
+[Try the interactive playground](https://vkamolov.github.io/obsidian-drum-notation/)
+· [Start in Obsidian](#create-in-obsidian)
+· [Import a printed score](#import-a-printed-score)
+· [Read the notation reference](https://github.com/vkamolov/obsidian-drum-notation/blob/main/docs/notation-format.md)
 
-- `1.7.0` adds searchable, grouped Obsidian settings for new-notation
-  authoring defaults. The defaults seed serialized text when inserting a block
-  or creating its first bar; existing playable notation remains portable and
-  vault-independent.
-- `1.6.0` adds editable, text-authored section repeats with `[` and `]`
-  bar separators, standard repeat barlines, and two-pass playback across one or
-  more rendered systems.
-- `1.5.0` adds optional split hands/feet engraving with `Voicing: split`,
-  including synchronized up-stem and down-stem voices and shared rests, plus
-  even diddle timing and smoothly overlapping buzz-roll strokes.
-- `1.4.0` adds inherited system-level time-signature and beam-grouping changes,
-  with changed signatures engraved at the start of each affected staff line.
-- `1.3.0` adds written-beat-span tuplets such as `2/3(xxx)`, groups the
-  playground examples by purpose, and adds ten core rudiment exercises.
-- `1.2.0` extends tuplets with explicit note-value spans such as
-  `3@8(xxx)` for three equal positions in one eighth-note duration.
-- `1.1.0` adds explicit one-written-beat tuplets with `N(...)` syntax,
-  synchronized playback and engraving, text-safe repeat support, and clear
-  advisory warnings for malformed or mismatched tuplet rows.
-- `1.0.11` adds count dialogs for `%` and `%xN`, group-aware repeat resizing
-  and deletion, conversion to one editable bar, and quieter ghost-note
-  playback.
-- `1.0.10` makes Repeat insert a new one-bar repeat after the selected bar,
-  keeps Unrepeat as a non-destructive conversion to editable notation, and
-  refreshes the visual-editor repeat icons and toolbar order.
-- `1.0.9` shows inferred rest symbols by default, adds `Rests: off` for the
-  previous compact style, groups fully silent bars by meter, and adds a
-  playground example for rests and off-beat entries.
-- `1.0.8` restores full notehead highlighting during playback and keeps normal
-  bars following measure-repeat notation visible and separately playable.
-- `1.0.7` adds explicit `Grouping:` syntax for beaming asymmetric `/8` and
-  `/16` meters, plus a 7/8 playground example grouped as 2+2+3.
-- `1.0.6` beams regular eighth-note patterns by compound beat in 6/8, 9/8,
-  and 12/8, adds a 9/8 playground example, and includes a small font-registry
-  type-safety cleanup.
-- `1.0.5` makes the visual-edit setting searchable through Obsidian 1.13's
-  declarative settings API while preserving the legacy settings tab on older
-  supported Obsidian versions.
-- `1.0.4` expands visual bar editing with Duplicate, split-at-selection New
-  line behavior, and a session clipboard that copies and pastes compatible bar
-  content across notation blocks.
-- `1.0.0` is the first stable public release for Obsidian Community plugin
-  submission.
-- `0.9.7` polishes visual grid editing with a gesture hint, musical count
-  labels in the selection strip, clearer grid-cell accessibility labels, and
-  an extended 25–150% playback-speed range for tempo training.
-- `0.9.6` documents setlist-style embeds and makes embedded drums blocks
-  explicitly read-only for visual editing; open the source note to edit.
-- `0.9.5` adds a one-bar count-in option in the metronome menu, a small
-  first-session usage tip, and more reliable music-font loading for Obsidian
-  PDF export and pop-out windows.
-- `0.9.4` adds low-noise row-length warnings for likely accidental bar-length
-  mismatches, such as a 17-slot row in 4/4 Grid 16. Short shorthand examples
-  like `HH | x---` remain warning-free.
-- `0.9.3` adds advisory parser warnings in Obsidian and the playground for
-  ignored rows, fallback settings, unsupported characters, and removed settings.
-  Warnings do not block rendering, playback, or visual editing.
-- `0.9.2` corrects Grid-16 engraving and buzz/legend durations to follow the
-  written distance to the next hit. Three hits in one Grid-16 count no longer
-  imply a triplet; use compound meters such as 6/8 or 12/8 for triplet-feel
-  practice until explicit triplet syntax is added.
+## What You Can Do
 
-## Create A Notation
+- **Practise at your pace.** Play a groove at 25–150% speed, loop one bar or a
+  complete chart, add a metronome and count-in, mute instruments, and follow
+  the cursor or note highlighting.
+- **Write simply or go deep.** Create standard fixed-grid grooves visually, or
+  use text for sticking, accents, ghost notes, flams, drags, diddles, buzzes,
+  tuplets, mixed meters, split hand/foot voicing, and repeat structures.
+- **Keep a working drum notebook.** Store reusable grooves and fills under
+  headings, add practice comments and tempos, and embed them into lesson notes,
+  practice dashboards, or setlists.
+- **Prepare and share charts.** Organize songs across labelled staff lines,
+  rehearse them with playback, and use Obsidian's PDF export for clean printed
+  reference sheets.
 
-You can start without writing drum rows manually:
+## Made For Real Drum Workflows
 
-- In an open Markdown editor, run **Drum Notation: Insert notation block** from
-  the Command palette. Choose the title, tempo, time signature, and grid, then
-  the plugin inserts a complete fenced `drums` block with one empty HH/SD/BD
-  bar at the cursor. The setup window starts from the authoring defaults in the
-  plugin settings.
-- If you already created an empty top-level `drums` block, switch to Reading
-  view and press **Create first bar** in the rendered block. Existing Title,
-  Tempo, Time, and Grid values prefill the setup window; omitted values start
-  from the vault's authoring defaults.
+- Build a daily warm-up with rudiments, tempo targets, grooves, and fills.
+- Capture a teacher's sticking, orchestration, and practice instructions after
+  a lesson.
+- Keep verse, chorus, bridge, and fill ideas together while writing or learning
+  a song.
+- Assemble gig notes and setlists from reusable groove-library headings.
+- Turn a clean printed chart into editable, validated notation with the
+  separate importer Agent Plugin.
 
-The setup window shows the calculated bar length before creating it, such as
-`7/8 · Grid 16 · 14 slots`. When visual edit mode is enabled, creating the
-first bar opens it immediately for editing.
+## Start In Three Ways
+
+### Create In Obsidian
+
+In an open Markdown editor, run **Drum Notation: Insert notation block** from
+the Command palette. Choose the title, tempo, time signature, and grid, and the
+plugin inserts a complete `drums` block with one empty hi-hat, snare, and kick
+bar. Switch to Reading view to play it.
+
+For point-and-click authoring, enable **Drum Notation → Enable visual edit
+mode** in the plugin settings and press **Edit** on the rendered score. If you
+already have an empty `drums` block, press **Create first bar** instead. The
+setup window starts from your new-notation defaults and shows the calculated
+bar length before creating it.
+
+### Try The Playground
+
+Open the [interactive web playground](https://vkamolov.github.io/obsidian-drum-notation/)
+without installing anything. Explore ready-made grooves, odd meters, tuplets,
+repeats, articulations, full-kit sounds, and ten core rudiments. Edit an example
+and use **Copy for Obsidian** when you are ready to bring it into your vault.
+
+### Import A Printed Score
+
+The separately installed [Drum Notation Importer Agent Plugin](#drum-notation-importer-agent-plugin)
+can transcribe a clean printed drum-score image or visually exposed PDF page,
+validate the result against the same notation parser, and report anything that
+needs human review. Paste the result into the playground's **Verify agent
+result** workspace before saving it to Obsidian.
+
+The importer does not transcribe audio or handwritten notation.
 
 ## Basic Example
 
@@ -307,6 +287,9 @@ The pattern is one character per grid slot. By default one character is a sixtee
 Add a global right/left/both-hands sticking lane with `ST`, `Stick`, `Sticking`,
 or `Hands`. It is slot-aligned with the drum rows and display-only, so it does
 not affect playback.
+
+In the playground's rudiment examples, `ST` identifies the main hand for the
+written stroke. The hand used for a grace note remains implicit.
 
 ````
 ```drums
@@ -657,6 +640,9 @@ Combinations:
 | `d` stacked with another row in the same column | The diddled instrument plays twice; the other stacked instrument plays once. |
 | `d` with `X`, `g`, `f`, `r`, or `c` in the same cell | Not supported because each instrument row uses one character per slot. Use written-out `Grid: 32` notes when you need an accented, ghosted, flammed, dragged, or choked double. |
 
+`ST` marks the hand leading a compact diddle; its second stroke uses the same
+hand and is not represented by another sticking character.
+
 ## Full Kit Example
 
 This example is inspired by the reference image and includes every supported row: cymbals, hi-hats, ride bell, cowbell, snare, cross-stick, ghost/flam/drag/choke strokes, rack toms, floor toms, kick, second kick, foot hi-hat, foot splash, and a stacked kick plus foot-hat hit.
@@ -783,6 +769,22 @@ their normal linear order.
 
 Use **Loop Bar** in the rendered view to loop the bar containing the current cursor position. Click a note in another bar first, then press **Loop Bar** to loop that bar.
 
+## Recent Changes
+
+- `1.7.1` introduces a practitioner-first plugin overview with clearer
+  workflows for practice, lessons, song charts, gigs, visual authoring, and
+  printed-score import.
+- `1.7.0` adds searchable, grouped Obsidian settings for new-notation
+  authoring defaults. The defaults seed serialized text when inserting a block
+  or creating its first bar; existing playable notation remains portable and
+  vault-independent.
+- `1.6.0` adds editable, text-authored section repeats with `[` and `]`
+  separators, standard repeat barlines, and two-pass playback across one or
+  more rendered staff lines.
+
+See [all GitHub releases](https://github.com/vkamolov/obsidian-drum-notation/releases)
+for the complete history.
+
 ## Development
 
 Install dependencies:
@@ -813,10 +815,9 @@ Then enable **Drum Notation** in Obsidian's community plugins settings.
 
 ## Installation
 
-After Community directory approval, install **Drum Notation** from Obsidian's
-Community plugins browser.
+Install **Drum Notation** from Obsidian's Community plugins browser.
 
-Until Community directory approval, install the GitHub release with
+For a manual or beta install, use the GitHub release with
 [BRAT](https://github.com/TfTHacker/obsidian42-brat), or install manually:
 
 1. Download `main.js`, `manifest.json`, and `styles.css` from a release.
