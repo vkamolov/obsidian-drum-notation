@@ -771,6 +771,8 @@ Use **Loop Bar** in the rendered view to loop the bar containing the current cur
 
 ## Recent Changes
 
+- `1.7.2` sharpens the practitioner-focused plugin overview with a
+  higher-resolution visual-editor screenshot.
 - `1.7.1` introduces a practitioner-first plugin overview with clearer
   workflows for practice, lessons, song charts, gigs, visual authoring, and
   printed-score import.
@@ -778,9 +780,6 @@ Use **Loop Bar** in the rendered view to loop the bar containing the current cur
   authoring defaults. The defaults seed serialized text when inserting a block
   or creating its first bar; existing playable notation remains portable and
   vault-independent.
-- `1.6.0` adds editable, text-authored section repeats with `[` and `]`
-  separators, standard repeat barlines, and two-pass playback across one or
-  more rendered staff lines.
 
 See [all GitHub releases](https://github.com/vkamolov/obsidian-drum-notation/releases)
 for the complete history.
