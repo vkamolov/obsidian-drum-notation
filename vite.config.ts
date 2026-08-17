@@ -1,4 +1,5 @@
 import { defineConfig } from "vite";
+import path from "node:path";
 import { createLicenseBanner } from "./tools/license-banner.mjs";
 import { getNotationCoreInfoSync } from "./tools/notation-digest.mjs";
 
@@ -28,6 +29,7 @@ export default defineConfig(() => {
   return {
     root: "web",
     base: "./",
+    publicDir: path.resolve("agent-plugin/drum-notation-importer/assets"),
     define: {
       __NOTATION_CORE_VERSION__: JSON.stringify(notationCore.version),
       __NOTATION_CORE_DIGEST__: JSON.stringify(notationCore.digest)
@@ -77,6 +79,12 @@ export default defineConfig(() => {
       outDir: "dist",
       emptyOutDir: true,
       rollupOptions: {
+        input: {
+          playground: path.resolve("web/index.html"),
+          importer: path.resolve("web/importer/index.html"),
+          importerPrivacy: path.resolve("web/importer/privacy.html"),
+          importerTerms: path.resolve("web/importer/terms.html")
+        },
         output: {
           banner: licenseBanner
         }

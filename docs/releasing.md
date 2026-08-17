@@ -131,33 +131,64 @@ installable by Agent Skills clients.
 For an importer release:
 
 1. Bump only the importer version in canonical metadata. Update both repository
-   marketplace pins, the Claude marketplace version, README release links, and
-   archive names to the same version.
+   marketplace pins, the Claude marketplace version, README release links,
+   public catalog copy, submission dossier, and archive names to the same
+   version. Generated manifests and marketplace entries must be regenerated in
+   the release commit before validation; never point a committed marketplace
+   at a version absent from canonical metadata.
 2. Run `npm run agent-plugin:generate`, `npm run agent-plugin:build`, the full
-   shared checks above, and `npm run agent-plugin:package`.
+   shared checks above, `npm run agent-plugin:package`, and then
+   `npm run check:openai-submission`. The final command enforces the stricter
+   public-directory limits and validates the already-built ZIP.
 3. Commit the release preparation, then create an annotated tag such as:
    ```bash
-   git tag -a agent-plugin-v0.2.0 -m "agent-plugin-v0.2.0"
+   git tag -a agent-plugin-v0.2.1 -m "agent-plugin-v0.2.1"
    ```
 4. Push `main` and the importer tag together so marketplace pins never point to
    a missing remote tag:
    ```bash
-   git push origin main agent-plugin-v0.2.0
+   git push origin main agent-plugin-v0.2.1
    ```
 5. Confirm main CI and the tag workflow pass. The workflow that creates the
    importer draft must be present in the tagged commit because tag-triggered
    workflows are resolved from that commit.
-6. Inspect the draft release, attestation, and all four extracted packages
-   before publishing: portable, OpenAI, Claude, and Gemini CLI.
+6. Inspect the draft release, attestation, four extracted `.tar.gz` packages,
+   and the skills-only OpenAI directory ZIP before publishing: portable,
+   OpenAI, Claude, Gemini CLI, and directory submission.
 7. Publish without replacing the Obsidian release as Latest, then verify the
    repository's Latest release still resolves to the current Obsidian version:
    ```bash
-   gh release edit agent-plugin-v0.2.0 --draft=false --latest=false
+   gh release edit agent-plugin-v0.2.1 --draft=false --latest=false
    gh api repos/vkamolov/obsidian-drum-notation/releases/latest --jq .tag_name
    ```
 
 The Obsidian workflow ignores `agent-plugin-v*`; the importer workflow rejects
 a tag that does not exactly match importer metadata.
+
+### OpenAI public directory submission
+
+GitHub release publication and OpenAI directory publication are separate. A
+released ZIP does not become discoverable until its reviewed directory draft
+is explicitly published.
+
+1. Deploy and browser-check the importer landing, privacy, and terms pages.
+2. In OpenAI Platform, confirm Apps Management write permission and that the
+   verified individual publisher identity exactly matches canonical metadata.
+3. Create a **Skills only** draft at <https://platform.openai.com/plugins>,
+   upload `drum-notation-importer-0.2.1-openai.zip`, and review every
+   normalization or safety-scan result.
+4. Populate the three starter prompts, five positive cases, three negative
+   cases, all eligible regions, release notes, support channel, and required
+   attestations from `submission/openai-catalog.json`, then submit for review.
+5. Use a new importer patch version when review requires any package or skill
+   change. Portal-copy-only changes may remain on the current draft. After
+   approval, publish explicitly and verify discovery and installation in both
+   ChatGPT and Codex.
+
+Expected answers and project-owned evaluation fixtures live under
+`agent-plugin/drum-notation-importer/submission/` and must never be copied into
+the uploaded skill or ZIP. After public-directory publication, replace the
+README's review-pending wording with the approved directory install path.
 
 ## Release acceptance checklist
 
@@ -169,8 +200,13 @@ a tag that does not exactly match importer metadata.
   interactions remain usable.
 - Clipboard fallback never shows stale notation.
 - Production bundles retain the VexFlow/license notice.
-- Portable, OpenAI, Claude, and Gemini CLI manifests, validator provenance,
-  kit reference, and notation-reference acknowledgment are current.
+- Portable, OpenAI, Claude, and Gemini CLI manifests, skill-agent metadata,
+  validator provenance, kit reference, and notation-reference acknowledgment
+  are current.
+- The four `.tar.gz` packages and skills-only OpenAI ZIP pass path, content,
+  size, dossier, and exclusion checks.
+- Importer website, privacy, terms, and support links work without trackers or
+  off-origin runtime requests.
 - OpenAI/Codex and Claude marketplace entries point to the current published
   importer tag and match canonical importer metadata.
 - Production CSP tests pass in Chromium and WebKit with visible noteheads and

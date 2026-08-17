@@ -10,7 +10,7 @@
         "source": "git-subdir",
         "url": "https://github.com/vkamolov/obsidian-drum-notation.git",
         "path": "./agent-plugin/drum-notation-importer",
-        "ref": "agent-plugin-v0.2.0"
+        "ref": "agent-plugin-v0.2.1"
       },
       "policy": {
         "installation": "AVAILABLE",

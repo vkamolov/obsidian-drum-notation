@@ -43,3 +43,31 @@ for (const variant of variants) {
   }
   console.log(`Packaged ${variant.id}: ${archive}`);
 }
+
+const directoryVariantRoot = path.join(distRoot, "openai-directory");
+const directoryStagingRoot = path.join(directoryVariantRoot, metadata.name);
+await mkdir(directoryStagingRoot, { recursive: true });
+for (const entry of [".codex-plugin", "skills", "assets"]) {
+  await cp(path.join(PLUGIN_ROOT, entry), path.join(directoryStagingRoot, entry), { recursive: true });
+}
+await cp(path.join(REPO_ROOT, "LICENSE"), path.join(directoryStagingRoot, "LICENSE"));
+await writeFile(path.join(directoryStagingRoot, "VERSION"), `${metadata.version}\n`);
+
+const directoryArchive = path.join(distRoot, `${metadata.name}-${metadata.version}-openai.zip`);
+const zip = spawnSync("zip", ["-qr", "-X", directoryArchive, metadata.name], {
+  cwd: directoryVariantRoot,
+  encoding: "utf8"
+});
+if (zip.status !== 0) {
+  throw new Error(`zip failed for OpenAI directory submission: ${zip.stderr}`);
+}
+console.log(`Packaged OpenAI directory ZIP: ${directoryArchive}`);
+
+const submissionCheck = spawnSync(process.execPath, [path.join(REPO_ROOT, "tools", "check-openai-submission.mjs"), directoryArchive], {
+  cwd: REPO_ROOT,
+  encoding: "utf8",
+  stdio: "inherit"
+});
+if (submissionCheck.status !== 0) {
+  process.exit(submissionCheck.status ?? 1);
+}

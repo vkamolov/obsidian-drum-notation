@@ -11,6 +11,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
@@ -38,6 +40,11 @@ jobs:
           npm run check:agent-plugin
           npm run security:style-sinks
           npm run check:third-party
+
+      - name: Package and verify OpenAI directory submission
+        run: |
+          npm run agent-plugin:package
+          npm run check:openai-submission
 
       - name: Install browser test engines
         run: npx playwright install --with-deps chromium webkit

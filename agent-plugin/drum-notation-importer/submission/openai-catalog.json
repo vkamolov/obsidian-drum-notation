@@ -1,0 +1,108 @@
+{
+  "schemaVersion": 1,
+  "pluginVersion": "0.2.1",
+  "submissionType": "skills-only",
+  "publisherIdentity": "Viktor Kamolov",
+  "supportChannel": "GitHub Issues",
+  "availability": "all-openai-eligible-regions",
+  "listing": {
+    "displayName": "Drum Notation Importer",
+    "developerName": "Viktor Kamolov",
+    "category": "Productivity",
+    "shortDescription": "Transcribe printed drum score",
+    "longDescription": "Turn clean printed drum-notation images or visible PDF pages into validated Obsidian Drum Notation blocks. The plugin asks before guessing material ambiguities, preserves supported two-pass section repeats, and includes an import report for human review. It does not transcribe audio or handwritten scores, upload files, call external services, or write to an Obsidian vault.",
+    "websiteURL": "https://vkamolov.github.io/obsidian-drum-notation/importer/",
+    "privacyPolicyURL": "https://vkamolov.github.io/obsidian-drum-notation/importer/privacy.html",
+    "termsOfServiceURL": "https://vkamolov.github.io/obsidian-drum-notation/importer/terms.html",
+    "supportURL": "https://github.com/vkamolov/obsidian-drum-notation/issues/new?template=importer-support.yml"
+  },
+  "starterPrompts": [
+    "Transcribe this printed drum score into validated Obsidian Drum Notation and include the import report.",
+    "Convert this drum groove image into an Obsidian-ready drums block and ask about any unclear symbols.",
+    "Read this printed song chart, preserve supported section repeats, and split it only when required."
+  ],
+  "releaseNotes": "Initial public-directory submission of Drum Notation Importer 0.2.1. Skills-only, network-free transcription of clean printed drum scores into validated Obsidian Drum Notation, including simple paired section repeats. Version 0.2.1 adds catalog metadata, policy pages, and a submission ZIP without changing notation-core behavior.",
+  "positiveTests": [
+    {
+      "id": "clear-groove",
+      "prompt": "Transcribe the attached clear 4/4 printed drum groove into validated Obsidian Drum Notation and include the import report.",
+      "fixture": "submission/fixtures/positive-01-clear-groove.png",
+      "expected": "submission/expected/positive-01-clear-groove.md",
+      "expectedWorkflow": "Use import-drum-score, observe the full bar, map the three instruments, validate the block locally, and emit a schema-v1 report.",
+      "expectedResultShape": "One clean fenced drums block followed by one valid fenced drum-import-report JSON block.",
+      "clarificationOrRefusal": "No clarification is expected because the synthetic source is clean and unambiguous."
+    },
+    {
+      "id": "cymbal-positions",
+      "prompt": "Transcribe this printed bar and distinguish the crash from the recurring hi-hat using staff position.",
+      "fixture": "submission/fixtures/positive-02-cymbal-positions.png",
+      "expected": "submission/expected/positive-02-cymbal-positions.md",
+      "expectedWorkflow": "Use staff and ledger geometry before rhythmic similarity, assign the first x-notehead to crash, and validate the complete bar.",
+      "expectedResultShape": "One clean drums block with separate CR and HH rows and a valid import report containing position-evidence observations.",
+      "clarificationOrRefusal": "Ask for a focused crop only if the ledger relationship cannot be resolved at the supplied scale."
+    },
+    {
+      "id": "ornament-split-rest",
+      "prompt": "Transcribe this printed groove, preserve the ornament, and account for the explicit lower-voice rest.",
+      "fixture": "submission/fixtures/positive-03-ornament-split-rest.png",
+      "expected": "submission/expected/positive-03-ornament-split-rest.md",
+      "expectedWorkflow": "Distinguish the visible grace note from a stem slash, preserve the silent lower-voice span, validate, and report the hidden-rest-glyph limitation.",
+      "expectedResultShape": "One valid split-voice drums block and a report with an appearance workaround for the explicit lower-voice rest glyph.",
+      "clarificationOrRefusal": "Ask rather than choose flam or diddle if the ornament detail is unresolved."
+    },
+    {
+      "id": "paired-section-repeat",
+      "prompt": "Transcribe this two-bar printed section and preserve the clearly paired two-pass repeat signs.",
+      "fixture": "submission/fixtures/positive-04-section-repeat.png",
+      "expected": "submission/expected/positive-04-section-repeat.md",
+      "expectedWorkflow": "Confirm both boundaries and the two-pass route, preserve the span with native bracket markers, and validate it as one block.",
+      "expectedResultShape": "One clean drums block containing native [ and ] section markers and a valid report with no repeat workaround loss.",
+      "clarificationOrRefusal": "Ask before output if either boundary or traversal count is unclear."
+    },
+    {
+      "id": "two-tempo-chart",
+      "prompt": "Transcribe this complete printed chart with both tempo regions and include the import report.",
+      "fixture": "submission/fixtures/positive-05-two-tempo-chart.png",
+      "expected": "submission/expected/positive-05-two-tempo-chart.md",
+      "expectedWorkflow": "Observe both systems, transcribe every bar, split at the tempo change because tempo is block-level, and validate both blocks.",
+      "expectedResultShape": "Two justified fenced drums blocks, one per tempo region, followed by one schema-v1 report covering both segments.",
+      "clarificationOrRefusal": "No section may be omitted; ask if the tempo marking cannot be read."
+    }
+  ],
+  "negativeTests": [
+    {
+      "id": "audio-input",
+      "prompt": "Transcribe this attached drum audio track into Obsidian Drum Notation.",
+      "fixture": "submission/fixtures/negative-01-audio-input.wav",
+      "expectedWorkflow": "Do not invoke image transcription or emit provisional notation.",
+      "expectedResultShape": "A concise explanation that audio transcription is unsupported in this importer version.",
+      "clarificationOrRefusal": "Ask the user to provide a clean printed score image or visible PDF page instead.",
+      "whyNotComplete": "Importer 0.2.1 has no audio transcription model or audio-analysis workflow."
+    },
+    {
+      "id": "unreadable-handwriting",
+      "prompt": "Convert this handwritten and unreadable drum notation into a drums block.",
+      "fixture": "submission/fixtures/negative-02-unreadable-handwriting.png",
+      "expectedWorkflow": "Recognize that the source is outside the clean printed input scope and emit no drums block.",
+      "expectedResultShape": "A request for a clean printed image or a clearer focused crop, with no provisional transcription.",
+      "clarificationOrRefusal": "State which visual details are unreadable and stop.",
+      "whyNotComplete": "Guessing from unreadable handwriting would produce an unreliable score."
+    },
+    {
+      "id": "unsupported-navigation",
+      "prompt": "Transcribe this song chart with first and second endings plus D.S. al Coda.",
+      "fixture": "submission/fixtures/negative-03-unsupported-navigation.png",
+      "expectedWorkflow": "Identify unsupported endings and navigation before output and do not silently flatten the route.",
+      "expectedResultShape": "A clarification asking whether the user approves an explicit flattened route or wants to defer the chart.",
+      "clarificationOrRefusal": "Emit no provisional drums block until the route and flattening approval are explicit.",
+      "whyNotComplete": "Notation core 1.6.0 cannot represent first or second endings, D.S., Segno, or Coda natively."
+    }
+  ],
+  "localActivationTests": [
+    {
+      "id": "out-of-domain-composition",
+      "prompt": "Compose an original funk drum groove from scratch.",
+      "expectedBehavior": "Do not activate the transcription skill; explain that it converts supplied printed scores rather than composing new material."
+    }
+  ]
+}

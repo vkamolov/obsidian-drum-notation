@@ -1,12 +1,12 @@
 {
   "name": "drum-notation-importer",
-  "version": "0.2.0",
-  "description": "Transcribe printed drum scores into validated Obsidian Drum Notation.",
+  "version": "0.2.1",
+  "description": "Transcribe clean printed drum scores into validated Obsidian Drum Notation.",
   "author": {
-    "name": "vkamolov",
+    "name": "Viktor Kamolov",
     "url": "https://github.com/vkamolov"
   },
-  "homepage": "https://vkamolov.github.io/obsidian-drum-notation/",
+  "homepage": "https://vkamolov.github.io/obsidian-drum-notation/importer/",
   "repository": "https://github.com/vkamolov/obsidian-drum-notation",
   "license": "MIT",
   "keywords": [
@@ -19,17 +19,24 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Drum Notation Importer",
-    "shortDescription": "Transcribe printed drum notation",
-    "longDescription": "Turn clean printed drum-score images into locally validated notation blocks for the Obsidian Drum Notation plugin.",
-    "developerName": "vkamolov",
+    "shortDescription": "Transcribe printed drum score",
+    "longDescription": "Turn clean printed drum-notation images or visible PDF pages into validated Obsidian Drum Notation blocks. The plugin asks before guessing material ambiguities, preserves supported two-pass section repeats, and includes an import report for human review. It does not transcribe audio or handwritten scores, upload files, call external services, or write to an Obsidian vault.",
+    "developerName": "Viktor Kamolov",
     "category": "Productivity",
     "capabilities": [
-      "Image understanding",
-      "Local validation"
+      "Printed score transcription",
+      "Local notation validation",
+      "Ambiguity and workaround reporting",
+      "Simple section-repeat preservation"
     ],
-    "websiteURL": "https://vkamolov.github.io/obsidian-drum-notation/",
+    "websiteURL": "https://vkamolov.github.io/obsidian-drum-notation/importer/",
+    "privacyPolicyURL": "https://vkamolov.github.io/obsidian-drum-notation/importer/privacy.html",
+    "termsOfServiceURL": "https://vkamolov.github.io/obsidian-drum-notation/importer/terms.html",
+    "supportURL": "https://github.com/vkamolov/obsidian-drum-notation/issues/new?template=importer-support.yml",
     "defaultPrompt": [
-      "Transcribe the attached printed drum score using the import-drum-score skill. Validate the notation and include the import report."
+      "Transcribe this printed drum score into validated Obsidian Drum Notation and include the import report.",
+      "Convert this drum groove image into an Obsidian-ready drums block and ask about any unclear symbols.",
+      "Read this printed song chart, preserve supported section repeats, and split it only when required."
     ],
     "brandColor": "#6C5CE7",
     "composerIcon": "./assets/drum-notation-importer.png",

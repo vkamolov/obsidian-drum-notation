@@ -14,6 +14,15 @@ const validatorVersion = JSON.parse(validatorVersionRun.stdout) as {
   notationCoreDigest: string;
   validatorBuildDigest: string;
 };
+const currentNotationCoreRun = spawnSync(process.execPath, [
+  "--input-type=module",
+  "--eval",
+  'import { getNotationCoreInfoSync } from "./tools/notation-digest.mjs"; console.log(JSON.stringify(getNotationCoreInfoSync()));'
+], { encoding: "utf8" });
+if (currentNotationCoreRun.status !== 0) {
+  throw new Error(`Unable to read current notation-core provenance: ${currentNotationCoreRun.stderr}`);
+}
+const currentNotationCore = JSON.parse(currentNotationCoreRun.stdout) as { version: string; digest: string };
 
 function cleanImportReport(blockCount: number) {
   return {
@@ -53,6 +62,44 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
+test("importer catalog and policy pages are static, accessible, and tracking-free", async ({ page }) => {
+  const offOriginRequests: string[] = [];
+  const consoleErrors: string[] = [];
+  page.on("request", (request) => {
+    if (!request.url().startsWith("http://127.0.0.1:4173")) {
+      offOriginRequests.push(request.url());
+    }
+  });
+  page.on("console", (message) => {
+    if (message.type() === "error") {
+      consoleErrors.push(message.text());
+    }
+  });
+
+  await page.goto("/importer/");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Printed drum scores, ready for Obsidian.");
+  await expect(page.getByRole("link", { name: "Open verification playground" })).toHaveAttribute("href", "../");
+  await expect(page.getByRole("link", { name: "Privacy" })).toHaveAttribute("href", "./privacy.html");
+  await expect(page.getByRole("link", { name: "Support" })).toHaveAttribute("href", /importer-support\.yml/);
+  await expect(page.locator('meta[http-equiv="Content-Security-Policy"]')).toHaveAttribute("content", /connect-src 'none'/);
+  await expect(page.locator("script")).toHaveCount(0);
+  await expect(page.locator(".icon-card img")).toBeVisible();
+
+  await page.goto("/importer/privacy.html");
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("not sent to the developer");
+  await expect(page.getByText("The ChatGPT, Codex, Claude, Gemini, or other host", { exact: false })).toBeVisible();
+  await expect(page.locator("script")).toHaveCount(0);
+
+  await page.goto("/importer/terms.html");
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("reviewed draft");
+  await expect(page.getByRole("heading", { name: "Human review is mandatory" })).toBeVisible();
+  await expect(page.locator("script")).toHaveCount(0);
+
+  expect(offOriginRequests).toEqual([]);
+  expect(consoleErrors).toEqual([]);
+  expect(await page.evaluate(() => window.__cspViolations)).toEqual([]);
+});
+
 test("production CSP keeps score rendering self-contained", async ({ page }) => {
   const consoleErrors: string[] = [];
   const offOriginRequests: string[] = [];
@@ -90,9 +137,9 @@ test("production CSP keeps score rendering self-contained", async ({ page }) => 
   expect(csp).toContain("style-src-attr 'none'");
   expect(csp).toContain("connect-src 'none'");
   expect(await page.locator('meta[name="drum-notation-core-version"]').getAttribute("content"))
-    .toBe(validatorVersion.notationCoreVersion);
+    .toBe(currentNotationCore.version);
   expect(await page.locator('meta[name="drum-notation-core-digest"]').getAttribute("content"))
-    .toBe(validatorVersion.notationCoreDigest);
+    .toBe(currentNotationCore.digest);
 
   const fetchBlocked = await page.evaluate(async () => {
     try {

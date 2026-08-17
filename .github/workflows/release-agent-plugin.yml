@@ -15,6 +15,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v6
         with:
@@ -56,12 +58,16 @@ jobs:
         run: npm run web:test:csp
 
       - name: Package agent plugin
-        run: npm run agent-plugin:package
+        run: |
+          npm run agent-plugin:package
+          npm run check:openai-submission
 
       - name: Generate artifact attestation
         uses: actions/attest@v4
         with:
-          subject-path: dist/agent-plugin/drum-notation-importer-*.tar.gz
+          subject-path: |
+            dist/agent-plugin/drum-notation-importer-*.tar.gz
+            dist/agent-plugin/drum-notation-importer-*.zip
 
       - name: Create draft GitHub release
         env:
@@ -73,4 +79,5 @@ jobs:
             --draft \
             --latest=false \
             --generate-notes \
-            dist/agent-plugin/drum-notation-importer-*.tar.gz
+            dist/agent-plugin/drum-notation-importer-*.tar.gz \
+            dist/agent-plugin/drum-notation-importer-*.zip
