@@ -771,15 +771,13 @@ Use **Loop Bar** in the rendered view to loop the bar containing the current cur
 
 ## Recent Changes
 
+- `1.7.3` updates the plugin overview screenshot to demonstrate the selected-note
+  toolbar and sticking lane alongside visual grid editing.
 - `1.7.2` sharpens the practitioner-focused plugin overview with a
   higher-resolution visual-editor screenshot.
 - `1.7.1` introduces a practitioner-first plugin overview with clearer
   workflows for practice, lessons, song charts, gigs, visual authoring, and
   printed-score import.
-- `1.7.0` adds searchable, grouped Obsidian settings for new-notation
-  authoring defaults. The defaults seed serialized text when inserting a block
-  or creating its first bar; existing playable notation remains portable and
-  vault-independent.
 
 See [all GitHub releases](https://github.com/vkamolov/obsidian-drum-notation/releases)
 for the complete history.

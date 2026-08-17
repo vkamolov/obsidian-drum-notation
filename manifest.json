@@ -1,7 +1,7 @@
 {
   "id": "drum-notation",
   "name": "Drum Notation",
-  "version": "1.7.2",
+  "version": "1.7.3",
   "minAppVersion": "1.5.0",
   "description": "Create, hear, edit, and organize drum notation for practice, lessons, songs, and gigs, with playback, loops, and tempo tools.",
   "author": "vkamolov",
