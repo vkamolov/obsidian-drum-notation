@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { openAiSkillAgentYaml } from "./openai-catalog.mjs";
 import { PLUGIN_ROOT, stableJson } from "./plugin-paths.mjs";
 
 const check = process.argv.includes("--check");
@@ -33,6 +34,47 @@ const gemini = {
   version: metadata.version,
   description: metadata.description
 };
+const openaiSkillAgent = openAiSkillAgentYaml(metadata);
+const releaseRef = `agent-plugin-v${metadata.version}`;
+const repositoryUrl = `${metadata.repository}.git`;
+const openaiMarketplace = {
+  name: "obsidian-drum-notation",
+  interface: { displayName: "Obsidian Drum Notation" },
+  plugins: [
+    {
+      name: metadata.name,
+      source: {
+        source: "git-subdir",
+        url: repositoryUrl,
+        path: "./agent-plugin/drum-notation-importer",
+        ref: releaseRef
+      },
+      policy: {
+        installation: "AVAILABLE",
+        authentication: "ON_INSTALL"
+      },
+      category: metadata.interface.category
+    }
+  ]
+};
+const claudeMarketplace = {
+  name: "obsidian-drum-notation",
+  owner: metadata.author,
+  description: "Agent plugins for Obsidian Drum Notation.",
+  plugins: [
+    {
+      name: metadata.name,
+      description: metadata.description,
+      version: metadata.version,
+      source: {
+        source: "git-subdir",
+        url: repositoryUrl,
+        path: "agent-plugin/drum-notation-importer",
+        ref: releaseRef
+      }
+    }
+  ]
+};
 
 async function emit(relativePath, value) {
   const destination = path.join(PLUGIN_ROOT, relativePath);
@@ -50,8 +92,24 @@ async function emit(relativePath, value) {
   await writeFile(destination, expected);
 }
 
+async function emitText(destination, expected) {
+  if (check) {
+    const current = await readFile(destination, "utf8").catch(() => "");
+    if (current !== expected) {
+      throw new Error(`${path.relative(PLUGIN_ROOT, destination)} is stale; run npm run agent-plugin:generate`);
+    }
+    return;
+  }
+
+  await mkdir(path.dirname(destination), { recursive: true });
+  await writeFile(destination, expected);
+}
+
 await emit("plugin.json", portable);
 await emit(path.join(".codex-plugin", "plugin.json"), openai);
 await emit(path.join(".claude-plugin", "plugin.json"), claude);
 await emit("gemini-extension.json", gemini);
+await emitText(path.join(PLUGIN_ROOT, "skills", "import-drum-score", "agents", "openai.yaml"), openaiSkillAgent);
+await emitText(path.join(PLUGIN_ROOT, "..", "..", ".agents", "plugins", "marketplace.json"), stableJson(openaiMarketplace));
+await emitText(path.join(PLUGIN_ROOT, "..", "..", ".claude-plugin", "marketplace.json"), stableJson(claudeMarketplace));
 console.log(check ? "Agent plugin manifests are current." : "Generated agent plugin manifests.");

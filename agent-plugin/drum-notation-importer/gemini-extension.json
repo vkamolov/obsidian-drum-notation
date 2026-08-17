@@ -1,5 +1,5 @@
 {
   "name": "drum-notation-importer",
-  "version": "0.2.0",
-  "description": "Transcribe printed drum scores into validated Obsidian Drum Notation."
+  "version": "0.2.1",
+  "description": "Transcribe clean printed drum scores into validated Obsidian Drum Notation."
 }

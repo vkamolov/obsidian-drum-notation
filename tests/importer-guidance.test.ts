@@ -45,7 +45,8 @@ describe("importer recognition guidance", () => {
     const html = readRepoFile("web/index.html");
     const prompt = /<pre id="pg-import-prompt"[^>]*>([^<]+)<\/pre>/.exec(html)?.[1] ?? "";
     const metadata = JSON.parse(readRepoFile("agent-plugin/drum-notation-importer/metadata.json"));
-    const defaultPrompt = metadata.interface.defaultPrompt.join(" ");
+    const starterPrompts = metadata.interface.defaultPrompt as string[];
+    const skillAgent = readRepoFile("agent-plugin/drum-notation-importer/skills/import-drum-score/agents/openai.yaml");
 
     expect(prompt).toContain("import-drum-score skill");
     expect(prompt).toMatch(/instrument positions/i);
@@ -55,12 +56,15 @@ describe("importer recognition guidance", () => {
     expect(prompt).toMatch(/source legend/i);
     expect(prompt).toMatch(/row-length|length warnings/i);
 
-    expect(defaultPrompt).toContain("import-drum-score skill");
-    expect(defaultPrompt).toMatch(/validate/i);
-    expect(defaultPrompt).toMatch(/import report/i);
-    expect(defaultPrompt.length).toBeLessThan(160);
+    expect(starterPrompts).toHaveLength(3);
+    expect(starterPrompts[0]).toMatch(/validated/i);
+    expect(starterPrompts[0]).toMatch(/import report/i);
+    expect(starterPrompts.every((value) => value.length <= 128)).toBe(true);
+    expect(skillAgent).toContain("Use $import-drum-score");
+    expect(skillAgent).toMatch(/validate/i);
+    expect(skillAgent).toMatch(/import report/i);
 
     expect(prompt).not.toMatch(/\b(?:crash|flam|diddle)\b/i);
-    expect(defaultPrompt).not.toMatch(/\b(?:crash|flam|diddle)\b/i);
+    expect(starterPrompts.join(" ")).not.toMatch(/\b(?:crash|flam|diddle)\b/i);
   });
 });

@@ -1,6 +1,6 @@
 import { readFile, stat } from "node:fs/promises";
 import { stdin, stdout } from "node:process";
-import { validateDrumNotation } from "../../../src/validation";
+import { validateDrumNotation } from "pinned-notation-core/validation";
 
 declare const __IMPORTER_VERSION__: string;
 declare const __NOTATION_CORE_VERSION__: string;

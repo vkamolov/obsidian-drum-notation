@@ -5,6 +5,7 @@ import path from "node:path";
 import Ajv2020 from "ajv/dist/2020.js";
 import { digestRecords } from "./notation-digest.mjs";
 import { loadBundledTsModule } from "./load-ts-module.mjs";
+import { openAiSkillAgentYaml, validateOpenAiCatalogMetadata } from "./openai-catalog.mjs";
 import { PLUGIN_ROOT, REPO_ROOT, SKILL_ROOT } from "./plugin-paths.mjs";
 import { getValidatorProvenance } from "./validator-provenance.mjs";
 
@@ -39,6 +40,7 @@ if (!portableValid(portable)) {
 }
 
 const metadata = JSON.parse(await readFile(path.join(PLUGIN_ROOT, "metadata.json"), "utf8"));
+validateOpenAiCatalogMetadata(metadata);
 const openai = JSON.parse(await readFile(path.join(PLUGIN_ROOT, ".codex-plugin", "plugin.json"), "utf8"));
 const claude = JSON.parse(await readFile(path.join(PLUGIN_ROOT, ".claude-plugin", "plugin.json"), "utf8"));
 const gemini = JSON.parse(await readFile(path.join(PLUGIN_ROOT, "gemini-extension.json"), "utf8"));
@@ -76,7 +78,17 @@ for (const field of allowedGeminiKeys) {
 if (unexpectedGeminiKeys.length > 0) {
   throw new Error(`Unsupported Gemini extension fields: ${unexpectedGeminiKeys.join(", ")}`);
 }
-const interfaceTextFields = ["displayName", "shortDescription", "longDescription", "developerName", "category", "websiteURL"];
+const interfaceTextFields = [
+  "displayName",
+  "shortDescription",
+  "longDescription",
+  "developerName",
+  "category",
+  "websiteURL",
+  "privacyPolicyURL",
+  "termsOfServiceURL",
+  "supportURL"
+];
 if (interfaceTextFields.some((field) => typeof openai.interface?.[field] !== "string" || openai.interface[field].trim() === "") ||
   !Array.isArray(openai.interface?.capabilities) || !openai.interface.capabilities.every((value) => typeof value === "string") ||
   !Array.isArray(openai.interface?.defaultPrompt) || openai.interface.defaultPrompt.length === 0 ||
@@ -99,6 +111,9 @@ if (!iconBytes.subarray(0, 8).equals(pngSignature) || iconBytes.readUInt32BE(16)
 }
 if (!/^\d+\.\d+\.\d+$/.test(metadata.version)) {
   throw new Error(`Importer version must be exact semver: ${metadata.version}`);
+}
+if (!/^\d+\.\d+\.\d+$/.test(metadata.notationCoreRef)) {
+  throw new Error(`Notation core ref must be an exact release tag: ${metadata.notationCoreRef}`);
 }
 
 const expectedMarketplaceName = "obsidian-drum-notation";
@@ -154,11 +169,21 @@ if (!skillSource.includes("<skill-directory>/scripts/validate-drum-notation.mjs"
 if (await stat(path.join(PLUGIN_ROOT, "scripts", "validate-drum-notation.mjs")).then(() => true).catch(() => false)) {
   throw new Error("Bundled validator must live inside the import-drum-score skill");
 }
-for (const forbidden of ["agents", "mcp.json", ".mcp.json", "hooks", path.join("skills", "import-drum-score", "agents")]) {
+for (const forbidden of ["agents", "mcp.json", ".mcp.json", "hooks"]) {
   const forbiddenPath = path.join(PLUGIN_ROOT, forbidden);
   if (await stat(forbiddenPath).then(() => true).catch(() => false)) {
     throw new Error(`${forbidden} is outside the current package scope`);
   }
+}
+const skillAgentsRoot = path.join(SKILL_ROOT, "agents");
+const skillAgentEntries = await readdir(skillAgentsRoot);
+if (JSON.stringify(skillAgentEntries.sort()) !== JSON.stringify(["openai.yaml"])) {
+  throw new Error(`Only skills/import-drum-score/agents/openai.yaml is supported: ${skillAgentEntries.join(", ")}`);
+}
+const openAiSkillAgentSource = await readFile(path.join(skillAgentsRoot, "openai.yaml"), "utf8");
+if (openAiSkillAgentSource !== openAiSkillAgentYaml(metadata) ||
+  /^(?:dependencies|tools|icons?):/m.test(openAiSkillAgentSource)) {
+  throw new Error("Skill-level agents/openai.yaml is stale or contains unsupported keys");
 }
 
 const knownDigest = digestRecords([["b.txt", "two\r\n"], ["a.txt", "\uFEFFone\r"]]);
@@ -177,7 +202,8 @@ if (versionRun.status !== 0) {
   throw new Error(`Bundled validator --version failed: ${versionRun.stderr}`);
 }
 const bundledVersion = JSON.parse(versionRun.stdout);
-for (const [key, value] of Object.entries(provenance)) {
+for (const key of ["importerVersion", "notationCoreVersion", "notationCoreDigest", "validatorBuildDigest"]) {
+  const value = provenance[key];
   if (bundledVersion[key] !== value) {
     throw new Error(`Bundled validator ${key} is stale: ${bundledVersion[key]} != ${value}`);
   }
@@ -242,6 +268,11 @@ if (!obsidianRelease.includes("gh release create") || !obsidianRelease.includes(
 }
 if (!importerRelease.includes("gh release create") || !importerRelease.includes("--draft") || !importerRelease.includes("--latest=false")) {
   throw new Error("Importer release workflow must create drafts with --latest=false");
+}
+if (!importerRelease.includes("drum-notation-importer-*.tar.gz") ||
+  !importerRelease.includes("drum-notation-importer-*.zip") ||
+  !importerRelease.includes("npm run check:openai-submission")) {
+  throw new Error("Importer release workflow must verify and publish four tar archives plus the OpenAI directory ZIP");
 }
 if (!releaseGuide.includes('gh release edit "$tag" --draft=false --latest=true') ||
   !releaseGuide.includes(`gh release edit ${expectedReleaseRef} --draft=false --latest=false`)) {

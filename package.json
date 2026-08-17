@@ -20,6 +20,7 @@
     "agent-plugin:package": "node tools/package-agent-plugin.mjs",
     "agent-plugin:acknowledge-notation-reference": "node tools/acknowledge-notation-reference.mjs",
     "check:agent-plugin": "node tools/check-agent-plugin.mjs",
+    "check:openai-submission": "node tools/check-openai-submission.mjs",
     "check:kit-reference": "node tools/generate-kit-reference.mjs --check",
     "check:notation-reference": "node tools/check-notation-reference.mjs",
     "check:third-party": "node tools/check-third-party.mjs",

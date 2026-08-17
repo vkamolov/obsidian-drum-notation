@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Drum Notation Importer turns clean printed drum scores into validated Obsidian Drum Notation." />
+    <link rel="stylesheet" href="./catalog.css" />
+    <title>Drum Notation Importer</title>
+  </head>
+  <body>
+    <div class="shell">
+      <header class="topline">
+        <a class="brand" href="./" aria-label="Drum Notation Importer home">
+          <img src="../drum-notation-importer.png" alt="" />
+          <span>Drum Notation Importer</span>
+        </a>
+        <nav aria-label="Importer information">
+          <a href="./privacy.html">Privacy</a>
+          <a href="./terms.html">Terms</a>
+          <a href="https://github.com/vkamolov/obsidian-drum-notation/issues/new?template=importer-support.yml">Support</a>
+        </nav>
+      </header>
+
+      <main>
+        <section class="hero">
+          <div>
+            <p class="eyebrow">Agent skill · version 0.2.1</p>
+            <h1>Printed drum scores, ready for Obsidian.</h1>
+            <p class="lede">Turn clean printed drum-notation images or visible PDF pages into validated Obsidian Drum Notation blocks. The importer asks before guessing material ambiguities and includes a report for human review.</p>
+            <div class="actions">
+              <a class="button button--primary" href="../">Open verification playground</a>
+              <a class="button" href="https://github.com/vkamolov/obsidian-drum-notation/releases/tag/agent-plugin-v0.2.1">Get the GitHub release</a>
+            </div>
+          </div>
+          <div class="icon-card">
+            <img src="../drum-notation-importer.png" alt="Drum Notation Importer snare drum icon" />
+          </div>
+        </section>
+
+        <section class="facts" aria-label="Importer characteristics">
+          <article class="fact"><strong>Network-free plugin</strong><p>The skill and validator make no network requests and send nothing to the developer.</p></article>
+          <article class="fact"><strong>Fail-closed transcription</strong><p>Materially unclear instruments, timing, repeats, or navigation are questions—not guesses.</p></article>
+          <article class="fact"><strong>Human review required</strong><p>Every transcription can contain errors. Review the score, notation, and import report before use.</p></article>
+        </section>
+
+        <section class="policy-grid" aria-label="Scope">
+          <article class="policy-card"><h2>Supported</h2><p>Clean printed notation, visible PDF pages, grooves, practice material, and simple paired section repeats.</p></article>
+          <article class="policy-card"><h2>Not supported</h2><p>Audio transcription, handwritten or unreadable scores, hosted inference, or silent vault writes.</p></article>
+          <article class="policy-card"><h2>Directory status</h2><p>The 0.2.1 package is prepared for OpenAI directory review. GitHub installation remains available independently.</p></article>
+        </section>
+      </main>
+
+      <footer>Developed by Viktor Kamolov · <a href="https://github.com/vkamolov/obsidian-drum-notation">Source and license</a></footer>
+    </div>
+  </body>
+</html>

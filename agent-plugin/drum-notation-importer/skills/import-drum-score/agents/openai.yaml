@@ -1,0 +1,6 @@
+interface:
+  display_name: "Import Drum Score"
+  short_description: "Transcribe printed drum score"
+  default_prompt: "Use $import-drum-score to transcribe this printed drum score, validate it, and include the import report."
+policy:
+  allow_implicit_invocation: true

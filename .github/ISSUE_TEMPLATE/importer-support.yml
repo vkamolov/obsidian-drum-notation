@@ -1,0 +1,63 @@
+name: Drum Notation Importer support
+description: Report an importer installation, transcription, validation, or catalog issue.
+title: "[Importer] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting an importer issue. Do not attach copyrighted scores unless you own them or have permission to share them. Remove personal data and credentials. GitHub Issues may be public.
+  - type: input
+    id: client
+    attributes:
+      label: Host client and version
+      description: For example, ChatGPT desktop, Codex, Claude Code, or Gemini CLI and its version.
+      placeholder: Codex 0.0.0
+    validations:
+      required: true
+  - type: input
+    id: importer-version
+    attributes:
+      label: Importer version
+      placeholder: 0.2.1
+    validations:
+      required: true
+  - type: input
+    id: notation-core-version
+    attributes:
+      label: Obsidian Drum Notation version
+      description: Include this when the problem involves validation or generated notation.
+      placeholder: 1.6.0
+  - type: dropdown
+    id: issue-type
+    attributes:
+      label: Issue type
+      options:
+        - Installation or discovery
+        - Transcription accuracy
+        - Validation or import report
+        - Playground verification
+        - Privacy, terms, or catalog listing
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Describe the expected result and the actual result. Use a synthetic or redacted excerpt where possible.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: Include the prompt and relevant non-copyrighted notation text. Do not include secrets.
+    validations:
+      required: true
+  - type: checkboxes
+    id: permissions
+    attributes:
+      label: Sharing confirmation
+      options:
+        - label: I have permission to share any score excerpt or image included in this issue.
+          required: true

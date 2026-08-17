@@ -13,7 +13,7 @@ import {
 const digest = "a".repeat(64);
 const report = JSON.stringify({
   schemaVersion: 1,
-  importerVersion: "0.2.0",
+  importerVersion: "0.2.1",
   notationCoreVersion: "1.6.0",
   notationCoreDigest: digest,
   validatorBuildDigest: "b".repeat(64),
