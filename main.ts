@@ -86,6 +86,11 @@ import {
   togglePracticeRegion
 } from "./src/practice";
 import { getMeasureRepeatProgress } from "./src/repeat-progress";
+import {
+  createScreenWakeLockTarget,
+  isScreenWakeLockSupported,
+  ScreenWakeLockController
+} from "./src/screen-wake-lock";
 import { serializeDrumBlock } from "./src/serializer";
 import {
   DEFAULT_DRUM_SETUP_VALUES,
@@ -119,21 +124,28 @@ const EDIT_RESTORE_MAX_ATTEMPTS = 40;
 const MAX_INLINE_PARSE_WARNINGS = 5;
 const AUDIO_RECOVERY_NOTICE =
   "Audio was interrupted by the mobile system. Try Play again, or relaunch Obsidian if playback stays silent.";
+const SCREEN_WAKE_LOCK_DESCRIPTION =
+  "Prevent the display from sleeping while drum notation is playing.";
+const SCREEN_WAKE_LOCK_UNAVAILABLE_DESCRIPTION =
+  "Unavailable in this Obsidian environment. Playback continues normally without it.";
 
 interface DrumNotationSettings {
   enableVisualEditMode: boolean;
+  keepScreenAwakeDuringPlayback: boolean;
   dismissedFirstRunTip: boolean;
   authoringDefaults: DrumAuthoringDefaults;
 }
 
 const DEFAULT_SETTINGS: DrumNotationSettings = {
   enableVisualEditMode: false,
+  keepScreenAwakeDuringPlayback: true,
   dismissedFirstRunTip: false,
   authoringDefaults: DEFAULT_DRUM_AUTHORING_DEFAULTS
 };
 
 type DrumSettingsControlKey =
   | "enableVisualEditMode"
+  | "keepScreenAwakeDuringPlayback"
   | "authoringTitle"
   | "authoringTempo"
   | "authoringTimeNumerator"
@@ -172,6 +184,9 @@ function loadSavedSettings(value: unknown): Partial<DrumNotationSettings> {
 
   return {
     ...(typeof value.enableVisualEditMode === "boolean" ? { enableVisualEditMode: value.enableVisualEditMode } : {}),
+    ...(typeof value.keepScreenAwakeDuringPlayback === "boolean"
+      ? { keepScreenAwakeDuringPlayback: value.keepScreenAwakeDuringPlayback }
+      : {}),
     ...(typeof value.dismissedFirstRunTip === "boolean" ? { dismissedFirstRunTip: value.dismissedFirstRunTip } : {}),
     authoringDefaults: normalizeDrumAuthoringDefaults(value.authoringDefaults)
   };
@@ -243,10 +258,14 @@ export default class DrumNotationPlugin extends Plugin {
   private readonly barClipboard = new DrumBarClipboardStore();
   private readonly transportSessions = new DrumTransportSessionStore();
   private readonly notationControllers = new Map<symbol, DrumNotationController>();
+  private readonly screenWakeLock = new ScreenWakeLockController(() => {
+    new Notice("Could not keep the screen awake. Playback will continue normally.");
+  });
   private lastInteractedControllerOwner: symbol | null = null;
 
   async onload(): Promise<void> {
     await this.loadSettings();
+    await this.screenWakeLock.setEnabled(this.settings.keepScreenAwakeDuringPlayback);
     this.addSettingTab(new DrumNotationSettingTab(this.app, this));
 
     this.registerMarkdownCodeBlockProcessor("drums", async (source, el, ctx) => {
@@ -306,6 +325,7 @@ export default class DrumNotationPlugin extends Plugin {
 
   onunload(): void {
     this.stopActivePlayer();
+    void this.screenWakeLock.destroy();
     this.stopActivePreview();
     this.closeAudioContext();
     this.transportSessions.clear();
@@ -326,6 +346,12 @@ export default class DrumNotationPlugin extends Plugin {
 
   async saveSettings(): Promise<void> {
     await this.saveData(this.settings);
+  }
+
+  async setKeepScreenAwakeDuringPlayback(enabled: boolean): Promise<void> {
+    this.settings.keepScreenAwakeDuringPlayback = enabled;
+    await this.saveSettings();
+    await this.screenWakeLock.setEnabled(enabled);
   }
 
 	private async renderDrumNotation(source: string, el: HTMLElement, ctx: MarkdownPostProcessorContext): Promise<void> {
@@ -1113,6 +1139,7 @@ export default class DrumNotationPlugin extends Plugin {
           this.activePlaybackReset = null;
           this.activePlaybackOwner = null;
           transportMode = "idle";
+          void this.screenWakeLock.stop();
         },
         handleSlotChange,
         {
@@ -1141,6 +1168,7 @@ export default class DrumNotationPlugin extends Plugin {
       if (!useCountIn || countInMode === "off") {
         handleBarChange(barIndexForSlot(block, currentSlotIndex));
       }
+      void this.screenWakeLock.start(createScreenWakeLockTarget(root.ownerDocument));
       void this.activePlayer.play();
       return true;
     };
@@ -1180,6 +1208,7 @@ export default class DrumNotationPlugin extends Plugin {
           this.activePlayer = null;
           this.activePlaybackReset = null;
           this.activePlaybackOwner = null;
+          void this.screenWakeLock.stop();
         },
         handleSlotChange,
         {
@@ -1200,6 +1229,7 @@ export default class DrumNotationPlugin extends Plugin {
         clearRepeatProgress();
         transportMode = "idle";
       };
+      void this.screenWakeLock.start(createScreenWakeLockTarget(root.ownerDocument));
       void this.activePlayer.play();
       return true;
     };
@@ -1234,6 +1264,7 @@ export default class DrumNotationPlugin extends Plugin {
           this.activePlayer = null;
           this.activePlaybackReset = null;
           this.activePlaybackOwner = null;
+          void this.screenWakeLock.stop();
         },
         handleSlotChange,
         {
@@ -1259,6 +1290,7 @@ export default class DrumNotationPlugin extends Plugin {
       if (!useCountIn || countInMode === "off") {
         handleBarChange(barIndexForSlot(block, currentSlotIndex));
       }
+      void this.screenWakeLock.start(createScreenWakeLockTarget(root.ownerDocument));
       void this.activePlayer.play();
       return true;
     };
@@ -1298,6 +1330,7 @@ export default class DrumNotationPlugin extends Plugin {
           this.activePlayer = null;
           this.activePlaybackReset = null;
           this.activePlaybackOwner = null;
+          void this.screenWakeLock.stop();
         },
         handleSlotChange,
         {
@@ -1322,6 +1355,7 @@ export default class DrumNotationPlugin extends Plugin {
       if (!useCountIn || countInMode === "off") {
         handleBarChange(barIndexForSlot(block, currentSlotIndex));
       }
+      void this.screenWakeLock.start(createScreenWakeLockTarget(root.ownerDocument));
       void this.activePlayer.play();
       return true;
     };
@@ -2248,6 +2282,7 @@ export default class DrumNotationPlugin extends Plugin {
     this.activePlayer = null;
     this.activePlaybackReset = null;
     this.activePlaybackOwner = null;
+    void this.screenWakeLock.stop();
     reset?.();
   }
 
@@ -2928,6 +2963,25 @@ class DrumNotationSettingTab extends PluginSettingTab {
       },
       {
         type: "group",
+        heading: "Playback",
+        items: [
+          {
+            name: "Keep screen awake during playback",
+            desc: this.supportsScreenWakeLock()
+              ? SCREEN_WAKE_LOCK_DESCRIPTION
+              : SCREEN_WAKE_LOCK_UNAVAILABLE_DESCRIPTION,
+            aliases: ["wake lock", "screen", "practice"],
+            control: {
+              type: "toggle",
+              key: "keepScreenAwakeDuringPlayback",
+              defaultValue: true,
+              disabled: () => !this.supportsScreenWakeLock()
+            }
+          }
+        ]
+      },
+      {
+        type: "group",
         heading: "New notation: Rhythm",
         items: [
           {
@@ -3084,7 +3138,7 @@ class DrumNotationSettingTab extends PluginSettingTab {
           },
           {
             name: "Reset authoring defaults",
-            desc: "Restore all new-notation defaults without changing visual edit mode or the dismissed first-run tip.",
+            desc: "Restore all new-notation defaults without changing editor or playback preferences.",
             aliases: ["restore defaults", "reset new notation"],
             render: (setting) => {
               setting.addButton((button) => {
@@ -3103,6 +3157,7 @@ class DrumNotationSettingTab extends PluginSettingTab {
 
     switch (key) {
       case "enableVisualEditMode": return this.drumPlugin.settings.enableVisualEditMode;
+      case "keepScreenAwakeDuringPlayback": return this.drumPlugin.settings.keepScreenAwakeDuringPlayback;
       case "authoringTitle": return defaults.title;
       case "authoringTempo": return defaults.tempo;
       case "authoringTimeNumerator": return time.numerator;
@@ -3123,6 +3178,13 @@ class DrumNotationSettingTab extends PluginSettingTab {
       if (typeof value === "boolean") {
         this.drumPlugin.settings.enableVisualEditMode = value;
         await this.drumPlugin.saveSettings();
+      }
+      return;
+    }
+
+    if (key === "keepScreenAwakeDuringPlayback") {
+      if (typeof value === "boolean") {
+        await this.drumPlugin.setKeepScreenAwakeDuringPlayback(value);
       }
       return;
     }
@@ -3232,6 +3294,16 @@ class DrumNotationSettingTab extends PluginSettingTab {
           });
       });
 
+    new Setting(containerEl).setName("Playback").setHeading();
+    this.addLegacyToggle(
+      "Keep screen awake during playback",
+      this.supportsScreenWakeLock()
+        ? SCREEN_WAKE_LOCK_DESCRIPTION
+        : SCREEN_WAKE_LOCK_UNAVAILABLE_DESCRIPTION,
+      "keepScreenAwakeDuringPlayback",
+      !this.supportsScreenWakeLock()
+    );
+
     new Setting(containerEl).setName("New notation: Rhythm").setHeading();
     this.addLegacyText("Title", "Default title for newly inserted or scaffolded notation.", "authoringTitle");
     this.addLegacyNumber("Tempo", "Default playback tempo in BPM.", "authoringTempo", 30, 260);
@@ -3283,7 +3355,7 @@ class DrumNotationSettingTab extends PluginSettingTab {
     );
     new Setting(containerEl)
       .setName("Reset authoring defaults")
-      .setDesc("Restore all new-notation defaults without changing visual edit mode or the dismissed first-run tip.")
+      .setDesc("Restore all new-notation defaults without changing editor or playback preferences.")
       .addButton((button) => {
         button.setButtonText("Reset").onClick(async () => {
           await this.resetAuthoringDefaults();
@@ -3295,6 +3367,10 @@ class DrumNotationSettingTab extends PluginSettingTab {
   private supportsAuthoringGrouping(): boolean {
     const time = parseAuthoringTimeSignature(this.drumPlugin.settings.authoringDefaults.timeSignature);
     return time?.denominator === 8 || time?.denominator === 16;
+  }
+
+  private supportsScreenWakeLock(): boolean {
+    return isScreenWakeLockSupported(this.containerEl.ownerDocument);
   }
 
   private validateGrouping(value: string): string | void {
@@ -3375,12 +3451,20 @@ class DrumNotationSettingTab extends PluginSettingTab {
       });
   }
 
-  private addLegacyToggle(name: string, description: string, key: DrumSettingsControlKey): void {
+  private addLegacyToggle(
+    name: string,
+    description: string,
+    key: DrumSettingsControlKey,
+    disabled = false
+  ): void {
     new Setting(this.containerEl)
       .setName(name)
       .setDesc(description)
       .addToggle((toggle) => {
-        toggle.setValue(this.getControlValue(key) === true).onChange((value) => this.setControlValue(key, value));
+        toggle
+          .setValue(this.getControlValue(key) === true)
+          .setDisabled(disabled)
+          .onChange((value) => this.setControlValue(key, value));
       });
   }
 

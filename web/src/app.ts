@@ -49,6 +49,11 @@ import {
   togglePracticeRegion
 } from "../../src/practice";
 import { getMeasureRepeatProgress } from "../../src/repeat-progress";
+import {
+  createScreenWakeLockTarget,
+  isScreenWakeLockSupported,
+  ScreenWakeLockController
+} from "../../src/screen-wake-lock";
 import { serializeDrumBlock } from "../../src/serializer";
 import { validateDrumNotation } from "../../src/validation";
 import { setGrid, setRepeatCount, setTempo, setTimeSignature } from "../../src/edit";
@@ -110,6 +115,8 @@ const THEME_KEY = "drum-playground.theme";
 const TIP_KEY = "drum-playground.dismissedFirstRunTip";
 const AUDIO_RECOVERY_WARNING =
   "Audio was interrupted by the mobile system. Try Play again, or relaunch Obsidian if playback stays silent.";
+const SCREEN_WAKE_LOCK_WARNING =
+  "Could not keep the screen awake. Playback will continue normally.";
 const VERIFY_PANEL_MAX_VIEWPORT_RATIO = 0.42;
 const VERIFY_PANEL_KEYBOARD_STEP_PX = 32;
 const activeDocument: Document = window.document;
@@ -219,14 +226,23 @@ let transportMode: DrumTransportMode = "idle";
 let playbackSpeedPercent = DEFAULT_PLAYBACK_SPEED_PERCENT;
 let metronomeMode: MetronomeMode = DEFAULT_METRONOME_MODE;
 let countInMode: CountInMode = DEFAULT_COUNT_IN_MODE;
+let keepScreenAwakeDuringPlayback = true;
 const mutedInstrumentIds = new Set<string>();
 let practiceSelection: PracticeSelection = { barIndexes: [] };
 let selectionModeOpen = false;
 let gridEditor: GridEditorHandle | null = null;
 let isApplyingGridEdit = false;
 let audioRecoveryWarning: string | null = null;
+let screenWakeLockWarning: string | null = null;
 let gridEditorMessage: string | null = null;
 const barClipboard = new DrumBarClipboardStore();
+const screenWakeLock = new ScreenWakeLockController(() => {
+  screenWakeLockWarning = SCREEN_WAKE_LOCK_WARNING;
+  console.warn(SCREEN_WAKE_LOCK_WARNING);
+  if (currentBlock) {
+    renderNotes(currentBlock, editor.value);
+  }
+});
 
 interface VerificationSegmentState {
   source: string;
@@ -905,6 +921,7 @@ function setPlaying(button: HTMLButtonElement, on: boolean): void {
 function stopPlayback(): void {
   player?.stop();
   player = null;
+  void screenWakeLock.stop();
   transportMode = "idle";
   setPlaying(playBtn, false);
   setPlaying(loopBtn, false);
@@ -951,6 +968,7 @@ async function play(
       clearRepeatProgress();
       transportMode = "idle";
       player = null;
+      void screenWakeLock.stop();
     },
     (slotIndex) => {
       currentSlotIndex = slotIndex;
@@ -974,6 +992,7 @@ async function play(
   if (!useCountIn || countInMode === "off") {
     showRepeatProgressForBar(block, barIndexForSlot(block, currentSlotIndex));
   }
+  void screenWakeLock.start(createScreenWakeLockTarget(scoreEl?.ownerDocument ?? activeDocument));
   void player.play();
   return true;
 }
@@ -1020,6 +1039,7 @@ async function startLoopBar(
       clearRepeatProgress();
       transportMode = "idle";
       player = null;
+      void screenWakeLock.stop();
     },
     (slotIndex) => {
       currentSlotIndex = slotIndex;
@@ -1037,6 +1057,7 @@ async function startLoopBar(
     },
     createPlaybackBackend
   );
+  void screenWakeLock.start(createScreenWakeLockTarget(scoreEl?.ownerDocument ?? activeDocument));
   void player.play();
   return true;
 }
@@ -1068,6 +1089,7 @@ async function startLoopAll(
       clearRepeatProgress();
       transportMode = "idle";
       player = null;
+      void screenWakeLock.stop();
     },
     (slotIndex) => {
       currentSlotIndex = slotIndex;
@@ -1090,6 +1112,7 @@ async function startLoopAll(
   if (!useCountIn || countInMode === "off") {
     showRepeatProgressForBar(block, barIndexForSlot(block, currentSlotIndex));
   }
+  void screenWakeLock.start(createScreenWakeLockTarget(scoreEl?.ownerDocument ?? activeDocument));
   void player.play();
   return true;
 }
@@ -1122,6 +1145,7 @@ async function startLoopSelection(
       clearRepeatProgress();
       transportMode = "idle";
       player = null;
+      void screenWakeLock.stop();
     },
     (slotIndex) => {
       currentSlotIndex = slotIndex;
@@ -1146,6 +1170,7 @@ async function startLoopSelection(
   if (!useCountIn || countInMode === "off") {
     showRepeatProgressForBar(block, barIndexForSlot(block, currentSlotIndex));
   }
+  void screenWakeLock.start(createScreenWakeLockTarget(scoreEl?.ownerDocument ?? activeDocument));
   void player.play();
   return true;
 }
@@ -1462,6 +1487,33 @@ function renderMetronomeMenu(): void {
       setMetronomeMenuOpen(false);
       void restartPlaybackForControlChange();
     });
+  });
+
+  const wakeLockSupported = isScreenWakeLockSupported(activeDocument);
+  metronomeMenu.createDiv({ cls: "pg-metronome-menu__label", text: "Playback" });
+  const wakeLockItem = metronomeMenu.createEl("button", {
+    cls: "pg-metronome-menu__item",
+    attr: {
+      type: "button",
+      role: "menuitemcheckbox",
+      "aria-label": wakeLockSupported
+        ? "Keep screen awake"
+        : "Keep screen awake (unavailable)",
+      "aria-checked": keepScreenAwakeDuringPlayback ? "true" : "false"
+    }
+  });
+  wakeLockItem.disabled = !wakeLockSupported;
+  wakeLockItem.createSpan({
+    cls: "pg-metronome-menu__check",
+    text: keepScreenAwakeDuringPlayback ? "✓" : ""
+  });
+  wakeLockItem.createSpan({
+    text: wakeLockSupported ? "Keep screen awake" : "Keep screen awake (unavailable)"
+  });
+  wakeLockItem.addEventListener("click", () => {
+    keepScreenAwakeDuringPlayback = !keepScreenAwakeDuringPlayback;
+    void screenWakeLock.setEnabled(keepScreenAwakeDuringPlayback);
+    setMetronomeMenuOpen(false);
   });
 }
 
@@ -1792,6 +1844,11 @@ function renderNotes(block: DrumBlock, raw: string): void {
 
   if (audioRecoveryWarning) {
     notesOut.createEl("p", { cls: "pg-note pg-note--warn", text: audioRecoveryWarning });
+    any = true;
+  }
+
+  if (screenWakeLockWarning) {
+    notesOut.createEl("p", { cls: "pg-note pg-note--warn", text: screenWakeLockWarning });
     any = true;
   }
 
@@ -3053,8 +3110,12 @@ function init(): void {
       renderVerificationSignals();
     }
   });
-  window.addEventListener("pagehide", clearSourceImage);
-  window.addEventListener("beforeunload", clearSourceImage);
+  const handlePageUnload = () => {
+    clearSourceImage();
+    void screenWakeLock.destroy();
+  };
+  window.addEventListener("pagehide", handlePageUnload);
+  window.addEventListener("beforeunload", handlePageUnload);
   window.addEventListener("resize", reconcileVerificationPanelHeight);
 
   // Refit the score to the pane width (debounced; skip no-op width changes).

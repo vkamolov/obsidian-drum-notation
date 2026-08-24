@@ -6,6 +6,8 @@ import {
   DrumPlaybackBackend,
   DrumPlaybackBackendFactory,
   filterMutedHits,
+  getCountInBarCount,
+  getCountInDurationQuarter,
   getCountInModeLabel,
   getCountInPulses,
   getCountInSlotCount,
@@ -305,12 +307,16 @@ HH | x-x-x-x-x-x-`);
     ]);
   });
 
-  it("defaults count-in to off and labels the one-bar mode", () => {
+  it("defaults count-in to off and labels both count-in modes", () => {
     const block = parseDrumBlock("HH | x---");
 
     expect(DEFAULT_COUNT_IN_MODE).toBe("off");
     expect(getCountInModeLabel("off")).toBe("Off");
     expect(getCountInModeLabel("1-bar")).toBe("1 bar");
+    expect(getCountInModeLabel("2-bars")).toBe("2 bars");
+    expect(getCountInBarCount("off")).toBe(0);
+    expect(getCountInBarCount("1-bar")).toBe(1);
+    expect(getCountInBarCount("2-bars")).toBe(2);
     expect(getCountInSlotCount(block)).toBe(0);
     expect(getCountInPulses(block)).toEqual([]);
   });
@@ -330,6 +336,29 @@ HH | x---`);
     expect(getCountInPulses(block, "1-bar").map((pulse) => pulse.slotIndex)).toEqual(expectedPulses);
   });
 
+  it.each([
+    ["4/4", 16, 16, [0, 4, 8, 12]],
+    ["3/4", 16, 12, [0, 4, 8]],
+    ["6/8", 16, 12, [0, 6]],
+    ["7/8", 16, 14, [0, 2, 4, 6, 8, 10, 12]],
+    ["12/8", 16, 24, [0, 6, 12, 18]]
+  ] as const)("uses two complete meter bars for %s count-in", (timeSignature, grid, slotsPerBar, firstBarPulses) => {
+    const block = parseDrumBlock(`Time: ${timeSignature}
+Grid: ${grid}
+HH | x---`);
+    const pulses = getCountInPulses(block, "2-bars");
+
+    expect(getCountInSlotCount(block, "2-bars")).toBe(slotsPerBar * 2);
+    expect(pulses.map((pulse) => pulse.slotIndex)).toEqual([
+      ...firstBarPulses,
+      ...firstBarPulses.map((slot) => slot + slotsPerBar)
+    ]);
+    expect(pulses.filter((pulse) => pulse.isDownbeat).map((pulse) => pulse.slotIndex)).toEqual([
+      0,
+      slotsPerBar
+    ]);
+  });
+
   it("uses the first played bar's meter for count-in", () => {
     const block = parseDrumBlock(`Time: 4/4
 HH | x-x-x-x-x-x-x-x-
@@ -339,6 +368,34 @@ HH | x-x-x-x-x-x-`);
 
     expect(getCountInSlotCount(block, "1-bar", 16)).toBe(12);
     expect(getCountInPulses(block, "1-bar", 16).map((pulse) => pulse.slotIndex)).toEqual([0, 4, 8]);
+    expect(getCountInSlotCount(block, "2-bars", 16)).toBe(24);
+    expect(getCountInPulses(block, "2-bars", 16).map((pulse) => pulse.slotIndex)).toEqual([
+      0, 4, 8, 12, 16, 20
+    ]);
+  });
+
+  it("repeats the selected phrase's first meter for both count-in bars", async () => {
+    const block = parseDrumBlock(`Tempo: 100
+Time: 4/4
+HH | x---------------
+Bar
+Time: 3/4
+HH | x-----------`);
+    const backend = new FakePlaybackBackend();
+    const player = new DrumPlayer(
+      {} as AudioContext,
+      block,
+      vi.fn(),
+      vi.fn(),
+      { selectedBarIndexes: [1], countInMode: "2-bars" },
+      (() => backend) as DrumPlaybackBackendFactory
+    );
+
+    await player.play();
+
+    expect(metronomeSchedules(backend)).toHaveLength(6);
+    expect(metronomeSchedules(backend).filter((entry) => entry.hits[0]?.velocity === 1)).toHaveLength(2);
+    expect(notationSchedules(backend)[0].time).toBeCloseTo(10.08 + 6 * 0.6);
   });
 
   it("schedules a count-in from the resumed mixed-meter bar", async () => {
@@ -364,7 +421,7 @@ HH | x-----------`);
     expect(backend.scheduled[3].time).toBeCloseTo(10.08 + 3 * 0.6);
   });
 
-  it("schedules one-bar count-in before playback without visual callbacks", async () => {
+  it("schedules one-bar count-in with the metronome off and without visual callbacks", async () => {
     const block = parseDrumBlock(`Tempo: 100
 HH | x---------------`);
     const backend = new FakePlaybackBackend();
@@ -375,7 +432,7 @@ HH | x---------------`);
       block,
       vi.fn(),
       onSlotChange,
-      { countInMode: "1-bar", onBarChange },
+      { countInMode: "1-bar", metronomeMode: "off", onBarChange },
       (() => backend) as DrumPlaybackBackendFactory
     );
 
@@ -393,6 +450,48 @@ HH | x---------------`);
     expect(backend.scheduled[4].time).toBeCloseTo(10.08 + 16 * getSecondsPerSlot(block));
     expect(onSlotChange).not.toHaveBeenCalled();
     expect(onBarChange).not.toHaveBeenCalled();
+  });
+
+  it.each([25, 100, 150])("scales a two-bar count-in at %i percent speed", async (speedPercent) => {
+    const block = parseDrumBlock(`Tempo: 100
+HH | x---------------`);
+    const backend = new FakePlaybackBackend();
+    const player = new DrumPlayer(
+      {} as AudioContext,
+      block,
+      vi.fn(),
+      vi.fn(),
+      { countInMode: "2-bars", speedPercent },
+      (() => backend) as DrumPlaybackBackendFactory
+    );
+
+    await player.play();
+
+    expect(getCountInDurationQuarter(block, "2-bars")).toBe(8);
+    expect(notationSchedules(backend)[0].time).toBeCloseTo(
+      10.08 + 32 * getSecondsPerSlot(block, speedPercent)
+    );
+  });
+
+  it("does not schedule another two-bar count-in between loop passes", async () => {
+    const block = parseDrumBlock(`Tempo: 100
+HH | x---------------`);
+    const backend = new FakePlaybackBackend();
+    const player = new DrumPlayer(
+      {} as AudioContext,
+      block,
+      vi.fn(),
+      vi.fn(),
+      { countInMode: "2-bars", loop: true },
+      (() => backend) as DrumPlaybackBackendFactory
+    );
+
+    await player.play();
+    expect(metronomeSchedules(backend)).toHaveLength(8);
+
+    const firstPassTimers = [...scheduledTimers];
+    firstPassTimers[firstPassTimers.length - 1]();
+    expect(metronomeSchedules(backend)).toHaveLength(8);
   });
 
   it("scales count-in timing with playback speed", async () => {

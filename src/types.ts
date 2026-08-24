@@ -247,7 +247,7 @@ export type LegendMode = "off" | "used" | "all";
 export type DrumVoicingMode = "single" | "split";
 export type DrumNotationVoice = "upper" | "lower";
 export type MetronomeMode = "off" | "with-drums" | "metronome-only";
-export type CountInMode = "off" | "1-bar";
+export type CountInMode = "off" | "1-bar" | "2-bars";
 export type MeasureRepeat = 1;
 
 export const DEFAULT_TEMPO = 100;

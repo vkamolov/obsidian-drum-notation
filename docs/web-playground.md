@@ -112,6 +112,13 @@ the **first** import in `app.ts`. `engrave.ts` itself was **not** changed.
 - Practice controls and selection are page-session state. They survive score
   rerenders but are cleared by a reload and are never written to
   `localStorage`.
+- The metronome menu offers one- and two-bar count-ins. Count-in sounds even
+  with the metronome off, runs once at transport start, and does not repeat
+  between loop passes or control-triggered restarts.
+- **Keep screen awake** is enabled for the page session when the browser and
+  secure context support Screen Wake Lock. It is marked unavailable otherwise.
+  Continuous loops intentionally retain the lock until Stop, so users should
+  disable it when they want to conserve battery.
 - Authoring toolbar: example picker, title, tempo, time signature, grid, repeat,
   and legend controls. Toolbar edits rewrite the notation textarea in an
   Obsidian-ready authoring form that keeps `Title`, `Tempo`, `Time`, and `Grid`
@@ -176,6 +183,10 @@ In the browser at `localhost:5173`:
    Stop retains the green practice outlines. Changing the selection stops
    playback; changing speed, mute, metronome, or count-in restarts at the same
    musical occurrence without another count-in.
+   Open the metronome menu, choose **2 bars**, and confirm two accented
+   count-in downbeats before the phrase. With metronome Off, the count-in must
+   remain audible. When supported, confirm **Keep screen awake** is checked,
+   remains active through looping, and releases on Stop.
 3. Click **Edit** → a selected-bar grid opens below the live preview. Use the
    Bar chips, or click a rendered notation bar, to switch which bar is shown.
    Click an empty HH cell → fills (normal) and immediately updates the editor

@@ -91,11 +91,19 @@ BD | o-------o-o-----
 ```
 ````
 
-In reading view, the plugin renders the block as page-width percussion staff notation and adds **Play**, **Stop**, **Loop Bar**, phrase/whole-notation loop options, playback-speed, metronome/count-in, instrument-mute, and **Edit** controls. For training, playback speed supports 25–150% of the written tempo; the toolbar offers compact 10% steps, including above-100% tempos for push-tempo practice. The metronome menu offers **Off**, **With drums**, and **Metronome only**, plus an optional **1 bar** count-in before playback starts. The first metronome/count-in pulse of each bar is accented. Compound meters use grouped pulses, such as two clicks per bar in 6/8 and four in 12/8. The mute menu lists only instruments used in the current notation and mutes each canonical voice independently.
+In reading view, the plugin renders the block as page-width percussion staff notation and adds **Play**, **Stop**, **Loop Bar**, phrase/whole-notation loop options, playback-speed, metronome/count-in, instrument-mute, and **Edit** controls. For training, playback speed supports 25–150% of the written tempo; the toolbar offers compact 10% steps, including above-100% tempos for push-tempo practice. The metronome menu offers **Off**, **With drums**, and **Metronome only**, plus optional **1 bar** and **2 bars** count-ins before playback starts. Count-in sounds even when the metronome is Off, runs only at the initial transport start, and does not repeat between loop passes. The first metronome/count-in pulse of each bar is accented. Compound meters use grouped pulses, such as two clicks per bar in 6/8 and four in 12/8. The mute menu lists only instruments used in the current notation and mutes each canonical voice independently.
 
 Speed, metronome, count-in, mute, practice-selection, and current-bar choices are playback-only: they do not change the fenced notation text. Obsidian restores them when the same source block is rendered again during the current plugin session; the playground keeps them for the current page session. They are not written to plugin data or browser storage. Changing speed, metronome, count-in, or mute during playback restarts from the same musical occurrence and does not replay the count-in. Instrument mutes do not silence the metronome or count-in. Muting affects transport playback only, so clicking a rendered note or previewing an editor cell remains audible.
 
 On mobile, if playback becomes silent after Obsidian was backgrounded or another audio app was used, tap **Play** again. If sound does not recover, relaunch Obsidian. This can happen when the mobile WebView audio session is interrupted.
+
+**Keep screen awake during playback** is enabled by default in Obsidian's
+Playback settings and in the playground's metronome menu. When the device and
+current window support screen wake lock, it keeps a music-stand screen visible
+during count-in and playback. Unsupported devices simply continue without it.
+Loop Whole Notation and Loop Selected Bars can therefore keep the display awake
+indefinitely; press Stop or turn the option off when you want to conserve
+battery.
 
 Add `Cursor: on` if you want a blinking cursor to follow playback. Click a rendered note to preview that hit or stacked chord.
 
@@ -221,9 +229,10 @@ embedded section of another file. Open the source note, such as
 
 ### Obsidian plugin settings
 
-The **Drum Notation** settings page keeps visual editing under **Editor** and
-groups defaults for newly created notation under **New notation: Rhythm**,
-**Engraving**, and **Playback**. You can set the initial title, tempo, meter,
+The **Drum Notation** settings page keeps visual editing under **Editor**, the
+global screen-awake preference under **Playback**, and groups defaults for
+newly created notation under **New notation: Rhythm**, **Engraving**, and
+**Playback**. You can set the initial title, tempo, meter,
 grouping, grid, voicing, repeat count, cursor, highlighting, rests, and legend
 without looking up every notation header first. The settings are searchable in
 Obsidian 1.13 and later.

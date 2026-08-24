@@ -22,7 +22,8 @@ export const COUNT_IN_MODE_OPTIONS: ReadonlyArray<{
   label: string;
 }> = [
   { value: "off", label: "Off" },
-  { value: "1-bar", label: "1 bar" }
+  { value: "1-bar", label: "1 bar" },
+  { value: "2-bars", label: "2 bars" }
 ];
 
 export interface MetronomePulse {
@@ -121,11 +122,10 @@ export function getCountInSlotCount(
   mode: CountInMode = DEFAULT_COUNT_IN_MODE,
   startSlot = 0
 ): number {
-  if (mode === "off") {
-    return 0;
-  }
-
-  return getExpectedSlotsPerBar(getPlaybackStartMeter(block, startSlot), block.gridResolution);
+  return (
+    getExpectedSlotsPerBar(getPlaybackStartMeter(block, startSlot), block.gridResolution) *
+    getCountInBarCount(mode)
+  );
 }
 
 export function getCountInPulses(
@@ -140,17 +140,22 @@ export function getCountInPulses(
     return [];
   }
 
+  const countInBarCount = getCountInBarCount(mode);
+  const slotsPerBar = countInSlots / countInBarCount;
   const pulseIntervalSlots = getMetronomePulseIntervalSlots(timeSignature, block.gridResolution);
   const pulseIntervalQuarter = getMetronomePulseIntervalQuarter(timeSignature);
   const pulses: MetronomePulse[] = [];
 
-  for (let slotIndex = 0; slotIndex < countInSlots; slotIndex += pulseIntervalSlots) {
-    pulses.push({
-      slotIndex,
-      quarterOffset: (slotIndex / pulseIntervalSlots) * pulseIntervalQuarter,
-      intervalQuarter: pulseIntervalQuarter,
-      isDownbeat: slotIndex === 0
-    });
+  for (let countInBarIndex = 0; countInBarIndex < countInBarCount; countInBarIndex++) {
+    for (let localSlotIndex = 0; localSlotIndex < slotsPerBar; localSlotIndex += pulseIntervalSlots) {
+      const slotIndex = countInBarIndex * slotsPerBar + localSlotIndex;
+      pulses.push({
+        slotIndex,
+        quarterOffset: (slotIndex / pulseIntervalSlots) * pulseIntervalQuarter,
+        intervalQuarter: pulseIntervalQuarter,
+        isDownbeat: localSlotIndex === 0
+      });
+    }
   }
 
   return pulses;
@@ -243,7 +248,8 @@ export function getCountInDurationQuarter(
   mode: CountInMode = DEFAULT_COUNT_IN_MODE,
   startSlot = 0
 ): number {
-  if (mode === "off") {
+  const barCount = getCountInBarCount(mode);
+  if (barCount === 0) {
     return 0;
   }
 
@@ -251,7 +257,15 @@ export function getCountInDurationQuarter(
   const beats = Number.parseInt(match?.[1] ?? "4", 10);
   const beatValue = Math.max(1, Number.parseInt(match?.[2] ?? "4", 10));
 
-  return beats * (4 / beatValue);
+  return beats * (4 / beatValue) * barCount;
+}
+
+export function getCountInBarCount(mode: CountInMode): 0 | 1 | 2 {
+  if (mode === "1-bar") {
+    return 1;
+  }
+
+  return mode === "2-bars" ? 2 : 0;
 }
 
 function getPlaybackStartMeter(block: DrumBlock, startSlot: number): string {

@@ -131,6 +131,13 @@ describe("DrumTransportSessionStore", () => {
     }));
   });
 
+  it("preserves two-bar count-in mode in session-local state", () => {
+    const store = new DrumTransportSessionStore();
+    store.set("note.md:4", makeSession({ countInMode: "2-bars" }));
+
+    expect(store.get("note.md:4", "HH | xxxx")?.countInMode).toBe("2-bars");
+  });
+
   it("isolates source blocks and migrates a plugin-authored body", () => {
     const store = new DrumTransportSessionStore();
     store.set("note.md:4", makeSession({ selection: { barIndexes: [1] } }));

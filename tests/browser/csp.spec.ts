@@ -50,6 +50,8 @@ declare global {
   interface Window {
     __cspViolations: string[];
     __recordObjectUrlRevoke?: (url: string) => Promise<void>;
+    __wakeLockRequests?: number;
+    __wakeLockReleases?: number;
   }
 }
 
@@ -212,6 +214,77 @@ test("practice selection supports pointer, keyboard, responsive, and print workf
   await page.emulateMedia({ media: "print" });
   await expect(practiceStatus).toBeHidden();
   await expect(page.locator("#pg-preview .pg-bar-selectors")).toBeHidden();
+});
+
+test("two-bar count-in and page-session wake lock controls are available", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__wakeLockRequests = 0;
+    window.__wakeLockReleases = 0;
+
+    Object.defineProperty(navigator, "wakeLock", {
+      configurable: true,
+      value: {
+        request: async () => {
+          window.__wakeLockRequests = (window.__wakeLockRequests ?? 0) + 1;
+          const releaseListeners = new Set<() => void>();
+          const sentinel = {
+            released: false,
+            addEventListener: (_type: "release", listener: () => void) => {
+              releaseListeners.add(listener);
+            },
+            removeEventListener: (_type: "release", listener: () => void) => {
+              releaseListeners.delete(listener);
+            },
+            release: async () => {
+              if (sentinel.released) return;
+              sentinel.released = true;
+              window.__wakeLockReleases = (window.__wakeLockReleases ?? 0) + 1;
+              releaseListeners.forEach((listener) => listener());
+            }
+          };
+          return sentinel;
+        }
+      }
+    });
+  });
+
+  await page.goto("/");
+  const metronomeButton = page.locator("#pg-metronome");
+  await metronomeButton.click();
+  const twoBarCountIn = page.getByRole("menuitemradio", { name: "Count-in: 2 bars" });
+  await expect(twoBarCountIn).toBeVisible();
+  await twoBarCountIn.click();
+  await expect(metronomeButton).toHaveAttribute("aria-label", /Count-in: 2 bars/);
+
+  await page.locator("#pg-loop-all").click();
+  await page.getByRole("menuitemcheckbox", { name: "Loop whole notation" }).click();
+  await expect.poll(() => page.evaluate(() => window.__wakeLockRequests ?? 0)).toBe(1);
+
+  await metronomeButton.click();
+  const keepAwake = page.getByRole("menuitemcheckbox", { name: "Keep screen awake", exact: true });
+  await expect(keepAwake).toHaveAttribute("aria-checked", "true");
+  await keepAwake.click();
+  await expect.poll(() => page.evaluate(() => window.__wakeLockReleases ?? 0)).toBe(1);
+
+  await metronomeButton.click();
+  await page.getByRole("menuitemcheckbox", { name: "Keep screen awake", exact: true }).click();
+  await expect.poll(() => page.evaluate(() => window.__wakeLockRequests ?? 0)).toBe(2);
+
+  await page.locator("#pg-stop").click();
+  await expect.poll(() => page.evaluate(() => window.__wakeLockReleases ?? 0)).toBe(2);
+});
+
+test("wake lock control is disabled when the API is unavailable", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "wakeLock", {
+      configurable: true,
+      value: undefined
+    });
+  });
+
+  await page.goto("/");
+  await page.locator("#pg-metronome").click();
+  await expect(page.getByRole("menuitemcheckbox", { name: "Keep screen awake (unavailable)" })).toBeDisabled();
 });
 
 test("verification comparison workspace can be resized and maximized", async ({ page }) => {
