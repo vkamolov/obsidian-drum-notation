@@ -819,6 +819,8 @@ Use **Loop Bar** in the rendered view to loop the bar containing the current cur
 
 ## Recent Changes
 
+- `1.8.1` adds an optional two-bar count-in and keeps supported screens awake
+  during practice playback.
 - `1.8.0` adds selectable multi-bar practice phrases, session-local control
   restoration, and Obsidian commands for hotkeys, MIDI mapping, and foot pedals.
 - `1.7.3` updates the plugin overview screenshot to demonstrate the selected-note
