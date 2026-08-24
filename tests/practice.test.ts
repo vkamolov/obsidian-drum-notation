@@ -16,6 +16,8 @@ function makeSession(overrides: Partial<DrumTransportSession> = {}): DrumTranspo
     speedPercent: 100,
     metronomeMode: "off",
     countInMode: "off",
+    clickSubdivision: "beat",
+    gapClickMode: "off",
     mutedInstrumentIds: [],
     selection: { barIndexes: [] },
     selectionModeOpen: false,
@@ -136,6 +138,19 @@ describe("DrumTransportSessionStore", () => {
     store.set("note.md:4", makeSession({ countInMode: "2-bars" }));
 
     expect(store.get("note.md:4", "HH | xxxx")?.countInMode).toBe("2-bars");
+  });
+
+  it("normalizes and preserves advanced-click session state", () => {
+    const store = new DrumTransportSessionStore();
+    store.set("note.md:4", makeSession({
+      clickSubdivision: "3-per-beat",
+      gapClickMode: "2-on-2-off"
+    }));
+
+    expect(store.get("note.md:4", "HH | xxxx")).toEqual(expect.objectContaining({
+      clickSubdivision: "3-per-beat",
+      gapClickMode: "2-on-2-off"
+    }));
   });
 
   it("isolates source blocks and migrates a plugin-authored body", () => {

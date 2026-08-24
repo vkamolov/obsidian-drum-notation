@@ -115,6 +115,18 @@ the **first** import in `app.ts`. `engrave.ts` itself was **not** changed.
 - The metronome menu offers one- and two-bar count-ins. Count-in sounds even
   with the metronome off, runs once at transport start, and does not repeat
   between loop passes or control-triggered restarts.
+- Click subdivision adds 2, 3, or 4 clicks inside each existing metronome
+  pulse. Menu labels identify familiar note values when possible: three per
+  beat is eighth-note triplets in 4/4 and eighths in 6/8. Downbeats, main
+  beats, and subdivisions use strong, medium, and light click levels.
+- Gap click provides 1-on/1-off, 2-on/2-off, and 4-on/4-off practice cycles.
+  The cycle follows performed bars continuously across loops and repeats;
+  amber cues mark the current and next silent bars. Metronome-only gap bars
+  are intentionally silent, while count-in always remains beat-only and
+  gap-free.
+- Subdivision choices above 16 clicks per second are disabled. Increasing the
+  tempo or playback speed automatically selects the fastest safe subdivision.
+  A guided Tempo Ramp Trainer remains planned for 1.10.0.
 - **Keep screen awake** is enabled for the page session when the browser and
   secure context support Screen Wake Lock. It is marked unavailable otherwise.
   Continuous loops intentionally retain the lock until Stop, so users should
@@ -181,12 +193,19 @@ In the browser at `localhost:5173`:
    **Select bars**, select two rendered bars, and finish selection. Confirm
    **Play** runs the phrase once, **Loop selected bars (2)** repeats it, and
    Stop retains the green practice outlines. Changing the selection stops
-   playback; changing speed, mute, metronome, or count-in restarts at the same
-   musical occurrence without another count-in.
+   playback; changing speed, mute, metronome, subdivision, gap mode, or
+   count-in restarts at the same musical occurrence and gap-cycle position
+   without another count-in.
    Open the metronome menu, choose **2 bars**, and confirm two accented
    count-in downbeats before the phrase. With metronome Off, the count-in must
    remain audible. When supported, confirm **Keep screen awake** is checked,
    remains active through looping, and releases on Stop.
+   Choose **3 per beat** in 4/4 and confirm the menu says **eighth-note
+   triplets**; switch to a 6/8 example and confirm it says **eighths**. Enable
+   **1 on / 1 off**, then verify the amber next-gap cue, the silent second bar,
+   and continuous alternation through Loop Bar and Loop Selected. At a high
+   tempo/speed combination, confirm unsafe subdivision choices are disabled
+   and an active choice steps down with a concise message.
 3. Click **Edit** → a selected-bar grid opens below the live preview. Use the
    Bar chips, or click a rendered notation bar, to switch which bar is shown.
    Click an empty HH cell → fills (normal) and immediately updates the editor

@@ -1,4 +1,13 @@
-import { CountInMode, DrumBlock, DrumHit, DrumInstrument, MetronomeMode } from "./types";
+import {
+  ClickSubdivision,
+  CountInMode,
+  DrumBlock,
+  DrumHit,
+  DrumInstrument,
+  GapClickMode,
+  MetronomeMode,
+  MetronomePulseKind
+} from "./types";
 
 export const MIN_PLAYBACK_SPEED_PERCENT = 25;
 export const MAX_PLAYBACK_SPEED_PERCENT = 150;
@@ -7,6 +16,9 @@ export const PLAYBACK_SPEED_UI_STEP_PERCENT = 10;
 export const DEFAULT_PLAYBACK_SPEED_PERCENT = 100;
 export const DEFAULT_METRONOME_MODE: MetronomeMode = "off";
 export const DEFAULT_COUNT_IN_MODE: CountInMode = "off";
+export const DEFAULT_CLICK_SUBDIVISION: ClickSubdivision = "beat";
+export const DEFAULT_GAP_CLICK_MODE: GapClickMode = "off";
+export const MAX_CLICK_PULSES_PER_SECOND = 16;
 
 export const METRONOME_MODE_OPTIONS: ReadonlyArray<{
   value: MetronomeMode;
@@ -26,11 +38,31 @@ export const COUNT_IN_MODE_OPTIONS: ReadonlyArray<{
   { value: "2-bars", label: "2 bars" }
 ];
 
+export const CLICK_SUBDIVISION_OPTIONS: ReadonlyArray<{
+  value: ClickSubdivision;
+  label: string;
+}> = [
+  { value: "beat", label: "Beat" },
+  { value: "2-per-beat", label: "2 per beat" },
+  { value: "3-per-beat", label: "3 per beat" },
+  { value: "4-per-beat", label: "4 per beat" }
+];
+
+export const GAP_CLICK_MODE_OPTIONS: ReadonlyArray<{
+  value: GapClickMode;
+  label: string;
+}> = [
+  { value: "off", label: "Off" },
+  { value: "1-on-1-off", label: "1 on / 1 off" },
+  { value: "2-on-2-off", label: "2 on / 2 off" },
+  { value: "4-on-4-off", label: "4 on / 4 off" }
+];
+
 export interface MetronomePulse {
   slotIndex: number;
   quarterOffset: number;
   intervalQuarter: number;
-  isDownbeat: boolean;
+  kind: MetronomePulseKind;
 }
 
 const METRONOME_INSTRUMENT: DrumInstrument = {
@@ -46,6 +78,7 @@ const METRONOME_INSTRUMENT: DrumInstrument = {
 
 const METRONOME_DOWNBEAT_VELOCITY = 1;
 const METRONOME_BEAT_VELOCITY = 0.65;
+const METRONOME_SUBDIVISION_VELOCITY = 0.45;
 
 export function normalizePlaybackSpeedPercent(value: number): number {
   if (!Number.isFinite(value)) {
@@ -69,19 +102,46 @@ export function getCountInModeLabel(mode: CountInMode): string {
   return COUNT_IN_MODE_OPTIONS.find((option) => option.value === mode)?.label ?? "Off";
 }
 
+export function normalizeClickSubdivision(value: unknown): ClickSubdivision {
+  if (value === "2-per-beat" || value === "3-per-beat" || value === "4-per-beat") {
+    return value;
+  }
+
+  return DEFAULT_CLICK_SUBDIVISION;
+}
+
+export function normalizeGapClickMode(value: unknown): GapClickMode {
+  if (value === "1-on-1-off" || value === "2-on-2-off" || value === "4-on-4-off") {
+    return value;
+  }
+
+  return DEFAULT_GAP_CLICK_MODE;
+}
+
+export function getClickSubdivisionLabel(mode: ClickSubdivision): string {
+  return CLICK_SUBDIVISION_OPTIONS.find((option) => option.value === mode)?.label ?? "Beat";
+}
+
+export function getGapClickModeLabel(mode: GapClickMode): string {
+  return GAP_CLICK_MODE_OPTIONS.find((option) => option.value === mode)?.label ?? "Off";
+}
+
 export function getMetronomePulses(
   block: DrumBlock,
   startSlot = 0,
-  endSlot = block.slots.length
+  endSlot = block.slots.length,
+  subdivision: ClickSubdivision = DEFAULT_CLICK_SUBDIVISION
 ): MetronomePulse[] {
   const rangeStart = Math.max(0, Math.round(startSlot));
   const rangeEnd = Math.min(block.slots.length, Math.max(rangeStart, Math.round(endSlot)));
   const rangeStartQuarter = slotBoundaryQuarter(block, rangeStart);
   const rangeEndQuarter = slotBoundaryQuarter(block, rangeEnd);
   const pulses: MetronomePulse[] = [];
+  const subdivisionFactor = getClickSubdivisionFactor(subdivision);
 
   block.bars.forEach((bar) => {
-    const pulseIntervalQuarter = getMetronomePulseIntervalQuarter(bar.timeSignature);
+    const mainPulseIntervalQuarter = getMetronomePulseIntervalQuarter(bar.timeSignature);
+    const pulseIntervalQuarter = mainPulseIntervalQuarter / subdivisionFactor;
     const barEndQuarter = bar.startQuarter + bar.durationQuarter;
 
     if (barEndQuarter <= rangeStartQuarter || bar.startQuarter >= rangeEndQuarter) {
@@ -108,7 +168,11 @@ export function getMetronomePulses(
           ),
           quarterOffset,
           intervalQuarter: pulseIntervalQuarter,
-          isDownbeat: localQuarter === 0
+          kind: Math.abs(localQuarter) < Number.EPSILON
+            ? "downbeat"
+            : Math.abs((localQuarter / mainPulseIntervalQuarter) - Math.round(localQuarter / mainPulseIntervalQuarter)) < 1e-8
+              ? "beat"
+              : "subdivision"
         });
       }
     }
@@ -153,7 +217,7 @@ export function getCountInPulses(
         slotIndex,
         quarterOffset: (slotIndex / pulseIntervalSlots) * pulseIntervalQuarter,
         intervalQuarter: pulseIntervalQuarter,
-        isDownbeat: localSlotIndex === 0
+        kind: localSlotIndex === 0 ? "downbeat" : "beat"
       });
     }
   }
@@ -161,12 +225,90 @@ export function getCountInPulses(
   return pulses;
 }
 
-export function createMetronomeHit(isDownbeat: boolean): DrumHit {
+export function createMetronomeHit(kind: MetronomePulseKind): DrumHit {
   return {
     instrument: METRONOME_INSTRUMENT,
     articulation: "normal",
-    velocity: isDownbeat ? METRONOME_DOWNBEAT_VELOCITY : METRONOME_BEAT_VELOCITY
+    velocity: kind === "downbeat"
+      ? METRONOME_DOWNBEAT_VELOCITY
+      : kind === "subdivision"
+        ? METRONOME_SUBDIVISION_VELOCITY
+        : METRONOME_BEAT_VELOCITY
   };
+}
+
+export function getClickSubdivisionFactor(mode: ClickSubdivision): 1 | 2 | 3 | 4 {
+  if (mode === "2-per-beat") return 2;
+  if (mode === "3-per-beat") return 3;
+  if (mode === "4-per-beat") return 4;
+  return 1;
+}
+
+export function isGapClickBar(mode: GapClickMode, barOccurrenceIndex: number): boolean {
+  const occurrence = Math.max(0, Math.round(barOccurrenceIndex));
+  if (mode === "1-on-1-off") return occurrence % 2 >= 1;
+  if (mode === "2-on-2-off") return occurrence % 4 >= 2;
+  if (mode === "4-on-4-off") return occurrence % 8 >= 4;
+  return false;
+}
+
+export function isClickSubdivisionSafe(
+  block: DrumBlock,
+  speedPercent: number,
+  subdivision: ClickSubdivision
+): boolean {
+  const factor = getClickSubdivisionFactor(subdivision);
+  if (factor === 1) return true;
+
+  const effectiveTempo = getEffectivePlaybackTempo(block.tempo, speedPercent);
+  const meters = block.bars.length > 0
+    ? block.bars.map((bar) => bar.timeSignature)
+    : [block.timeSignature];
+
+  return meters.every((timeSignature) => {
+    const intervalQuarter = getMetronomePulseIntervalQuarter(timeSignature) / factor;
+    return effectiveTempo / (60 * intervalQuarter) <= MAX_CLICK_PULSES_PER_SECOND + Number.EPSILON;
+  });
+}
+
+export function getSafeClickSubdivision(
+  block: DrumBlock,
+  speedPercent: number,
+  requested: ClickSubdivision
+): ClickSubdivision {
+  const requestedFactor = getClickSubdivisionFactor(requested);
+  const candidates = [...CLICK_SUBDIVISION_OPTIONS]
+    .map((option) => option.value)
+    .filter((candidate) => getClickSubdivisionFactor(candidate) <= requestedFactor)
+    .sort((left, right) => getClickSubdivisionFactor(right) - getClickSubdivisionFactor(left));
+
+  return candidates.find((candidate) => isClickSubdivisionSafe(block, speedPercent, candidate))
+    ?? DEFAULT_CLICK_SUBDIVISION;
+}
+
+export function getClickSubdivisionMenuLabel(
+  block: DrumBlock,
+  subdivision: ClickSubdivision
+): string {
+  const label = getClickSubdivisionLabel(subdivision);
+  if (subdivision === "beat") return label;
+
+  const factor = getClickSubdivisionFactor(subdivision);
+  const meters = new Set(
+    (block.bars.length > 0 ? block.bars.map((bar) => bar.timeSignature) : [block.timeSignature])
+  );
+  const descriptions = new Set<string>();
+
+  for (const meter of meters) {
+    const durationQuarter = getMetronomePulseIntervalQuarter(meter) / factor;
+    const description = describeClickDuration(durationQuarter);
+    if (!description) return label;
+    descriptions.add(description);
+  }
+
+  return descriptions.size === 1
+    ? `${label} · ${[...descriptions][0]}`
+    : `${label} · varies by meter`;
 }
 
 export function getPlaybackInstruments(block: DrumBlock): DrumInstrument[] {
@@ -266,6 +408,28 @@ export function getCountInBarCount(mode: CountInMode): 0 | 1 | 2 {
   }
 
   return mode === "2-bars" ? 2 : 0;
+}
+
+function describeClickDuration(durationQuarter: number): string | null {
+  const namedDurations: ReadonlyArray<readonly [number, string]> = [
+    [4, "whole notes"],
+    [3, "dotted half notes"],
+    [2, "half notes"],
+    [1.5, "dotted quarters"],
+    [1, "quarters"],
+    [0.75, "dotted eighths"],
+    [0.5, "eighths"],
+    [0.375, "dotted sixteenths"],
+    [0.25, "sixteenths"],
+    [0.125, "32nd notes"],
+    [4 / 3, "half-note triplets"],
+    [2 / 3, "quarter-note triplets"],
+    [1 / 3, "eighth-note triplets"],
+    [1 / 6, "sixteenth-note triplets"],
+    [1 / 12, "32nd-note triplets"]
+  ];
+
+  return namedDurations.find(([duration]) => Math.abs(durationQuarter - duration) < 1e-8)?.[1] ?? null;
 }
 
 function getPlaybackStartMeter(block: DrumBlock, startSlot: number): string {

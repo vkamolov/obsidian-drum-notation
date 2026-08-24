@@ -93,7 +93,13 @@ BD | o-------o-o-----
 
 In reading view, the plugin renders the block as page-width percussion staff notation and adds **Play**, **Stop**, **Loop Bar**, phrase/whole-notation loop options, playback-speed, metronome/count-in, instrument-mute, and **Edit** controls. For training, playback speed supports 25–150% of the written tempo; the toolbar offers compact 10% steps, including above-100% tempos for push-tempo practice. The metronome menu offers **Off**, **With drums**, and **Metronome only**, plus optional **1 bar** and **2 bars** count-ins before playback starts. Count-in sounds even when the metronome is Off, runs only at the initial transport start, and does not repeat between loop passes. The first metronome/count-in pulse of each bar is accented. Compound meters use grouped pulses, such as two clicks per bar in 6/8 and four in 12/8. The mute menu lists only instruments used in the current notation and mutes each canonical voice independently.
 
-Speed, metronome, count-in, mute, practice-selection, and current-bar choices are playback-only: they do not change the fenced notation text. Obsidian restores them when the same source block is rendered again during the current plugin session; the playground keeps them for the current page session. They are not written to plugin data or browser storage. Changing speed, metronome, count-in, or mute during playback restarts from the same musical occurrence and does not replay the count-in. Instrument mutes do not silence the metronome or count-in. Muting affects transport playback only, so clicking a rendered note or previewing an editor cell remains audible.
+For timing practice, **Click subdivision** can add 2, 3, or 4 clicks inside each existing metronome pulse. The menu describes the resulting note value when it is unambiguous: three per beat means eighth-note triplets in 4/4, but regular eighths in 6/8. Downbeats, main beats, and subdivisions use progressively lighter click strengths. At extreme tempo/speed combinations, unsafe subdivisions above 16 clicks per second are disabled and an active choice automatically steps down to the fastest safe option.
+
+**Gap click** alternates clicked and silent performed bars using 1-on/1-off, 2-on/2-off, or 4-on/4-off cycles. The cycle continues through loops, compact repeats, section-repeat traversals, selected phrases, and authored `Repeat:` passes. Amber score cues show the current or upcoming silent bar; in **Metronome only** mode a gap bar is intentionally silent while cursor and bar progress continue. Count-in always remains beat-only and gap-free.
+
+A guided Tempo Ramp Trainer remains planned for 1.10.0; Advanced Click is the timing foundation it will build on.
+
+Speed, metronome, click subdivision, gap click, count-in, mute, practice-selection, and current-bar choices are playback-only: they do not change the fenced notation text. Obsidian restores them when the same source block is rendered again during the current plugin session; the playground keeps them for the current page session. They are not written to plugin data or browser storage. Changing speed, metronome, subdivision, gap mode, count-in, or mute during playback restarts from the same musical occurrence and gap-cycle position without replaying the count-in. Instrument mutes do not silence the metronome or count-in. Muting affects transport playback only, so clicking a rendered note or previewing an editor cell remains audible.
 
 On mobile, if playback becomes silent after Obsidian was backgrounded or another audio app was used, tap **Play** again. If sound does not recover, relaunch Obsidian. This can happen when the mobile WebView audio session is interrupted.
 
@@ -819,6 +825,8 @@ Use **Loop Bar** in the rendered view to loop the bar containing the current cur
 
 ## Recent Changes
 
+- `1.9.0` adds configurable click subdivisions and occurrence-aware gap-click
+  practice across loops, selections, and repeated passages.
 - `1.8.1` adds an optional two-bar count-in and keeps supported screens awake
   during practice playback.
 - `1.8.0` adds selectable multi-bar practice phrases, session-local control

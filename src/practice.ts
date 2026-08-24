@@ -1,16 +1,26 @@
 import {
+  ClickSubdivision,
   CountInMode,
   DrumBlock,
+  GapClickMode,
   MetronomeMode,
   PracticeSelection,
   ScoreBarRegion
 } from "./types";
+import {
+  DEFAULT_CLICK_SUBDIVISION,
+  DEFAULT_GAP_CLICK_MODE,
+  normalizeClickSubdivision,
+  normalizeGapClickMode
+} from "./playback";
 
 export interface DrumTransportSession {
   body: string;
   speedPercent: number;
   metronomeMode: MetronomeMode;
   countInMode: CountInMode;
+  clickSubdivision: ClickSubdivision;
+  gapClickMode: GapClickMode;
   mutedInstrumentIds: string[];
   selection: PracticeSelection;
   selectionModeOpen: boolean;
@@ -225,6 +235,8 @@ export class DrumTransportSessionStore {
 function normalizeSession(session: DrumTransportSession): DrumTransportSession {
   return {
     ...session,
+    clickSubdivision: normalizeClickSubdivision(session.clickSubdivision ?? DEFAULT_CLICK_SUBDIVISION),
+    gapClickMode: normalizeGapClickMode(session.gapClickMode ?? DEFAULT_GAP_CLICK_MODE),
     mutedInstrumentIds: [...new Set(session.mutedInstrumentIds)].sort(),
     selection: {
       barIndexes: [...new Set(session.selection.barIndexes)].sort((left, right) => left - right)
@@ -247,6 +259,8 @@ function sessionsEqual(left: DrumTransportSession, right: DrumTransportSession):
     left.speedPercent === right.speedPercent &&
     left.metronomeMode === right.metronomeMode &&
     left.countInMode === right.countInMode &&
+    left.clickSubdivision === right.clickSubdivision &&
+    left.gapClickMode === right.gapClickMode &&
     left.selectionModeOpen === right.selectionModeOpen &&
     left.currentBarIndex === right.currentBarIndex &&
     arraysEqual(left.mutedInstrumentIds, right.mutedInstrumentIds) &&

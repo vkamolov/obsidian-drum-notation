@@ -274,6 +274,48 @@ test("two-bar count-in and page-session wake lock controls are available", async
   await expect.poll(() => page.evaluate(() => window.__wakeLockReleases ?? 0)).toBe(2);
 });
 
+test("advanced click menu, badge, and gap cues remain compact and accessible", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "wakeLock", {
+      configurable: true,
+      value: undefined
+    });
+  });
+  await page.setViewportSize({ width: 520, height: 780 });
+  await page.goto("/");
+  await page.locator("#pg-editor").fill([
+    "Title: Advanced click",
+    "Tempo: 100",
+    "Time: 4/4",
+    "Grid: 16",
+    "HH | x-x-x-x-x-x-x-x- | x-x-x-x-x-x-x-x-",
+    "SD | ----o-------o--- | ----o-------o---",
+    "BD | o-------o-o----- | o-----o-o-------"
+  ].join("\n"));
+  await expect(page.locator("#pg-title")).toHaveValue("Advanced click");
+  const metronomeButton = page.locator("#pg-metronome");
+  const initialWidth = await metronomeButton.evaluate((button) => button.getBoundingClientRect().width);
+
+  await metronomeButton.click();
+  await page.getByRole("menuitemradio", { name: "With drums" }).click();
+  await metronomeButton.click();
+  await page.getByRole("menuitemradio", { name: "3 per beat · eighth-note triplets" }).click();
+  await metronomeButton.click();
+  await page.getByRole("menuitemradio", { name: "1 on / 1 off" }).click();
+
+  await expect(metronomeButton.locator(".drum-notation__click-badge")).toHaveText("3G");
+  await expect(metronomeButton).toHaveAttribute("aria-label", /Subdivision: 3 per beat/);
+  await expect(metronomeButton).toHaveAttribute("aria-label", /Gap click: 1 on \/ 1 off/);
+  expect(await metronomeButton.evaluate((button) => button.getBoundingClientRect().width)).toBe(initialWidth);
+
+  await page.locator("#pg-play").click();
+  await expect(page.locator("#pg-preview .drum-notation__gap-overlay.is-gap-next")).toBeVisible();
+  await expect(page.locator("#pg-preview .drum-notation__gap-overlays")).toHaveAttribute("aria-hidden", "true");
+  await expect(page.locator("#pg-preview .drum-notation__practice-label")).toContainText("Advanced click · 3 per beat · Gap next");
+  await page.locator("#pg-stop").click();
+  await expect(page.locator("#pg-preview .drum-notation__gap-overlays")).toHaveCount(0);
+});
+
 test("wake lock control is disabled when the API is unavailable", async ({ page }) => {
   await page.addInitScript(() => {
     Object.defineProperty(navigator, "wakeLock", {

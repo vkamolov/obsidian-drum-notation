@@ -59,15 +59,25 @@ import {
 import { ensureNotationFontsInDocument } from "./src/notation-fonts";
 import { getTitle, parseDrumBlockWithWarnings } from "./src/parser";
 import {
+  CLICK_SUBDIVISION_OPTIONS,
   COUNT_IN_MODE_OPTIONS,
+  DEFAULT_CLICK_SUBDIVISION,
   DEFAULT_COUNT_IN_MODE,
+  DEFAULT_GAP_CLICK_MODE,
   DEFAULT_METRONOME_MODE,
   DEFAULT_PLAYBACK_SPEED_PERCENT,
   DrumPlaybackBackend,
+  GAP_CLICK_MODE_OPTIONS,
+  getClickSubdivisionFactor,
+  getClickSubdivisionLabel,
+  getClickSubdivisionMenuLabel,
   getCountInModeLabel,
   getEffectivePlaybackTempo,
+  getGapClickModeLabel,
   getMetronomeModeLabel,
   getPlaybackInstruments,
+  getSafeClickSubdivision,
+  isClickSubdivisionSafe,
   MAX_PLAYBACK_SPEED_PERCENT,
   METRONOME_MODE_OPTIONS,
   MIN_PLAYBACK_SPEED_PERCENT,
@@ -104,15 +114,18 @@ import {
 } from "./src/setup";
 import { createSynthPlaybackBackend } from "./src/synth";
 import {
+  ClickSubdivision,
   CursorPosition,
   CountInMode,
   DrumBlock,
   DrumPlaybackPosition,
   DrumSlot,
   DrumTransportMode,
+  GapClickMode,
   MAX_MEASURE_REPEAT_COUNT,
   MetronomeMode,
   ParseWarning,
+  PlaybackBarState,
   PracticeSelection,
   ScoreBarRegion
 } from "./src/types";
@@ -433,6 +446,14 @@ export default class DrumNotationPlugin extends Plugin {
     let transportMode: DrumTransportMode = "idle";
     let metronomeMode: MetronomeMode = restoredPracticeSession?.metronomeMode ?? DEFAULT_METRONOME_MODE;
     let countInMode: CountInMode = restoredPracticeSession?.countInMode ?? DEFAULT_COUNT_IN_MODE;
+    let clickSubdivision: ClickSubdivision = getSafeClickSubdivision(
+      block,
+      playbackSpeedPercent,
+      restoredPracticeSession?.clickSubdivision ?? DEFAULT_CLICK_SUBDIVISION
+    );
+    let gapClickMode: GapClickMode = restoredPracticeSession?.gapClickMode ?? DEFAULT_GAP_CLICK_MODE;
+    let activePlaybackBarIndex: number | null = null;
+    let activePlaybackBarState: PlaybackBarState | null = null;
     const mutedInstrumentIds = new Set<string>(restoredPracticeSession?.mutedInstrumentIds ?? []);
     let practiceSelection: PracticeSelection = normalizePracticeSelection(
       restoredPracticeSession?.selection ?? { barIndexes: [] },
@@ -456,6 +477,8 @@ export default class DrumNotationPlugin extends Plugin {
       speedPercent: playbackSpeedPercent,
       metronomeMode,
       countInMode,
+      clickSubdivision,
+      gapClickMode,
       mutedInstrumentIds: [...mutedInstrumentIds],
       selection: practiceSelection,
       selectionModeOpen,
@@ -480,20 +503,50 @@ export default class DrumNotationPlugin extends Plugin {
     const getCurrentCreateAvailability = () =>
       this.getCreateAvailability(el, ctx, getCurrentSection(), block);
 
+    const getAdvancedClickStatus = (): string | null => {
+      if (
+        transportMode === "idle" ||
+        metronomeMode === "off" ||
+        (clickSubdivision === "beat" && gapClickMode === "off")
+      ) {
+        return null;
+      }
+
+      const details: string[] = ["Advanced click"];
+      if (clickSubdivision !== "beat") {
+        details.push(getClickSubdivisionLabel(clickSubdivision));
+      }
+      if (gapClickMode !== "off" && activePlaybackBarState) {
+        details.push(activePlaybackBarState.isGapBar
+          ? "Gap bar"
+          : activePlaybackBarState.isNextGapBar
+            ? "Gap next"
+            : "Click bar");
+      }
+      return details.join(" · ");
+    };
+
     const renderFirstRunTip = () => {
       tipEl.empty();
       const selectedCount = practiceSelection.barIndexes.length;
-      const showPracticeStatus = selectionModeOpen || selectedCount > 0;
+      const advancedClickStatus = getAdvancedClickStatus();
+      const showPracticeStatus = selectionModeOpen || selectedCount > 0 || advancedClickStatus !== null;
       tipEl.toggleClass("drum-notation__tip--practice", showPracticeStatus);
       tipEl.hidden = !showPracticeStatus && this.settings.dismissedFirstRunTip;
 
       if (showPracticeStatus) {
+        const selectionStatus = selectionModeOpen
+          ? `Select bars to practise · ${selectedCount} selected`
+          : selectedCount > 0
+            ? `Practice selection · ${selectedCount} bar${selectedCount === 1 ? "" : "s"}`
+            : null;
         tipEl.createSpan({
           cls: "drum-notation__practice-label",
-          text: selectionModeOpen
-            ? `Select bars to practise · ${selectedCount} selected`
-            : `Practice selection · ${selectedCount} bar${selectedCount === 1 ? "" : "s"}`
+          text: [selectionStatus, advancedClickStatus].filter(Boolean).join(" · ")
         });
+        if (!selectionStatus) {
+          return;
+        }
         const modeButton = tipEl.createEl("button", {
           cls: "drum-notation__tip-dismiss drum-notation__practice-action",
           text: selectionModeOpen ? "Done" : "Edit selection",
@@ -561,6 +614,19 @@ export default class DrumNotationPlugin extends Plugin {
       }
     };
 
+    const normalizeClickSubdivisionForCurrentSpeed = (notifyUser: boolean): boolean => {
+      const safeSubdivision = getSafeClickSubdivision(block, playbackSpeedPercent, clickSubdivision);
+      if (safeSubdivision === clickSubdivision) {
+        return false;
+      }
+
+      clickSubdivision = safeSubdivision;
+      if (notifyUser) {
+        new Notice(`Click subdivision changed to ${getClickSubdivisionLabel(safeSubdivision)} at the current tempo and speed.`);
+      }
+      return true;
+    };
+
     const updateHeader = () => {
       const playbackInstruments = getPlaybackInstruments(block);
       const playableInstrumentIds = new Set(playbackInstruments.map((instrument) => instrument.id));
@@ -614,7 +680,22 @@ export default class DrumNotationPlugin extends Plugin {
       speedSelect.setAttribute("aria-label", speedDescription);
       metronomeButton.disabled = block.slots.length === 0;
       metronomeButton.classList.toggle("is-active", metronomeMode !== "off" || countInMode !== "off");
-      const metronomeDescription = `Metronome: ${getMetronomeModeLabel(metronomeMode)} · Count-in: ${getCountInModeLabel(countInMode)}`;
+      metronomeButton.classList.toggle("is-metronome-off", metronomeMode === "off");
+      setIcon(metronomeButton, "timer");
+      const badgeText = `${clickSubdivision === "beat" ? "" : getClickSubdivisionFactor(clickSubdivision)}${gapClickMode === "off" ? "" : "G"}`;
+      if (badgeText) {
+        metronomeButton.createSpan({
+          cls: "drum-notation__click-badge",
+          text: badgeText,
+          attr: { "aria-hidden": "true" }
+        });
+      }
+      const metronomeDescription = [
+        `Metronome: ${getMetronomeModeLabel(metronomeMode)}`,
+        `Subdivision: ${getClickSubdivisionLabel(clickSubdivision)}`,
+        `Gap click: ${getGapClickModeLabel(gapClickMode)}`,
+        `Count-in: ${getCountInModeLabel(countInMode)}`
+      ].join(" · ");
       metronomeButton.title = metronomeDescription;
       metronomeButton.setAttribute("aria-label", metronomeDescription);
       muteButton.disabled = !hasRows;
@@ -755,6 +836,60 @@ export default class DrumNotationPlugin extends Plugin {
 
     const clearBarSelectors = () => {
       notation.querySelector(".pg-bar-selectors")?.remove();
+    };
+
+    const clearGapOverlays = () => {
+      notation.querySelector(".drum-notation__gap-overlays")?.remove();
+    };
+
+    const renderGapOverlays = () => {
+      clearGapOverlays();
+      if (
+        metronomeMode === "off" ||
+        gapClickMode === "off" ||
+        activePlaybackBarIndex === null ||
+        !activePlaybackBarState ||
+        state.barRegions.length === 0
+      ) {
+        return;
+      }
+
+      const currentRegion = state.barRegions.find((region) =>
+        region.barIndexes.includes(activePlaybackBarIndex ?? -1)
+      );
+      const nextRegion = activePlaybackBarState.nextBarIndex === null
+        ? null
+        : state.barRegions.find((region) =>
+            region.barIndexes.includes(activePlaybackBarState?.nextBarIndex ?? -1)
+          ) ?? null;
+      const layer = notation.createDiv({
+        cls: "drum-notation__gap-overlays",
+        attr: { "aria-hidden": "true" }
+      });
+      const addOverlay = (region: ScoreBarRegion, kind: "active" | "next") => {
+        layer.createDiv({
+          cls: `drum-notation__gap-overlay is-gap-${kind}`
+        }).setCssProps({
+          "--drum-gap-left": `${Math.round(region.x)}px`,
+          "--drum-gap-top": `${Math.round(region.y)}px`,
+          "--drum-gap-width": `${Math.round(region.width)}px`,
+          "--drum-gap-height": `${Math.round(region.height)}px`
+        });
+      };
+
+      if (activePlaybackBarState.isGapBar && currentRegion) {
+        addOverlay(currentRegion, "active");
+      }
+      if (
+        activePlaybackBarState.isNextGapBar &&
+        nextRegion &&
+        (!activePlaybackBarState.isGapBar || nextRegion !== currentRegion)
+      ) {
+        addOverlay(nextRegion, "next");
+      }
+      if (!layer.hasChildNodes()) {
+        layer.remove();
+      }
     };
 
     const createBufferedScoreTarget = (): HTMLElement => {
@@ -1044,6 +1179,7 @@ export default class DrumNotationPlugin extends Plugin {
         }
         visuals = makePlaybackVisuals(block, state, root, () => playbackSpeedPercent);
         renderBarSelectors();
+        renderGapOverlays();
         applyEditHighlight();
       } catch (error) {
         if (target && target !== notation) {
@@ -1071,9 +1207,13 @@ export default class DrumNotationPlugin extends Plugin {
       updateMeasureRepeatProgress(notation, null);
     };
 
-    const handleBarChange = (barIndex: number) => {
+    const handleBarChange = (barIndex: number, playbackState?: PlaybackBarState) => {
       selectedBarIndex = clampBarIndex(block, barIndex);
+      activePlaybackBarIndex = barIndex;
+      activePlaybackBarState = playbackState ?? null;
       updateMeasureRepeatProgress(notation, getMeasureRepeatProgress(block, barIndex));
+      renderGapOverlays();
+      renderFirstRunTip();
       publishPracticeSession();
     };
 
@@ -1087,7 +1227,11 @@ export default class DrumNotationPlugin extends Plugin {
       this.stopActivePlayer(renderOwner);
       clearTransportHighlights();
       transportMode = "idle";
+      activePlaybackBarIndex = null;
+      activePlaybackBarState = null;
       clearRepeatProgress();
+      clearGapOverlays();
+      renderFirstRunTip();
     };
 
     const prepareTransportStart = async (recoverBeforeStart: boolean): Promise<boolean> => {
@@ -1096,6 +1240,10 @@ export default class DrumNotationPlugin extends Plugin {
       visuals.clearCursor();
       clearRepeatProgress();
       transportMode = "idle";
+      activePlaybackBarIndex = null;
+      activePlaybackBarState = null;
+      clearGapOverlays();
+      renderFirstRunTip();
 
       if (!recoverBeforeStart) {
         return true;
@@ -1139,6 +1287,10 @@ export default class DrumNotationPlugin extends Plugin {
           this.activePlaybackReset = null;
           this.activePlaybackOwner = null;
           transportMode = "idle";
+          activePlaybackBarIndex = null;
+          activePlaybackBarState = null;
+          clearGapOverlays();
+          renderFirstRunTip();
           void this.screenWakeLock.stop();
         },
         handleSlotChange,
@@ -1153,6 +1305,8 @@ export default class DrumNotationPlugin extends Plugin {
           mutedInstrumentIds,
           metronomeMode,
           countInMode: useCountIn ? countInMode : "off",
+          clickSubdivision,
+          gapClickMode,
           onBarChange: handleBarChange
         },
         playbackBackendFactory
@@ -1160,8 +1314,12 @@ export default class DrumNotationPlugin extends Plugin {
       this.activePlaybackReset = () => {
         clearTransportHighlights();
         transportMode = "idle";
+        activePlaybackBarIndex = null;
+        activePlaybackBarState = null;
         visuals.clearCursor();
         clearRepeatProgress();
+        clearGapOverlays();
+        renderFirstRunTip();
       };
       clearTransportHighlights();
       playButton.addClass("is-playing");
@@ -1177,7 +1335,8 @@ export default class DrumNotationPlugin extends Plugin {
       barIndex = selectedBarIndex,
       initialSlot?: number,
       recoverBeforeStart = false,
-      useCountIn = true
+      useCountIn = true,
+      initialPosition?: DrumPlaybackPosition
     ): Promise<boolean> => {
       if (!(await prepareTransportStart(recoverBeforeStart))) {
         return false;
@@ -1205,6 +1364,10 @@ export default class DrumNotationPlugin extends Plugin {
           visuals.clearCursor();
           clearRepeatProgress();
           transportMode = "idle";
+          activePlaybackBarIndex = null;
+          activePlaybackBarState = null;
+          clearGapOverlays();
+          renderFirstRunTip();
           this.activePlayer = null;
           this.activePlaybackReset = null;
           this.activePlaybackOwner = null;
@@ -1215,11 +1378,15 @@ export default class DrumNotationPlugin extends Plugin {
           startSlot: barRange.startSlot,
           endSlot: barRange.endSlot,
           initialSlot: currentSlotIndex,
+          ...(initialPosition ? { initialPosition } : {}),
           loop: true,
           speedPercent: playbackSpeedPercent,
           mutedInstrumentIds,
           metronomeMode,
-          countInMode: useCountIn ? countInMode : "off"
+          countInMode: useCountIn ? countInMode : "off",
+          clickSubdivision,
+          gapClickMode,
+          onBarChange: handleBarChange
         },
         playbackBackendFactory
       );
@@ -1228,6 +1395,10 @@ export default class DrumNotationPlugin extends Plugin {
         visuals.clearCursor();
         clearRepeatProgress();
         transportMode = "idle";
+        activePlaybackBarIndex = null;
+        activePlaybackBarState = null;
+        clearGapOverlays();
+        renderFirstRunTip();
       };
       void this.screenWakeLock.start(createScreenWakeLockTarget(root.ownerDocument));
       void this.activePlayer.play();
@@ -1261,6 +1432,10 @@ export default class DrumNotationPlugin extends Plugin {
           visuals.clearCursor();
           clearRepeatProgress();
           transportMode = "idle";
+          activePlaybackBarIndex = null;
+          activePlaybackBarState = null;
+          clearGapOverlays();
+          renderFirstRunTip();
           this.activePlayer = null;
           this.activePlaybackReset = null;
           this.activePlaybackOwner = null;
@@ -1277,6 +1452,8 @@ export default class DrumNotationPlugin extends Plugin {
           mutedInstrumentIds,
           metronomeMode,
           countInMode: useCountIn ? countInMode : "off",
+          clickSubdivision,
+          gapClickMode,
           onBarChange: handleBarChange
         },
         playbackBackendFactory
@@ -1286,6 +1463,10 @@ export default class DrumNotationPlugin extends Plugin {
         visuals.clearCursor();
         clearRepeatProgress();
         transportMode = "idle";
+        activePlaybackBarIndex = null;
+        activePlaybackBarState = null;
+        clearGapOverlays();
+        renderFirstRunTip();
       };
       if (!useCountIn || countInMode === "off") {
         handleBarChange(barIndexForSlot(block, currentSlotIndex));
@@ -1327,6 +1508,10 @@ export default class DrumNotationPlugin extends Plugin {
           visuals.clearCursor();
           clearRepeatProgress();
           transportMode = "idle";
+          activePlaybackBarIndex = null;
+          activePlaybackBarState = null;
+          clearGapOverlays();
+          renderFirstRunTip();
           this.activePlayer = null;
           this.activePlaybackReset = null;
           this.activePlaybackOwner = null;
@@ -1342,6 +1527,8 @@ export default class DrumNotationPlugin extends Plugin {
           mutedInstrumentIds,
           metronomeMode,
           countInMode: useCountIn ? countInMode : "off",
+          clickSubdivision,
+          gapClickMode,
           onBarChange: handleBarChange
         },
         playbackBackendFactory
@@ -1351,6 +1538,10 @@ export default class DrumNotationPlugin extends Plugin {
         visuals.clearCursor();
         clearRepeatProgress();
         transportMode = "idle";
+        activePlaybackBarIndex = null;
+        activePlaybackBarState = null;
+        clearGapOverlays();
+        renderFirstRunTip();
       };
       if (!useCountIn || countInMode === "off") {
         handleBarChange(barIndexForSlot(block, currentSlotIndex));
@@ -1376,7 +1567,7 @@ export default class DrumNotationPlugin extends Plugin {
       } else if (previousTransportMode === "loop-all") {
         await startLoopAll(restartSlotIndex, true, false, restartPosition);
       } else if (previousTransportMode === "loop-bar") {
-        await startLoopBar(restartBarIndex, restartSlotIndex, true, false);
+        await startLoopBar(restartBarIndex, restartSlotIndex, true, false, restartPosition);
       } else if (previousTransportMode === "play-selection") {
         await startPlayback(restartSlotIndex, true, false, restartPosition, true);
       } else {
@@ -1433,6 +1624,43 @@ export default class DrumNotationPlugin extends Plugin {
             .onClick(() => {
               metronomeMode = option.value;
               updateHeader();
+              renderGapOverlays();
+              renderFirstRunTip();
+              publishPracticeSession();
+              void restartActivePlaybackForControls();
+            });
+        });
+      });
+
+      menu.addSeparator();
+      CLICK_SUBDIVISION_OPTIONS.forEach((option) => {
+        const safe = isClickSubdivisionSafe(block, playbackSpeedPercent, option.value);
+        menu.addItem((item) => {
+          item
+            .setTitle(`Click subdivision: ${getClickSubdivisionMenuLabel(block, option.value)}${safe ? "" : " · unavailable at this speed"}`)
+            .setChecked(clickSubdivision === option.value)
+            .setDisabled(!safe)
+            .onClick(() => {
+              clickSubdivision = option.value;
+              updateHeader();
+              renderFirstRunTip();
+              publishPracticeSession();
+              void restartActivePlaybackForControls();
+            });
+        });
+      });
+
+      menu.addSeparator();
+      GAP_CLICK_MODE_OPTIONS.forEach((option) => {
+        menu.addItem((item) => {
+          item
+            .setTitle(`Gap click: ${option.label}`)
+            .setChecked(gapClickMode === option.value)
+            .onClick(() => {
+              gapClickMode = option.value;
+              updateHeader();
+              renderGapOverlays();
+              renderFirstRunTip();
               publishPracticeSession();
               void restartActivePlaybackForControls();
             });
@@ -1530,7 +1758,7 @@ export default class DrumNotationPlugin extends Plugin {
         } else if (previousTransportMode === "loop-all") {
           void startLoopAll(slotIndex, false, false, position);
         } else if (previousTransportMode === "loop-bar") {
-          void startLoopBar(barIndex, undefined, false, false);
+          void startLoopBar(barIndex, undefined, false, false, position);
         } else if (previousTransportMode === "play-selection") {
           void startPlayback(slotIndex, false, false, position, true);
         } else {
@@ -1671,6 +1899,7 @@ export default class DrumNotationPlugin extends Plugin {
 
       const keepSelection = hasCompatiblePracticeStructure(block, next);
       block = next;
+      normalizeClickSubdivisionForCurrentSpeed(false);
       practiceSelection = keepSelection
         ? normalizePracticeSelection(practiceSelection, block.bars.length)
         : { barIndexes: [] };
@@ -1888,6 +2117,7 @@ export default class DrumNotationPlugin extends Plugin {
           return;
         }
         playbackSpeedPercent = nextSpeed;
+        normalizeClickSubdivisionForCurrentSpeed(true);
         updateHeader();
         publishPracticeSession();
         void restartActivePlaybackForControls();
@@ -1918,6 +2148,12 @@ export default class DrumNotationPlugin extends Plugin {
           playbackSpeedPercent = normalizePlaybackSpeedPercent(session.speedPercent);
           metronomeMode = session.metronomeMode;
           countInMode = session.countInMode;
+          clickSubdivision = getSafeClickSubdivision(
+            block,
+            playbackSpeedPercent,
+            session.clickSubdivision
+          );
+          gapClickMode = session.gapClickMode;
           mutedInstrumentIds.clear();
           session.mutedInstrumentIds.forEach((instrumentId) => mutedInstrumentIds.add(instrumentId));
           practiceSelection = nextSelection;
@@ -2026,6 +2262,7 @@ export default class DrumNotationPlugin extends Plugin {
 
     speedSelect.addEventListener("change", () => {
       playbackSpeedPercent = Number(speedSelect.value);
+      normalizeClickSubdivisionForCurrentSpeed(true);
       updateHeader();
       publishPracticeSession();
       void restartActivePlaybackForControls();

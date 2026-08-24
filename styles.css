@@ -202,6 +202,7 @@
   --icon-color-focused: var(--drum-accent);
 
   appearance: none;
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -216,6 +217,29 @@
   box-shadow: none;
   line-height: 1;
   cursor: pointer;
+}
+
+.drum-notation__click-badge {
+  position: absolute;
+  top: 0;
+  right: 0;
+  min-width: 0.72rem;
+  padding: 0 0.12rem;
+  border-radius: 999px;
+  color: var(--drum-accent, var(--pg-accent, #7c3aed));
+  background: var(--background-primary, var(--pg-bg, #fff));
+  font-size: 0.52rem;
+  font-weight: 700;
+  line-height: 0.72rem;
+  letter-spacing: -0.04em;
+  text-align: center;
+  pointer-events: none;
+}
+
+.drum-notation__button.is-metronome-off .drum-notation__click-badge,
+.pg-btn.is-metronome-off .drum-notation__click-badge {
+  color: var(--drum-control-muted, var(--pg-muted, #6b7280));
+  opacity: 0.72;
 }
 
 .drum-notation .drum-notation__button[hidden] {
@@ -607,6 +631,32 @@ body.is-mobile .drum-notation__speed {
   inset: 0;
   z-index: 1;
   pointer-events: none;
+}
+
+.drum-notation__gap-overlays {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.drum-notation__gap-overlay {
+  position: absolute;
+  left: var(--drum-gap-left, 0);
+  top: var(--drum-gap-top, 0);
+  width: var(--drum-gap-width, 0);
+  height: var(--drum-gap-height, 0);
+  border-radius: 5px;
+}
+
+.drum-notation__gap-overlay.is-gap-active {
+  background: color-mix(in srgb, var(--color-orange, #d97706) 20%, transparent);
+  box-shadow: inset 0 0 0 3px color-mix(in srgb, var(--color-orange, #d97706) 88%, transparent);
+}
+
+.drum-notation__gap-overlay.is-gap-next {
+  background: color-mix(in srgb, var(--color-orange, #d97706) 8%, transparent);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--color-orange, #d97706) 48%, transparent);
 }
 
 .pg-bar-selectors.is-practice-selection:not(.is-selection-open) .pg-bar-selector {
@@ -1465,7 +1515,8 @@ body.is-mobile .drum-notation__speed {
   .drum-notation__edit-root,
   .drum-notation__cursor,
   .drum-notation__empty-action,
-  .pg-bar-selectors {
+  .pg-bar-selectors,
+  .drum-notation__gap-overlays {
     display: none;
   }
 

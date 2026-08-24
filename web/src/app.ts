@@ -25,15 +25,25 @@ import {
 } from "../../src/music";
 import { getTitle, parseDrumBlock, parseDrumBlockWithWarnings } from "../../src/parser";
 import {
+  CLICK_SUBDIVISION_OPTIONS,
   COUNT_IN_MODE_OPTIONS,
+  DEFAULT_CLICK_SUBDIVISION,
   DEFAULT_COUNT_IN_MODE,
+  DEFAULT_GAP_CLICK_MODE,
   DEFAULT_METRONOME_MODE,
   DEFAULT_PLAYBACK_SPEED_PERCENT,
   DrumPlaybackBackend,
+  GAP_CLICK_MODE_OPTIONS,
+  getClickSubdivisionFactor,
+  getClickSubdivisionLabel,
+  getClickSubdivisionMenuLabel,
   getCountInModeLabel,
   getEffectivePlaybackTempo,
+  getGapClickModeLabel,
   getMetronomeModeLabel,
   getPlaybackInstruments,
+  getSafeClickSubdivision,
+  isClickSubdivisionSafe,
   MAX_PLAYBACK_SPEED_PERCENT,
   METRONOME_MODE_OPTIONS,
   MIN_PLAYBACK_SPEED_PERCENT,
@@ -59,17 +69,20 @@ import { validateDrumNotation } from "../../src/validation";
 import { setGrid, setRepeatCount, setTempo, setTimeSignature } from "../../src/edit";
 import { createSynthPlaybackBackend } from "../../src/synth";
 import {
+  ClickSubdivision,
   CursorPosition,
   CountInMode,
   DrumBlock,
   DrumPlaybackPosition,
   DrumSlot,
   DrumTransportMode,
+  GapClickMode,
   GridResolution,
   LegendMode,
   MAX_MEASURE_REPEAT_COUNT,
   MetronomeMode,
   ParseWarning,
+  PlaybackBarState,
   PracticeSelection,
   ScoreBarRegion
 } from "../../src/types";
@@ -226,6 +239,10 @@ let transportMode: DrumTransportMode = "idle";
 let playbackSpeedPercent = DEFAULT_PLAYBACK_SPEED_PERCENT;
 let metronomeMode: MetronomeMode = DEFAULT_METRONOME_MODE;
 let countInMode: CountInMode = DEFAULT_COUNT_IN_MODE;
+let clickSubdivision: ClickSubdivision = DEFAULT_CLICK_SUBDIVISION;
+let gapClickMode: GapClickMode = DEFAULT_GAP_CLICK_MODE;
+let activePlaybackBarIndex: number | null = null;
+let activePlaybackBarState: PlaybackBarState | null = null;
 let keepScreenAwakeDuringPlayback = true;
 const mutedInstrumentIds = new Set<string>();
 let practiceSelection: PracticeSelection = { barIndexes: [] };
@@ -234,6 +251,7 @@ let gridEditor: GridEditorHandle | null = null;
 let isApplyingGridEdit = false;
 let audioRecoveryWarning: string | null = null;
 let screenWakeLockWarning: string | null = null;
+let advancedClickWarning: string | null = null;
 let gridEditorMessage: string | null = null;
 const barClipboard = new DrumBarClipboardStore();
 const screenWakeLock = new ScreenWakeLockController(() => {
@@ -462,9 +480,33 @@ function renderPreview(): void {
   restorePreviewScroll(scrollSnapshot);
 }
 
+function getAdvancedClickStatus(): string | null {
+  if (
+    transportMode === "idle" ||
+    metronomeMode === "off" ||
+    (clickSubdivision === "beat" && gapClickMode === "off")
+  ) {
+    return null;
+  }
+
+  const details: string[] = ["Advanced click"];
+  if (clickSubdivision !== "beat") {
+    details.push(getClickSubdivisionLabel(clickSubdivision));
+  }
+  if (gapClickMode !== "off" && activePlaybackBarState) {
+    details.push(activePlaybackBarState.isGapBar
+      ? "Gap bar"
+      : activePlaybackBarState.isNextGapBar
+        ? "Gap next"
+        : "Click bar");
+  }
+  return details.join(" · ");
+}
+
 function renderFirstRunTip(): void {
   const selectedCount = practiceSelection.barIndexes.length;
-  const showPracticeStatus = selectionModeOpen || selectedCount > 0;
+  const advancedClickStatus = getAdvancedClickStatus();
+  const showPracticeStatus = selectionModeOpen || selectedCount > 0 || advancedClickStatus !== null;
   if (!showPracticeStatus && isFirstRunTipDismissed()) {
     return;
   }
@@ -472,13 +514,20 @@ function renderFirstRunTip(): void {
   const tip = preview.createDiv({
     cls: `drum-notation__tip pg-discovery-tip${showPracticeStatus ? " drum-notation__tip--practice" : ""}`
   });
+  preview.prepend(tip);
   if (showPracticeStatus) {
+    const selectionStatus = selectionModeOpen
+      ? `Select bars to practise · ${selectedCount} selected`
+      : selectedCount > 0
+        ? `Practice selection · ${selectedCount} bar${selectedCount === 1 ? "" : "s"}`
+        : null;
     tip.createSpan({
       cls: "drum-notation__practice-label",
-      text: selectionModeOpen
-        ? `Select bars to practise · ${selectedCount} selected`
-        : `Practice selection · ${selectedCount} bar${selectedCount === 1 ? "" : "s"}`
+      text: [selectionStatus, advancedClickStatus].filter(Boolean).join(" · ")
     });
+    if (!selectionStatus) {
+      return;
+    }
     const modeButton = tip.createEl("button", {
       cls: "drum-notation__tip-dismiss drum-notation__practice-action",
       attr: {
@@ -515,6 +564,11 @@ function renderFirstRunTip(): void {
   });
 }
 
+function refreshPracticeStatus(): void {
+  preview.querySelector(".pg-discovery-tip")?.remove();
+  renderFirstRunTip();
+}
+
 function isFirstRunTipDismissed(): boolean {
   return loadPlaygroundValue(TIP_KEY) === "1";
 }
@@ -548,6 +602,7 @@ function drawScore(block: DrumBlock, score: HTMLElement): void {
       void previewSlot(block, slot);
     });
     renderBarSelectors(block, score);
+    renderGapOverlays(score);
     if (block.legendMode !== "off") {
       renderInstrumentLegend(block, preview);
     }
@@ -668,6 +723,19 @@ function showRepeatProgressForBar(block: DrumBlock, barIndex: number): void {
   }
 }
 
+function handlePlaybackBarChange(
+  block: DrumBlock,
+  barIndex: number,
+  playbackState?: PlaybackBarState
+): void {
+  selectedBarIndex = clampBarIndex(block, barIndex);
+  activePlaybackBarIndex = barIndex;
+  activePlaybackBarState = playbackState ?? null;
+  showRepeatProgressForBar(block, barIndex);
+  renderGapOverlays();
+  refreshPracticeStatus();
+}
+
 function clearEditHighlight(): void {
   editHighlightedNotes.forEach((element) => element.classList.remove("is-edit-selected"));
   editHighlightedNotes = [];
@@ -691,6 +759,59 @@ function selectEditSlot(slotIndex: number | null): void {
 
 function clearBarSelectors(): void {
   scoreEl?.querySelector(".pg-bar-selectors")?.remove();
+}
+
+function clearGapOverlays(): void {
+  scoreEl?.querySelector(".drum-notation__gap-overlays")?.remove();
+}
+
+function renderGapOverlays(score: HTMLElement | null = scoreEl): void {
+  clearGapOverlays();
+  if (
+    !score ||
+    metronomeMode === "off" ||
+    gapClickMode === "off" ||
+    activePlaybackBarIndex === null ||
+    !activePlaybackBarState ||
+    barRegions.length === 0
+  ) {
+    return;
+  }
+
+  const currentRegion = barRegions.find((region) =>
+    region.barIndexes.includes(activePlaybackBarIndex ?? -1)
+  );
+  const nextRegion = activePlaybackBarState.nextBarIndex === null
+    ? null
+    : barRegions.find((region) =>
+        region.barIndexes.includes(activePlaybackBarState?.nextBarIndex ?? -1)
+      ) ?? null;
+  const layer = score.createDiv({
+    cls: "drum-notation__gap-overlays",
+    attr: { "aria-hidden": "true" }
+  });
+  const addOverlay = (region: ScoreBarRegion, kind: "active" | "next") => {
+    layer.createDiv({ cls: `drum-notation__gap-overlay is-gap-${kind}` }).setCssProps({
+      "--drum-gap-left": `${Math.round(region.x)}px`,
+      "--drum-gap-top": `${Math.round(region.y)}px`,
+      "--drum-gap-width": `${Math.round(region.width)}px`,
+      "--drum-gap-height": `${Math.round(region.height)}px`
+    });
+  };
+
+  if (activePlaybackBarState.isGapBar && currentRegion) {
+    addOverlay(currentRegion, "active");
+  }
+  if (
+    activePlaybackBarState.isNextGapBar &&
+    nextRegion &&
+    (!activePlaybackBarState.isGapBar || nextRegion !== currentRegion)
+  ) {
+    addOverlay(nextRegion, "next");
+  }
+  if (!layer.hasChildNodes()) {
+    layer.remove();
+  }
 }
 
 function renderBarSelectors(block: DrumBlock, score: HTMLElement): void {
@@ -923,11 +1044,15 @@ function stopPlayback(): void {
   player = null;
   void screenWakeLock.stop();
   transportMode = "idle";
+  activePlaybackBarIndex = null;
+  activePlaybackBarState = null;
   setPlaying(playBtn, false);
   setPlaying(loopBtn, false);
   setPlaying(loopAllBtn, false);
   clearVisuals();
   clearRepeatProgress();
+  clearGapOverlays();
+  refreshPracticeStatus();
 }
 
 async function preparePlaybackStart(recoverBeforeStart: boolean): Promise<boolean> {
@@ -967,7 +1092,11 @@ async function play(
       clearVisuals();
       clearRepeatProgress();
       transportMode = "idle";
+      activePlaybackBarIndex = null;
+      activePlaybackBarState = null;
       player = null;
+      clearGapOverlays();
+      refreshPracticeStatus();
       void screenWakeLock.stop();
     },
     (slotIndex) => {
@@ -985,12 +1114,14 @@ async function play(
       mutedInstrumentIds,
       metronomeMode,
       countInMode: useCountIn ? countInMode : "off",
-      onBarChange: (barIndex) => showRepeatProgressForBar(block, barIndex)
+      clickSubdivision,
+      gapClickMode,
+      onBarChange: (barIndex, state) => handlePlaybackBarChange(block, barIndex, state)
     },
     createPlaybackBackend
   );
   if (!useCountIn || countInMode === "off") {
-    showRepeatProgressForBar(block, barIndexForSlot(block, currentSlotIndex));
+    handlePlaybackBarChange(block, barIndexForSlot(block, currentSlotIndex));
   }
   void screenWakeLock.start(createScreenWakeLockTarget(scoreEl?.ownerDocument ?? activeDocument));
   void player.play();
@@ -1013,7 +1144,8 @@ async function startLoopBar(
   barIndex = selectedBarIndex,
   initialSlot?: number,
   recoverBeforeStart = false,
-  useCountIn = true
+  useCountIn = true,
+  initialPosition?: DrumPlaybackPosition
 ): Promise<boolean> {
   if (!(await preparePlaybackStart(recoverBeforeStart))) {
     return false;
@@ -1038,7 +1170,11 @@ async function startLoopBar(
       clearVisuals();
       clearRepeatProgress();
       transportMode = "idle";
+      activePlaybackBarIndex = null;
+      activePlaybackBarState = null;
       player = null;
+      clearGapOverlays();
+      refreshPracticeStatus();
       void screenWakeLock.stop();
     },
     (slotIndex) => {
@@ -1049,11 +1185,15 @@ async function startLoopBar(
       startSlot: range.startSlot,
       endSlot: range.endSlot,
       initialSlot: currentSlotIndex,
+      ...(initialPosition ? { initialPosition } : {}),
       loop: true,
       speedPercent: playbackSpeedPercent,
       mutedInstrumentIds,
       metronomeMode,
-      countInMode: useCountIn ? countInMode : "off"
+      countInMode: useCountIn ? countInMode : "off",
+      clickSubdivision,
+      gapClickMode,
+      onBarChange: (nextBarIndex, state) => handlePlaybackBarChange(block, nextBarIndex, state)
     },
     createPlaybackBackend
   );
@@ -1088,7 +1228,11 @@ async function startLoopAll(
       clearVisuals();
       clearRepeatProgress();
       transportMode = "idle";
+      activePlaybackBarIndex = null;
+      activePlaybackBarState = null;
       player = null;
+      clearGapOverlays();
+      refreshPracticeStatus();
       void screenWakeLock.stop();
     },
     (slotIndex) => {
@@ -1105,12 +1249,14 @@ async function startLoopAll(
       mutedInstrumentIds,
       metronomeMode,
       countInMode: useCountIn ? countInMode : "off",
-      onBarChange: (barIndex) => showRepeatProgressForBar(block, barIndex)
+      clickSubdivision,
+      gapClickMode,
+      onBarChange: (barIndex, state) => handlePlaybackBarChange(block, barIndex, state)
     },
     createPlaybackBackend
   );
   if (!useCountIn || countInMode === "off") {
-    showRepeatProgressForBar(block, barIndexForSlot(block, currentSlotIndex));
+    handlePlaybackBarChange(block, barIndexForSlot(block, currentSlotIndex));
   }
   void screenWakeLock.start(createScreenWakeLockTarget(scoreEl?.ownerDocument ?? activeDocument));
   void player.play();
@@ -1144,7 +1290,11 @@ async function startLoopSelection(
       clearVisuals();
       clearRepeatProgress();
       transportMode = "idle";
+      activePlaybackBarIndex = null;
+      activePlaybackBarState = null;
       player = null;
+      clearGapOverlays();
+      refreshPracticeStatus();
       void screenWakeLock.stop();
     },
     (slotIndex) => {
@@ -1160,15 +1310,14 @@ async function startLoopSelection(
       mutedInstrumentIds,
       metronomeMode,
       countInMode: useCountIn ? countInMode : "off",
-      onBarChange: (barIndex) => {
-        selectedBarIndex = clampBarIndex(block, barIndex);
-        showRepeatProgressForBar(block, barIndex);
-      }
+      clickSubdivision,
+      gapClickMode,
+      onBarChange: (barIndex, state) => handlePlaybackBarChange(block, barIndex, state)
     },
     createPlaybackBackend
   );
   if (!useCountIn || countInMode === "off") {
-    showRepeatProgressForBar(block, barIndexForSlot(block, currentSlotIndex));
+    handlePlaybackBarChange(block, barIndexForSlot(block, currentSlotIndex));
   }
   void screenWakeLock.start(createScreenWakeLockTarget(scoreEl?.ownerDocument ?? activeDocument));
   void player.play();
@@ -1191,7 +1340,7 @@ function restartPlaybackAfterEdit(
   } else if (previousTransportMode === "loop-all") {
     void startLoopAll(restartSlotIndex, false, false, restartPosition);
   } else if (previousTransportMode === "loop-bar") {
-    void startLoopBar(restartBarIndex, undefined, false, false);
+    void startLoopBar(restartBarIndex, undefined, false, false, restartPosition);
   } else if (previousTransportMode === "play-selection") {
     void play(restartSlotIndex, false, false, restartPosition, true);
   } else {
@@ -1231,7 +1380,7 @@ async function restartPlaybackForControlChange(): Promise<void> {
   } else if (previousTransportMode === "loop-all") {
     await startLoopAll(restartSlotIndex, true, false, restartPosition);
   } else if (previousTransportMode === "loop-bar") {
-    await startLoopBar(restartBarIndex, restartSlotIndex, true, false);
+    await startLoopBar(restartBarIndex, restartSlotIndex, true, false, restartPosition);
   } else if (previousTransportMode === "play-selection") {
     await play(restartSlotIndex, true, false, restartPosition, true);
   } else {
@@ -1300,8 +1449,26 @@ function syncSpeedSelectValue(select: HTMLSelectElement, speedPercent: number): 
   return normalized;
 }
 
+function normalizeClickSubdivisionForCurrentSpeed(
+  block: DrumBlock,
+  notifyUser: boolean
+): boolean {
+  const safeSubdivision = getSafeClickSubdivision(block, playbackSpeedPercent, clickSubdivision);
+  if (safeSubdivision === clickSubdivision) {
+    return false;
+  }
+
+  clickSubdivision = safeSubdivision;
+  if (notifyUser) {
+    advancedClickWarning = `Click subdivision changed to ${getClickSubdivisionLabel(safeSubdivision)} at the current tempo and speed.`;
+    renderNotes(block, editor.value);
+  }
+  return true;
+}
+
 function syncPlaybackControls(block: DrumBlock): void {
   playbackSpeedPercent = syncSpeedSelectValue(speedSelect, playbackSpeedPercent);
+  normalizeClickSubdivisionForCurrentSpeed(block, false);
   const effectiveTempo = getEffectivePlaybackTempo(block.tempo, playbackSpeedPercent);
   const speedDescription = `Playback speed ${playbackSpeedPercent}% · ${formatTempo(effectiveTempo)} BPM`;
 
@@ -1416,10 +1583,24 @@ function getSelectedLegendMode(): LegendMode {
 }
 
 function syncMetronomeButton(): void {
-  const description = `Metronome: ${getMetronomeModeLabel(metronomeMode)} · Count-in: ${getCountInModeLabel(countInMode)}`;
+  const description = [
+    `Metronome: ${getMetronomeModeLabel(metronomeMode)}`,
+    `Subdivision: ${getClickSubdivisionLabel(clickSubdivision)}`,
+    `Gap click: ${getGapClickModeLabel(gapClickMode)}`,
+    `Count-in: ${getCountInModeLabel(countInMode)}`
+  ].join(" · ");
 
   metronomeBtn.replaceChildren(createIconSvg("timer"));
+  const badgeText = `${clickSubdivision === "beat" ? "" : getClickSubdivisionFactor(clickSubdivision)}${gapClickMode === "off" ? "" : "G"}`;
+  if (badgeText) {
+    metronomeBtn.createSpan({
+      cls: "drum-notation__click-badge",
+      text: badgeText,
+      attr: { "aria-hidden": "true" }
+    });
+  }
   metronomeBtn.classList.toggle("is-active", metronomeMode !== "off" || countInMode !== "off");
+  metronomeBtn.classList.toggle("is-metronome-off", metronomeMode === "off");
   metronomeBtn.title = description;
   metronomeBtn.setAttribute("aria-label", description);
 }
@@ -1453,6 +1634,68 @@ function renderMetronomeMenu(): void {
 
       metronomeMode = option.value;
       syncPlaybackControls(block);
+      renderGapOverlays();
+      refreshPracticeStatus();
+      setMetronomeMenuOpen(false);
+      void restartPlaybackForControlChange();
+    });
+  });
+
+  metronomeMenu.createDiv({ cls: "pg-metronome-menu__label", text: "Click subdivision" });
+
+  CLICK_SUBDIVISION_OPTIONS.forEach((option) => {
+    const block = currentBlock;
+    const safe = block ? isClickSubdivisionSafe(block, playbackSpeedPercent, option.value) : option.value === "beat";
+    const label = block ? getClickSubdivisionMenuLabel(block, option.value) : option.label;
+    const item = metronomeMenu.createEl("button", {
+      cls: "pg-metronome-menu__item",
+      attr: {
+        type: "button",
+        role: "menuitemradio",
+        "aria-label": safe ? label : `${label} (unavailable at this speed)`,
+        "aria-checked": clickSubdivision === option.value ? "true" : "false"
+      }
+    });
+    item.disabled = !safe;
+    item.createSpan({
+      cls: "pg-metronome-menu__check",
+      text: clickSubdivision === option.value ? "✓" : ""
+    });
+    item.createSpan({ text: safe ? label : `${label} · unavailable at this speed` });
+    item.addEventListener("click", () => {
+      if (!currentBlock) return;
+      advancedClickWarning = null;
+      clickSubdivision = option.value;
+      syncPlaybackControls(currentBlock);
+      refreshPracticeStatus();
+      setMetronomeMenuOpen(false);
+      void restartPlaybackForControlChange();
+    });
+  });
+
+  metronomeMenu.createDiv({ cls: "pg-metronome-menu__label", text: "Gap click" });
+
+  GAP_CLICK_MODE_OPTIONS.forEach((option) => {
+    const item = metronomeMenu.createEl("button", {
+      cls: "pg-metronome-menu__item",
+      attr: {
+        type: "button",
+        role: "menuitemradio",
+        "aria-label": option.label,
+        "aria-checked": gapClickMode === option.value ? "true" : "false"
+      }
+    });
+    item.createSpan({
+      cls: "pg-metronome-menu__check",
+      text: gapClickMode === option.value ? "✓" : ""
+    });
+    item.createSpan({ text: option.label });
+    item.addEventListener("click", () => {
+      if (!currentBlock) return;
+      gapClickMode = option.value;
+      syncPlaybackControls(currentBlock);
+      renderGapOverlays();
+      refreshPracticeStatus();
       setMetronomeMenuOpen(false);
       void restartPlaybackForControlChange();
     });
@@ -1849,6 +2092,11 @@ function renderNotes(block: DrumBlock, raw: string): void {
 
   if (screenWakeLockWarning) {
     notesOut.createEl("p", { cls: "pg-note pg-note--warn", text: screenWakeLockWarning });
+    any = true;
+  }
+
+  if (advancedClickWarning) {
+    notesOut.createEl("p", { cls: "pg-note pg-note--warn", text: advancedClickWarning });
     any = true;
   }
 
@@ -2850,7 +3098,9 @@ function init(): void {
     if (!currentBlock) {
       return;
     }
-    applyEditedBlock(setTempo(currentBlock, Number(tempoInput.value)));
+    const nextBlock = setTempo(currentBlock, Number(tempoInput.value));
+    normalizeClickSubdivisionForCurrentSpeed(nextBlock, true);
+    applyEditedBlock(nextBlock);
   });
 
   const applyTimeSignature = () => {
@@ -2944,6 +3194,7 @@ function init(): void {
   speedSelect.addEventListener("change", () => {
     playbackSpeedPercent = Number(speedSelect.value);
     if (currentBlock) {
+      normalizeClickSubdivisionForCurrentSpeed(currentBlock, true);
       syncPlaybackControls(currentBlock);
     }
     void restartPlaybackForControlChange();

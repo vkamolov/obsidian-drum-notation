@@ -752,6 +752,10 @@ body.pg-verify-workspace-maximized .pg-verify-resizer::before {
   position: relative;
 }
 
+.pg-metronome-control > .pg-btn {
+  position: relative;
+}
+
 .pg-mute-menu,
 .pg-metronome-menu,
 .pg-loop-menu {

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getSecondsPerSlot, getSlotVisualDurationSeconds, getSlotsPerBar } from "../src/music";
 import { parseDrumBlock } from "../src/parser";
 import {
+  createMetronomeHit,
   DEFAULT_COUNT_IN_MODE,
   DrumPlaybackBackend,
   DrumPlaybackBackendFactory,
@@ -11,8 +12,12 @@ import {
   getCountInModeLabel,
   getCountInPulses,
   getCountInSlotCount,
+  getClickSubdivisionMenuLabel,
   getEffectivePlaybackTempo,
   getMetronomePulses,
+  getSafeClickSubdivision,
+  isClickSubdivisionSafe,
+  isGapClickBar,
   normalizePlaybackSpeedPercent,
   recoverAudioContext
 } from "../src/playback";
@@ -295,15 +300,86 @@ HH | x-x-x-x-x-x-`);
       pulse.slotIndex,
       pulse.quarterOffset,
       pulse.intervalQuarter,
-      pulse.isDownbeat
+      pulse.kind
     ])).toEqual([
-      [0, 0, 1, true],
-      [4, 1, 1, false],
-      [8, 2, 1, false],
-      [12, 3, 1, false],
-      [16, 4, 1, true],
-      [20, 5, 1, false],
-      [24, 6, 1, false]
+      [0, 0, 1, "downbeat"],
+      [4, 1, 1, "beat"],
+      [8, 2, 1, "beat"],
+      [12, 3, 1, "beat"],
+      [16, 4, 1, "downbeat"],
+      [20, 5, 1, "beat"],
+      [24, 6, 1, "beat"]
+    ]);
+  });
+
+  it("subdivides 4/4 metronome beats into 4, 8, 12, and 16 pulses", () => {
+    const block = parseDrumBlock("Time: 4/4\nGrid: 16\nHH | x---------------");
+
+    expect(getMetronomePulses(block, 0, block.slots.length, "beat")).toHaveLength(4);
+    expect(getMetronomePulses(block, 0, block.slots.length, "2-per-beat")).toHaveLength(8);
+    expect(getMetronomePulses(block, 0, block.slots.length, "3-per-beat")).toHaveLength(12);
+    expect(getMetronomePulses(block, 0, block.slots.length, "4-per-beat")).toHaveLength(16);
+  });
+
+  it("keeps compound-meter main beats and derives contextual subdivision labels", () => {
+    const fourFour = parseDrumBlock("Time: 4/4\nHH | x---------------");
+    const sixEight = parseDrumBlock("Time: 6/8\nHH | x-----------");
+
+    expect(getMetronomePulses(sixEight)).toHaveLength(2);
+    expect(getMetronomePulses(sixEight, 0, sixEight.slots.length, "3-per-beat")).toHaveLength(6);
+    expect(getClickSubdivisionMenuLabel(fourFour, "3-per-beat")).toBe("3 per beat · eighth-note triplets");
+    expect(getClickSubdivisionMenuLabel(sixEight, "3-per-beat")).toBe("3 per beat · eighths");
+  });
+
+  it.each([
+    ["9/8", 12],
+    ["12/8", 16],
+    ["7/8", 28],
+    ["7/16", 28]
+  ] as const)("schedules four-per-beat clicks through %s", (timeSignature, pulseCount) => {
+    const slots = getSlotsPerBar(timeSignature, 32);
+    const block = parseDrumBlock(`Time: ${timeSignature}\nGrid: 32\nHH | ${"-".repeat(slots)}`);
+    const pulses = getMetronomePulses(block, 0, block.slots.length, "4-per-beat");
+
+    expect(pulses).toHaveLength(pulseCount);
+    expect(pulses.every((pulse) => pulse.intervalQuarter > 0)).toBe(true);
+  });
+
+  it("labels mixed-meter subdivision values as varying by meter", () => {
+    const block = parseDrumBlock(`Time: 4/4
+HH | x---------------
+Bar
+Time: 6/8
+HH | x-----------`);
+
+    expect(getClickSubdivisionMenuLabel(block, "3-per-beat")).toBe("3 per beat · varies by meter");
+  });
+
+  it("uses distinct downbeat, beat, and subdivision click strengths", () => {
+    expect(createMetronomeHit("downbeat").velocity).toBe(1);
+    expect(createMetronomeHit("beat").velocity).toBe(0.65);
+    expect(createMetronomeHit("subdivision").velocity).toBe(0.45);
+  });
+
+  it("enforces the added-click rate cap while keeping Beat available", () => {
+    const block = parseDrumBlock("Tempo: 300\nTime: 4/4\nHH | x---------------");
+
+    expect(isClickSubdivisionSafe(block, 150, "beat")).toBe(true);
+    expect(isClickSubdivisionSafe(block, 150, "2-per-beat")).toBe(true);
+    expect(isClickSubdivisionSafe(block, 150, "3-per-beat")).toBe(false);
+    expect(isClickSubdivisionSafe(block, 150, "4-per-beat")).toBe(false);
+    expect(getSafeClickSubdivision(block, 150, "4-per-beat")).toBe("2-per-beat");
+  });
+
+  it("starts gap cycles with clicked bars and follows exact on/off patterns", () => {
+    expect(Array.from({ length: 8 }, (_, index) => isGapClickBar("1-on-1-off", index))).toEqual([
+      false, true, false, true, false, true, false, true
+    ]);
+    expect(Array.from({ length: 8 }, (_, index) => isGapClickBar("2-on-2-off", index))).toEqual([
+      false, false, true, true, false, false, true, true
+    ]);
+    expect(Array.from({ length: 8 }, (_, index) => isGapClickBar("4-on-4-off", index))).toEqual([
+      false, false, false, false, true, true, true, true
     ]);
   });
 
@@ -319,6 +395,15 @@ HH | x-x-x-x-x-x-`);
     expect(getCountInBarCount("2-bars")).toBe(2);
     expect(getCountInSlotCount(block)).toBe(0);
     expect(getCountInPulses(block)).toEqual([]);
+  });
+
+  it("keeps count-in beat-only regardless of performance subdivision", () => {
+    const block = parseDrumBlock("Time: 4/4\nHH | x---------------");
+    const pulses = getCountInPulses(block, "2-bars");
+
+    expect(pulses).toHaveLength(8);
+    expect(pulses.every((pulse) => pulse.kind === "downbeat" || pulse.kind === "beat")).toBe(true);
+    expect(pulses.filter((pulse) => pulse.kind === "downbeat")).toHaveLength(2);
   });
 
   it.each([
@@ -353,7 +438,7 @@ HH | x---`);
       ...firstBarPulses,
       ...firstBarPulses.map((slot) => slot + slotsPerBar)
     ]);
-    expect(pulses.filter((pulse) => pulse.isDownbeat).map((pulse) => pulse.slotIndex)).toEqual([
+    expect(pulses.filter((pulse) => pulse.kind === "downbeat").map((pulse) => pulse.slotIndex)).toEqual([
       0,
       slotsPerBar
     ]);
@@ -580,6 +665,92 @@ BD | o---------------`);
     ).toBeGreaterThan(
       metronomeSchedules(backend)[1].hits[0].velocity
     );
+  });
+
+  it("schedules subdivided performance clicks without changing count-in clicks", async () => {
+    const block = parseDrumBlock("Time: 4/4\nHH | x---------------");
+    const backend = new FakePlaybackBackend();
+    const player = new DrumPlayer(
+      {} as AudioContext,
+      block,
+      vi.fn(),
+      vi.fn(),
+      {
+        metronomeMode: "with-drums",
+        countInMode: "1-bar",
+        clickSubdivision: "3-per-beat"
+      },
+      (() => backend) as DrumPlaybackBackendFactory
+    );
+
+    await player.play();
+
+    const clicks = metronomeSchedules(backend);
+    expect(clicks).toHaveLength(16);
+    expect(clicks.slice(0, 4).every((entry) => entry.hits[0].velocity !== 0.45)).toBe(true);
+    expect(clicks.slice(4).filter((entry) => entry.hits[0].velocity === 0.45)).toHaveLength(8);
+  });
+
+  it("continues gap phase through authored repeat passes and reports every occurrence", async () => {
+    const block = parseDrumBlock("Repeat: 2\nHH | ---------------- | ----------------");
+    const backend = new FakePlaybackBackend();
+    const onBarChange = vi.fn();
+    const player = new DrumPlayer(
+      {} as AudioContext,
+      block,
+      vi.fn(),
+      vi.fn(),
+      {
+        metronomeMode: "metronome-only",
+        gapClickMode: "1-on-1-off",
+        repeatCount: block.repeatCount,
+        onBarChange
+      },
+      (() => backend) as DrumPlaybackBackendFactory
+    );
+
+    await player.play();
+    const firstPassTimers = [...scheduledTimers];
+    firstPassTimers.slice(0, -1).forEach((timer) => timer());
+    firstPassTimers[firstPassTimers.length - 1]();
+    scheduledTimers.slice(firstPassTimers.length).forEach((timer) => timer());
+
+    expect(metronomeSchedules(backend)).toHaveLength(8);
+    expect(onBarChange.mock.calls.map(([barIndex, state]) => [
+      barIndex,
+      state.barOccurrenceIndex,
+      state.isGapBar
+    ])).toEqual([
+      [0, 0, false],
+      [1, 1, true],
+      [0, 2, false],
+      [1, 3, true]
+    ]);
+  });
+
+  it("reports the next silent occurrence when Loop Bar maps back to the same bar", async () => {
+    const block = parseDrumBlock("HH | ----------------");
+    const backend = new FakePlaybackBackend();
+    const onBarChange = vi.fn();
+    const player = new DrumPlayer(
+      {} as AudioContext,
+      block,
+      vi.fn(),
+      vi.fn(),
+      { loop: true, gapClickMode: "1-on-1-off", onBarChange },
+      (() => backend) as DrumPlaybackBackendFactory
+    );
+
+    await player.play();
+    scheduledTimers[0]();
+
+    expect(onBarChange).toHaveBeenCalledWith(0, expect.objectContaining({
+      barOccurrenceIndex: 0,
+      isGapBar: false,
+      nextBarIndex: 0,
+      isNextGapBar: true
+    }));
+    player.stop();
   });
 
   it("plays only the metronome without letting instrument mutes suppress it", async () => {
@@ -1068,7 +1239,8 @@ HH | xxxx ]`);
     expect(player.getCurrentPlaybackPosition()).toEqual({
       slotIndex: 0,
       roadmapEntryIndex: 2,
-      blockPassIndex: 0
+      blockPassIndex: 0,
+      barOccurrenceIndex: 2
     });
   });
 
@@ -1228,7 +1400,8 @@ HH [ xxxx | x--- ] --x-`);
     expect(player.getCurrentPlaybackPosition()).toEqual({
       slotIndex: block.bars[2].startSlot,
       roadmapEntryIndex: 0,
-      blockPassIndex: 0
+      blockPassIndex: 0,
+      barOccurrenceIndex: 0
     });
   });
 

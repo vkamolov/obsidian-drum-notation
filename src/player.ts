@@ -14,6 +14,7 @@ import {
   getCountInDurationQuarter,
   getCountInPulses,
   getMetronomePulses,
+  isGapClickBar,
   normalizePlaybackSpeedPercent
 } from "./playback";
 import { createSynthPlaybackBackend } from "./synth";
@@ -30,6 +31,7 @@ export interface PlaybackRoadmapEntry {
 interface ScheduledOccurrence extends PlaybackRoadmapEntry {
   roadmapEntryIndex: number;
   blockPassIndex: number;
+  barOccurrenceIndex: number;
   startTime: number;
   endTime: number;
 }
@@ -195,7 +197,8 @@ export class DrumPlayer {
       initial.blockPassIndex,
       initial.roadmapEntryIndex,
       initial.slotIndex,
-      this.playbackStartTime
+      this.playbackStartTime,
+      normalizeBarOccurrenceIndex(initial.barOccurrenceIndex)
     );
   }
 
@@ -215,7 +218,8 @@ export class DrumPlayer {
         return {
           slotIndex: requested.slotIndex,
           roadmapEntryIndex: requested.roadmapEntryIndex,
-          blockPassIndex: requested.blockPassIndex
+          blockPassIndex: requested.blockPassIndex,
+          barOccurrenceIndex: normalizeBarOccurrenceIndex(requested.barOccurrenceIndex)
         };
       }
     }
@@ -229,7 +233,8 @@ export class DrumPlayer {
     return {
       slotIndex: matchingEntryIndex >= 0 ? this.initialSlot : entry.startSlot,
       roadmapEntryIndex,
-      blockPassIndex: 0
+      blockPassIndex: 0,
+      barOccurrenceIndex: 0
     };
   }
 
@@ -240,7 +245,7 @@ export class DrumPlayer {
       this.initialSlot
     ).forEach((pulse) => {
       backend.scheduleHits(
-        [createMetronomeHit(pulse.isDownbeat)],
+        [createMetronomeHit(pulse.kind)],
         transportStartTime + pulse.quarterOffset * this.secondsPerQuarter,
         pulse.intervalQuarter * this.secondsPerQuarter,
         pulse.intervalQuarter * this.secondsPerQuarter
@@ -252,7 +257,8 @@ export class DrumPlayer {
     blockPassIndex: number,
     firstRoadmapEntryIndex: number,
     firstSlot: number,
-    passStartTime: number
+    passStartTime: number,
+    firstBarOccurrenceIndex: number
   ): void {
     if (!this.backend || this.stopped) {
       return;
@@ -260,6 +266,7 @@ export class DrumPlayer {
 
     const backend = this.backend;
     let occurrenceStartTime = passStartTime;
+    let barOccurrenceIndex = firstBarOccurrenceIndex;
 
     for (let roadmapEntryIndex = firstRoadmapEntryIndex; roadmapEntryIndex < this.roadmap.length; roadmapEntryIndex++) {
       const entry = this.roadmap[roadmapEntryIndex];
@@ -277,17 +284,22 @@ export class DrumPlayer {
         entry,
         entryStartSlot,
         occurrenceStartTime,
-        backend
+        backend,
+        roadmapEntryIndex,
+        blockPassIndex,
+        barOccurrenceIndex
       );
       this.scheduledOccurrences.push({
         ...entry,
         startSlot: entryStartSlot,
         roadmapEntryIndex,
         blockPassIndex,
+        barOccurrenceIndex,
         startTime: occurrenceStartTime,
         endTime: occurrenceStartTime + durationSeconds
       });
       occurrenceStartTime += durationSeconds;
+      barOccurrenceIndex += 1;
     }
 
     this.timers.push(
@@ -302,7 +314,8 @@ export class DrumPlayer {
             blockPassIndex + 1,
             0,
             this.roadmap[0].startSlot,
-            occurrenceStartTime
+            occurrenceStartTime,
+            barOccurrenceIndex
           );
         } else {
           this.stop();
@@ -317,16 +330,31 @@ export class DrumPlayer {
     entry: PlaybackRoadmapEntry,
     entryStartSlot: number,
     entryStartTime: number,
-    backend: DrumPlaybackBackend
+    backend: DrumPlaybackBackend,
+    roadmapEntryIndex: number,
+    blockPassIndex: number,
+    barOccurrenceIndex: number
   ): void {
     const entryStartQuarter = getSlotBoundaryQuarter(this.block, entryStartSlot);
     const metronomeMode = this.options.metronomeMode ?? "off";
+    const gapClickMode = this.options.gapClickMode ?? "off";
+    const isGapBar = isGapClickBar(gapClickMode, barOccurrenceIndex);
+    const nextEntry = roadmapEntryIndex + 1 < this.roadmap.length
+      ? this.roadmap[roadmapEntryIndex + 1]
+      : this.canContinueAfterPass(blockPassIndex)
+        ? this.roadmap[0]
+        : undefined;
 
     this.timers.push(
       window.setTimeout(() => {
         if (!this.stopped) {
           this.onSlotChange(entryStartSlot);
-          this.options.onBarChange?.(entry.barIndex);
+          this.options.onBarChange?.(entry.barIndex, {
+            barOccurrenceIndex,
+            isGapBar,
+            nextBarIndex: nextEntry?.barIndex ?? null,
+            isNextGapBar: Boolean(nextEntry && isGapClickBar(gapClickMode, barOccurrenceIndex + 1))
+          });
         }
       }, Math.max(0, (entryStartTime - backend.currentTime) * 1000))
     );
@@ -364,14 +392,19 @@ export class DrumPlayer {
       );
     });
 
-    if (metronomeMode !== "off") {
-      getMetronomePulses(this.block, entryStartSlot, entry.endSlot).forEach((pulse) => {
+    if (metronomeMode !== "off" && !isGapBar) {
+      getMetronomePulses(
+        this.block,
+        entryStartSlot,
+        entry.endSlot,
+        this.options.clickSubdivision ?? "beat"
+      ).forEach((pulse) => {
         const pulseTime =
           entryStartTime +
           (pulse.quarterOffset - entryStartQuarter) * this.secondsPerQuarter;
 
         backend.scheduleHits(
-          [createMetronomeHit(pulse.isDownbeat)],
+          [createMetronomeHit(pulse.kind)],
           pulseTime,
           pulse.intervalQuarter * this.secondsPerQuarter,
           pulse.intervalQuarter * this.secondsPerQuarter
@@ -398,7 +431,8 @@ export class DrumPlayer {
     if (currentTime >= occurrence.endTime && this.canContinueAfterPass(occurrence.blockPassIndex)) {
       return this.getPositionInFuturePass(
         currentTime - occurrence.endTime,
-        occurrence.blockPassIndex + 1
+        occurrence.blockPassIndex + 1,
+        occurrence.barOccurrenceIndex + 1
       );
     }
 
@@ -413,7 +447,8 @@ export class DrumPlayer {
     return {
       slotIndex,
       roadmapEntryIndex: occurrence.roadmapEntryIndex,
-      blockPassIndex: occurrence.blockPassIndex
+      blockPassIndex: occurrence.blockPassIndex,
+      barOccurrenceIndex: occurrence.barOccurrenceIndex
     };
   }
 
@@ -433,7 +468,8 @@ export class DrumPlayer {
 
   private getPositionInFuturePass(
     elapsedAfterPreviousPass: number,
-    firstBlockPassIndex: number
+    firstBlockPassIndex: number,
+    firstBarOccurrenceIndex: number
   ): DrumPlaybackPosition {
     const entryDurations = this.roadmap.map((entry) =>
       getRangeDurationSeconds(
@@ -449,7 +485,8 @@ export class DrumPlayer {
       return {
         slotIndex: this.roadmap[0]?.startSlot ?? this.rangeStartSlot,
         roadmapEntryIndex: 0,
-        blockPassIndex: firstBlockPassIndex
+        blockPassIndex: firstBlockPassIndex,
+        barOccurrenceIndex: firstBarOccurrenceIndex
       };
     }
 
@@ -468,7 +505,9 @@ export class DrumPlayer {
             entry.endSlot
           ),
           roadmapEntryIndex,
-          blockPassIndex: firstBlockPassIndex + additionalPasses
+          blockPassIndex: firstBlockPassIndex + additionalPasses,
+          barOccurrenceIndex:
+            firstBarOccurrenceIndex + additionalPasses * this.roadmap.length + roadmapEntryIndex
         };
       }
       elapsedInPass -= duration;
@@ -477,7 +516,8 @@ export class DrumPlayer {
     return {
       slotIndex: this.rangeStartSlot,
       roadmapEntryIndex: 0,
-      blockPassIndex: firstBlockPassIndex + additionalPasses
+      blockPassIndex: firstBlockPassIndex + additionalPasses,
+      barOccurrenceIndex: firstBarOccurrenceIndex + additionalPasses * this.roadmap.length
     };
   }
 
@@ -505,4 +545,8 @@ function clampInitialSlot(slotIndex: number, startSlot: number, endSlot: number)
   }
 
   return Math.min(endSlot - 1, Math.max(startSlot, Math.round(slotIndex)));
+}
+
+function normalizeBarOccurrenceIndex(value: number | undefined): number {
+  return Number.isFinite(value) ? Math.max(0, Math.round(value ?? 0)) : 0;
 }

@@ -144,8 +144,10 @@ export interface PlaybackOptions {
   mutedInstrumentIds?: ReadonlySet<string>;
   metronomeMode?: MetronomeMode;
   countInMode?: CountInMode;
+  clickSubdivision?: ClickSubdivision;
+  gapClickMode?: GapClickMode;
   selectedBarIndexes?: readonly number[];
-  onBarChange?: (barIndex: number) => void;
+  onBarChange?: (barIndex: number, state: PlaybackBarState) => void;
 }
 
 export interface PracticeSelection {
@@ -164,6 +166,14 @@ export interface DrumPlaybackPosition {
   slotIndex: number;
   roadmapEntryIndex: number;
   blockPassIndex: number;
+  barOccurrenceIndex?: number;
+}
+
+export interface PlaybackBarState {
+  barOccurrenceIndex: number;
+  isGapBar: boolean;
+  nextBarIndex: number | null;
+  isNextGapBar: boolean;
 }
 
 export interface DrumRow {
@@ -248,6 +258,9 @@ export type DrumVoicingMode = "single" | "split";
 export type DrumNotationVoice = "upper" | "lower";
 export type MetronomeMode = "off" | "with-drums" | "metronome-only";
 export type CountInMode = "off" | "1-bar" | "2-bars";
+export type ClickSubdivision = "beat" | "2-per-beat" | "3-per-beat" | "4-per-beat";
+export type GapClickMode = "off" | "1-on-1-off" | "2-on-2-off" | "4-on-4-off";
+export type MetronomePulseKind = "downbeat" | "beat" | "subdivision";
 export type MeasureRepeat = 1;
 
 export const DEFAULT_TEMPO = 100;
