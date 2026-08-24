@@ -213,7 +213,7 @@ export class DrumTransportSessionStore {
 
   private evictOldestEntries(): void {
     while (this.entries.size > this.maximumEntries) {
-      const oldestKey = this.entries.keys().next().value as string | undefined;
+      const oldestKey = this.entries.keys().next().value;
       if (oldestKey === undefined) {
         return;
       }
