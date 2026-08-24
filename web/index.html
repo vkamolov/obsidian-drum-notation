@@ -65,7 +65,10 @@
               <button id="pg-play" class="pg-btn pg-btn--accent" type="button">Play</button>
               <button id="pg-stop" class="pg-btn" type="button">Stop</button>
               <button id="pg-loop" class="pg-btn" type="button">Loop Bar</button>
-              <button id="pg-loop-all" class="pg-btn" type="button">Loop All</button>
+              <div class="pg-loop-control">
+                <button id="pg-loop-all" class="pg-btn" type="button" aria-haspopup="menu" aria-expanded="false">Loop</button>
+                <div id="pg-loop-menu" class="pg-metronome-menu pg-loop-menu" role="menu" hidden></div>
+              </div>
               <select id="pg-speed" class="pg-playback-speed" aria-label="Playback speed"></select>
               <div class="pg-metronome-control">
                 <button id="pg-metronome" class="pg-btn pg-btn--icon" type="button" aria-haspopup="menu" aria-expanded="false"></button>

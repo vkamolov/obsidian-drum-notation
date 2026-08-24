@@ -91,13 +91,52 @@ BD | o-------o-o-----
 ```
 ````
 
-In reading view, the plugin renders the block as page-width percussion staff notation and adds **Play**, **Stop**, **Loop Bar**, **Loop All**, playback-speed, metronome/count-in, instrument-mute, and **Edit** controls. For training, playback speed supports 25–150% of the written tempo; the toolbar offers compact 10% steps, including above-100% tempos for push-tempo practice. The metronome menu offers **Off**, **With drums**, and **Metronome only**, plus an optional **1 bar** count-in before Play, Loop Bar, or Loop All starts. The first metronome/count-in pulse of each bar is accented. Compound meters use grouped pulses, such as two clicks per bar in 6/8 and four in 12/8. The mute menu lists only instruments used in the current notation and mutes each canonical voice independently.
+In reading view, the plugin renders the block as page-width percussion staff notation and adds **Play**, **Stop**, **Loop Bar**, phrase/whole-notation loop options, playback-speed, metronome/count-in, instrument-mute, and **Edit** controls. For training, playback speed supports 25–150% of the written tempo; the toolbar offers compact 10% steps, including above-100% tempos for push-tempo practice. The metronome menu offers **Off**, **With drums**, and **Metronome only**, plus an optional **1 bar** count-in before playback starts. The first metronome/count-in pulse of each bar is accented. Compound meters use grouped pulses, such as two clicks per bar in 6/8 and four in 12/8. The mute menu lists only instruments used in the current notation and mutes each canonical voice independently.
 
-Speed, metronome, count-in, and mute choices are playback-only: they do not change the fenced notation text. Obsidian resets them when the rendered block is recreated; the playground keeps them for the current page session. Changing speed, metronome, or mute controls during playback restarts from the current slot while preserving the active Play/Loop mode and does not replay the count-in. Instrument mutes do not silence the metronome or count-in. Muting affects transport playback only, so clicking a rendered note or previewing an editor cell remains audible.
+Speed, metronome, count-in, mute, practice-selection, and current-bar choices are playback-only: they do not change the fenced notation text. Obsidian restores them when the same source block is rendered again during the current plugin session; the playground keeps them for the current page session. They are not written to plugin data or browser storage. Changing speed, metronome, count-in, or mute during playback restarts from the same musical occurrence and does not replay the count-in. Instrument mutes do not silence the metronome or count-in. Muting affects transport playback only, so clicking a rendered note or previewing an editor cell remains audible.
 
 On mobile, if playback becomes silent after Obsidian was backgrounded or another audio app was used, tap **Play** again. If sound does not recover, relaunch Obsidian. This can happen when the mobile WebView audio session is interrupted.
 
 Add `Cursor: on` if you want a blinking cursor to follow playback. Click a rendered note to preview that hit or stacked chord.
+
+## Practise A Phrase
+
+Open the **Loop** menu and choose **Select bars**. Click or tap any rendered
+bars, then choose **Done selecting**. A compact `%xN` repeat region is selected
+as one visible unit and includes all of its playable bars.
+
+- **Play** plays the selected phrase once. With no selection, it plays the
+  complete notation.
+- **Loop selected bars (N)** repeats the phrase. **Loop whole notation** keeps
+  the chart's normal section-repeat and `Repeat:` behavior.
+- **Loop Bar** still loops only the current or last-interacted bar.
+- **Clear selection** returns Play to the complete notation.
+
+Selected playback follows score order, even when you select bars in another
+order. It intentionally ignores section-repeat navigation and the block-level
+`Repeat:` count so a selected exercise plays once unless you explicitly loop
+it. Changing the selected bars stops playback because it changes the practice
+roadmap; changing speed, mute, metronome, or count-in instead restarts in place.
+Stopping playback never clears the selection.
+
+Practice controls survive ordinary Obsidian rerenders for the current session.
+Multiple mounted copies share them only when the plugin can uniquely identify
+the same source `drums` block. Ambiguous duplicate source blocks keep independent
+state rather than risk controlling the wrong notation. Audio never resumes
+automatically after a rerender.
+
+For hands-free practice, assign your own keyboard shortcut, MIDI mapping, or
+foot-pedal action to these Obsidian commands:
+
+- **Drum Notation: Play or stop active notation**
+- **Drum Notation: Loop active bar or selection**
+- **Drum Notation: Increase playback speed**
+- **Drum Notation: Decrease playback speed**
+
+The speed commands move in 5% steps between 25% and 150%. Commands prefer the
+notation that is playing or was last used in the active Markdown view, so a
+pedal controls the score you are currently practising. No default hotkeys are
+assigned.
 
 ## Visual Edit Mode
 
@@ -771,6 +810,8 @@ Use **Loop Bar** in the rendered view to loop the bar containing the current cur
 
 ## Recent Changes
 
+- `1.8.0` adds selectable multi-bar practice phrases, session-local control
+  restoration, and Obsidian commands for hotkeys, MIDI mapping, and foot pedals.
 - `1.7.3` updates the plugin overview screenshot to demonstrate the selected-note
   toolbar and sticking lane alongside visual grid editing.
 - `1.7.2` sharpens the practitioner-focused plugin overview with a

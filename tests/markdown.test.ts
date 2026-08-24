@@ -1,9 +1,52 @@
 import { describe, expect, it } from "vitest";
 import {
+  findExactDrumsBlockLineStarts,
   getDrumsBlockEditStatus,
   getRenderedDrumsBlockEditStatus,
   replaceDrumsBlockBody
 } from "../src/markdown";
+
+describe("findExactDrumsBlockLineStarts", () => {
+  it("finds one exact top-level source block and reports its opening line", () => {
+    const markdown = [
+      "# Note",
+      "```drums",
+      "HH | x---",
+      "SD | --o-",
+      "````",
+      "after"
+    ].join("\n");
+
+    expect(findExactDrumsBlockLineStarts(markdown, "HH | x---\nSD | --o-")).toEqual([1]);
+  });
+
+  it("returns every duplicate exact body so callers can reject ambiguity", () => {
+    const markdown = [
+      "```drums",
+      "HH | x---",
+      "```",
+      "",
+      "```drums",
+      "HH | x---",
+      "```"
+    ].join("\n");
+
+    expect(findExactDrumsBlockLineStarts(markdown, "HH | x---")).toEqual([0, 4]);
+  });
+
+  it("ignores indented and non-drums fences", () => {
+    const markdown = [
+      "  ```drums",
+      "HH | x---",
+      "  ```",
+      "```js",
+      "HH | x---",
+      "```"
+    ].join("\n");
+
+    expect(findExactDrumsBlockLineStarts(markdown, "HH | x---")).toEqual([]);
+  });
+});
 
 describe("replaceDrumsBlockBody", () => {
   it("reports whether a rendered section is editable", () => {

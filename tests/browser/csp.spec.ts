@@ -155,6 +155,65 @@ test("production CSP keeps score rendering self-contained", async ({ page }) => 
   expect(await page.evaluate(() => window.__cspViolations.filter((entry) => !entry.startsWith("connect-src:")))).toEqual([]);
 });
 
+test("practice selection supports pointer, keyboard, responsive, and print workflows", async ({ page }) => {
+  await page.setViewportSize({ width: 1200, height: 900 });
+  await page.goto("/");
+  await page.locator("#pg-editor").fill([
+    "Title: Practice phrase",
+    "Tempo: 100",
+    "Time: 4/4",
+    "Grid: 16",
+    "HH | x-x-x-x-x-x-x-x- | x-x-x-x-x-x-x-x-",
+    "SD | ----o-------o--- | ----o-------o---",
+    "BD | o-------o-o----- | o-----o-o-------"
+  ].join("\n"));
+  await expect(page.locator("#pg-title")).toHaveValue("Practice phrase");
+
+  const loopOptions = page.getByRole("button", { name: "Loop options" });
+  await loopOptions.click();
+  const loopWholeMenuItem = page.getByRole("menuitemcheckbox", { name: "Loop whole notation" });
+  await expect(loopWholeMenuItem).toBeFocused();
+  await loopWholeMenuItem.press("ArrowDown");
+  const selectBarsMenuItem = page.getByRole("menuitemcheckbox", { name: "Select bars" });
+  await expect(selectBarsMenuItem).toBeFocused();
+  await selectBarsMenuItem.press("Enter");
+  await expect(page.getByText("Select bars to practise · 0 selected")).toBeVisible();
+
+  const barSelectors = page.locator("#pg-preview .pg-bar-selector");
+  expect(await barSelectors.count()).toBeGreaterThanOrEqual(2);
+  await barSelectors.nth(0).click();
+  await barSelectors.nth(1).click();
+  await expect(page.getByText("Select bars to practise · 2 selected")).toBeVisible();
+  await expect(barSelectors.nth(0)).toHaveAttribute("aria-pressed", "true");
+  await expect(barSelectors.nth(1)).toHaveAttribute("aria-pressed", "true");
+
+  const firstRenderedNote = page.locator("#pg-preview .drum-notation__interactive-note").first();
+  await expect(firstRenderedNote).toHaveAttribute("aria-label", /Remove bar 1 from practice selection/);
+  await firstRenderedNote.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByText("Select bars to practise · 1 selected")).toBeVisible();
+  await expect(barSelectors.nth(0)).toHaveAttribute("aria-pressed", "false");
+
+  await page.getByRole("button", { name: "Done selecting practice bars" }).click();
+  await expect(page.getByText("Practice selection · 1 bar")).toBeVisible();
+  await page.locator("#pg-title").fill("Practice selection survives rerender");
+  await expect(page.getByText("Practice selection · 1 bar")).toBeVisible();
+  await expect(page.locator("#pg-preview .pg-bar-selector.is-practice-selected")).toHaveCount(1);
+
+  await loopOptions.click();
+  await expect(page.getByRole("menuitemcheckbox", { name: "Loop selected bars (1)" })).toBeVisible();
+  await page.keyboard.press("Escape");
+
+  await page.setViewportSize({ width: 520, height: 780 });
+  const practiceStatus = page.locator("#pg-preview .drum-notation__tip--practice");
+  await expect(practiceStatus).toBeVisible();
+  await expect(practiceStatus.locator(".drum-notation__practice-action > span").first()).toBeHidden();
+
+  await page.emulateMedia({ media: "print" });
+  await expect(practiceStatus).toBeHidden();
+  await expect(page.locator("#pg-preview .pg-bar-selectors")).toBeHidden();
+});
+
 test("verification comparison workspace can be resized and maximized", async ({ page }) => {
   await page.setViewportSize({ width: 1200, height: 900 });
   await page.goto("/");

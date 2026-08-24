@@ -125,6 +125,45 @@ export function getRenderedDrumsBlockEditStatus(sectionText: string): DrumsBlock
   return getDrumsFenceStatus(opening, lines[lines.length - 1].content);
 }
 
+export function findExactDrumsBlockLineStarts(markdown: string, expectedBody: string): number[] {
+  const lines = splitMarkdownLines(markdown);
+  const expected = normalizeLineEndings(expectedBody);
+  const matches: number[] = [];
+
+  for (let openingIndex = 0; openingIndex < lines.length; openingIndex++) {
+    const opening = lines[openingIndex].content;
+    const openMatch = opening.match(/^(`{3,})\s*drums\s*$/i);
+    if (!openMatch) {
+      continue;
+    }
+
+    const fenceLength = openMatch[1].length;
+    let closingIndex = openingIndex + 1;
+    while (closingIndex < lines.length) {
+      const closingMatch = lines[closingIndex].content.match(/^(`{3,})\s*$/);
+      if (closingMatch && closingMatch[1].length >= fenceLength) {
+        break;
+      }
+      closingIndex++;
+    }
+
+    if (closingIndex >= lines.length) {
+      continue;
+    }
+
+    const body = lines
+      .slice(openingIndex + 1, closingIndex)
+      .map((line) => line.content)
+      .join("\n");
+    if (normalizeLineEndings(body) === expected) {
+      matches.push(openingIndex);
+    }
+    openingIndex = closingIndex;
+  }
+
+  return matches;
+}
+
 function resolveDrumsBlockRange(
   lines: MarkdownLine[],
   section: MarkdownSectionRange

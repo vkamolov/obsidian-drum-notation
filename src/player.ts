@@ -17,6 +17,7 @@ import {
   normalizePlaybackSpeedPercent
 } from "./playback";
 import { createSynthPlaybackBackend } from "./synth";
+import { normalizePracticeBarIndexes } from "./practice";
 import { DEFAULT_REPEAT_COUNT, DrumBlock, DrumPlaybackPosition, PlaybackOptions } from "./types";
 
 export interface PlaybackRoadmapEntry {
@@ -93,6 +94,21 @@ export function buildPlaybackRoadmap(
   return result;
 }
 
+export function buildSelectedPlaybackRoadmap(
+  block: DrumBlock,
+  selectedBarIndexes: readonly number[]
+): PlaybackRoadmapEntry[] {
+  return normalizePracticeBarIndexes(selectedBarIndexes, block.bars.length).map((barIndex) => {
+    const bar = block.bars[barIndex];
+    return {
+      barIndex,
+      startSlot: bar.startSlot,
+      endSlot: bar.startSlot + bar.slots.length,
+      sectionTraversal: 0
+    };
+  });
+}
+
 export class DrumPlayer {
   private backend: DrumPlaybackBackend | null = null;
   private timers: number[] = [];
@@ -104,6 +120,7 @@ export class DrumPlayer {
   private initialSlot = 0;
   private roadmap: PlaybackRoadmapEntry[] = [];
   private scheduledOccurrences: ScheduledOccurrence[] = [];
+  private selectedPlayback = false;
 
   constructor(
     private readonly audioContext: AudioContext,
@@ -124,6 +141,7 @@ export class DrumPlayer {
       return;
     }
 
+    this.selectedPlayback = this.options.selectedBarIndexes !== undefined;
     this.rangeStartSlot = clampSlotBoundary(this.options.startSlot ?? 0, this.block.slots.length);
     this.rangeEndSlot = Math.min(
       Math.max(this.rangeStartSlot, this.options.endSlot ?? this.block.slots.length),
@@ -134,14 +152,23 @@ export class DrumPlayer {
       this.rangeStartSlot,
       this.rangeEndSlot
     );
-    const isWholeBlockRange =
-      this.rangeStartSlot === 0 && this.rangeEndSlot === this.block.slots.length;
-    this.roadmap = buildPlaybackRoadmap(
-      this.block,
-      this.rangeStartSlot,
-      this.rangeEndSlot,
-      isWholeBlockRange
-    );
+    if (this.selectedPlayback) {
+      this.roadmap = buildSelectedPlaybackRoadmap(
+        this.block,
+        this.options.selectedBarIndexes ?? []
+      );
+      this.rangeStartSlot = this.roadmap[0]?.startSlot ?? 0;
+      this.rangeEndSlot = this.roadmap[this.roadmap.length - 1]?.endSlot ?? 0;
+    } else {
+      const isWholeBlockRange =
+        this.rangeStartSlot === 0 && this.rangeEndSlot === this.block.slots.length;
+      this.roadmap = buildPlaybackRoadmap(
+        this.block,
+        this.rangeStartSlot,
+        this.rangeEndSlot,
+        isWholeBlockRange
+      );
+    }
 
     if (this.rangeEndSlot <= this.rangeStartSlot || this.roadmap.length === 0) {
       this.stop();
@@ -149,6 +176,8 @@ export class DrumPlayer {
       return;
     }
 
+    const initial = this.resolveInitialPosition();
+    this.initialSlot = initial.slotIndex;
     const speedPercent = normalizePlaybackSpeedPercent(this.options.speedPercent ?? 100);
     this.secondsPerQuarter = getSecondsPerQuarter(this.block, speedPercent);
     const countInDurationSeconds =
@@ -162,7 +191,6 @@ export class DrumPlayer {
 
     this.scheduleCountIn(transportStartTime, backend);
 
-    const initial = this.resolveInitialPosition();
     this.scheduleBlockPass(
       initial.blockPassIndex,
       initial.roadmapEntryIndex,
@@ -173,9 +201,7 @@ export class DrumPlayer {
 
   private resolveInitialPosition(): DrumPlaybackPosition {
     const requested = this.options.initialPosition;
-    const repeatCount = this.options.loop
-      ? Number.POSITIVE_INFINITY
-      : this.options.repeatCount ?? DEFAULT_REPEAT_COUNT;
+    const repeatCount = this.getRepeatCount();
 
     if (
       requested &&
@@ -194,14 +220,17 @@ export class DrumPlayer {
       }
     }
 
-    const roadmapEntryIndex = Math.max(
-      0,
-      this.roadmap.findIndex((entry) =>
-        this.initialSlot >= entry.startSlot && this.initialSlot < entry.endSlot
-      )
+    const matchingEntryIndex = this.roadmap.findIndex((entry) =>
+      this.initialSlot >= entry.startSlot && this.initialSlot < entry.endSlot
     );
+    const roadmapEntryIndex = matchingEntryIndex >= 0 ? matchingEntryIndex : 0;
+    const entry = this.roadmap[roadmapEntryIndex];
 
-    return { slotIndex: this.initialSlot, roadmapEntryIndex, blockPassIndex: 0 };
+    return {
+      slotIndex: matchingEntryIndex >= 0 ? this.initialSlot : entry.startSlot,
+      roadmapEntryIndex,
+      blockPassIndex: 0
+    };
   }
 
   private scheduleCountIn(transportStartTime: number, backend: DrumPlaybackBackend): void {
@@ -267,9 +296,7 @@ export class DrumPlayer {
           return;
         }
 
-        const repeatCount = this.options.loop
-          ? Number.POSITIVE_INFINITY
-          : this.options.repeatCount ?? DEFAULT_REPEAT_COUNT;
+        const repeatCount = this.getRepeatCount();
         if (this.options.loop || blockPassIndex + 1 < repeatCount) {
           this.scheduleBlockPass(
             blockPassIndex + 1,
@@ -391,7 +418,17 @@ export class DrumPlayer {
   }
 
   private canContinueAfterPass(blockPassIndex: number): boolean {
-    return this.options.loop || blockPassIndex + 1 < (this.options.repeatCount ?? DEFAULT_REPEAT_COUNT);
+    return this.options.loop || blockPassIndex + 1 < this.getRepeatCount();
+  }
+
+  private getRepeatCount(): number {
+    if (this.options.loop) {
+      return Number.POSITIVE_INFINITY;
+    }
+
+    return this.selectedPlayback
+      ? 1
+      : this.options.repeatCount ?? DEFAULT_REPEAT_COUNT;
   }
 
   private getPositionInFuturePass(

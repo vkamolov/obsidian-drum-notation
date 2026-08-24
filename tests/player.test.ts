@@ -14,7 +14,7 @@ import {
   normalizePlaybackSpeedPercent,
   recoverAudioContext
 } from "../src/playback";
-import { buildPlaybackRoadmap, DrumPlayer } from "../src/player";
+import { buildPlaybackRoadmap, buildSelectedPlaybackRoadmap, DrumPlayer } from "../src/player";
 import { DrumHit } from "../src/types";
 
 class FakePlaybackBackend implements DrumPlaybackBackend {
@@ -1045,6 +1045,131 @@ HH | xxxx ]`);
     firstPassTimers.slice(0, -1).forEach((timer) => timer());
 
     expect(onBarChange.mock.calls.map(([barIndex]) => barIndex)).toEqual([1]);
+  });
+});
+
+describe("practice-selection playback roadmap", () => {
+  let selectionTimers: Array<() => void>;
+
+  beforeEach(() => {
+    selectionTimers = [];
+    vi.stubGlobal("window", {
+      setTimeout: vi.fn((callback: TimerHandler) => {
+        if (typeof callback === "function") {
+          selectionTimers.push(callback);
+        }
+        return selectionTimers.length;
+      }),
+      clearTimeout: vi.fn()
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("normalizes selected bars and keeps complete bar ranges in score order", () => {
+    const block = parseDrumBlock("HH | xxxx | x--- | --x- | ---x");
+
+    expect(buildSelectedPlaybackRoadmap(block, [3, 1, 3, -1, 9])).toEqual([
+      {
+        barIndex: 1,
+        startSlot: block.bars[1].startSlot,
+        endSlot: block.bars[1].startSlot + block.bars[1].slots.length,
+        sectionTraversal: 0
+      },
+      {
+        barIndex: 3,
+        startSlot: block.bars[3].startSlot,
+        endSlot: block.bars[3].startSlot + block.bars[3].slots.length,
+        sectionTraversal: 0
+      }
+    ]);
+  });
+
+  it("ignores section navigation and authored repeats for one selected pass", async () => {
+    const block = parseDrumBlock(`Repeat: 4
+HH [ xxxx | x--- ] --x-`);
+    const backend = new FakePlaybackBackend();
+    const onBarChange = vi.fn();
+    const onEnded = vi.fn();
+    const player = new DrumPlayer(
+      {} as AudioContext,
+      block,
+      onEnded,
+      vi.fn(),
+      { selectedBarIndexes: [2, 0], repeatCount: block.repeatCount, onBarChange },
+      (() => backend) as DrumPlaybackBackendFactory
+    );
+
+    await player.play();
+    selectionTimers.slice().forEach((timer) => timer());
+
+    expect(onBarChange.mock.calls.map(([barIndex]) => barIndex)).toEqual([0, 2]);
+    expect(onEnded).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls back to the first selected bar for an incompatible restored position", async () => {
+    const block = parseDrumBlock("HH | xxxx | x--- | --x-");
+    const backend = new FakePlaybackBackend();
+    const player = new DrumPlayer(
+      {} as AudioContext,
+      block,
+      vi.fn(),
+      vi.fn(),
+      {
+        selectedBarIndexes: [2],
+        initialPosition: { slotIndex: 0, roadmapEntryIndex: 0, blockPassIndex: 3 }
+      },
+      (() => backend) as DrumPlaybackBackendFactory
+    );
+
+    await player.play();
+
+    expect(player.getCurrentPlaybackPosition()).toEqual({
+      slotIndex: block.bars[2].startSlot,
+      roadmapEntryIndex: 0,
+      blockPassIndex: 0
+    });
+  });
+
+  it("plays every expanded compact-repeat bar selected by its visual region", () => {
+    const block = parseDrumBlock("HH | xxxx\n%x3");
+
+    expect(buildSelectedPlaybackRoadmap(block, [1, 2, 3]).map((entry) => entry.barIndex)).toEqual([
+      1, 2, 3
+    ]);
+  });
+
+  it("schedules selected mixed-meter bars and their metronome pulses contiguously", async () => {
+    const block = parseDrumBlock(`Tempo: 120
+Time: 4/4
+HH | x---------------
+
+Bar
+Time: 3/4
+HH | x-----------
+
+Bar
+Time: 6/8
+HH | x-----------`);
+    const backend = new FakePlaybackBackend();
+    const player = new DrumPlayer(
+      {} as AudioContext,
+      block,
+      vi.fn(),
+      vi.fn(),
+      { selectedBarIndexes: [2, 1], metronomeMode: "with-drums" },
+      (() => backend) as DrumPlaybackBackendFactory
+    );
+
+    await player.play();
+
+    const pulseTimes = metronomeSchedules(backend).map((entry) => entry.time);
+    expect(pulseTimes).toHaveLength(5);
+    [10.08, 10.58, 11.08, 11.58, 12.33].forEach((expected, index) => {
+      expect(pulseTimes[index]).toBeCloseTo(expected);
+    });
   });
 });
 

@@ -44,6 +44,7 @@ import {
   RepeatBarDialogResult
 } from "./src/editor-grid";
 import {
+  findExactDrumsBlockLineStarts,
   getRenderedDrumsBlockEditStatus,
   replaceDrumsBlockBody,
   ReplaceDrumsBlockFailure
@@ -75,6 +76,15 @@ import {
   recoverAudioContext
 } from "./src/playback";
 import { DrumPlayer } from "./src/player";
+import {
+  DrumTransportSession,
+  DrumTransportSessionStore,
+  hasCompatiblePracticeStructure,
+  isPracticeRegionSelected,
+  normalizePracticeSelection,
+  resolvePracticeControllerTarget,
+  togglePracticeRegion
+} from "./src/practice";
 import { getMeasureRepeatProgress } from "./src/repeat-progress";
 import { serializeDrumBlock } from "./src/serializer";
 import {
@@ -94,9 +104,11 @@ import {
   DrumBlock,
   DrumPlaybackPosition,
   DrumSlot,
+  DrumTransportMode,
   MAX_MEASURE_REPEAT_COUNT,
   MetronomeMode,
   ParseWarning,
+  PracticeSelection,
   ScoreBarRegion
 } from "./src/types";
 
@@ -182,6 +194,15 @@ interface RenderState {
   cursor: HTMLElement | null;
 }
 
+interface DrumNotationController {
+  owner: symbol;
+  root: HTMLElement;
+  isPlaying: () => boolean;
+  playOrStop: () => void;
+  loopActive: () => void;
+  adjustSpeed: (deltaPercent: number) => void;
+}
+
 interface RestoredEditSession {
   body: string;
   session: GridEditorSessionState;
@@ -189,8 +210,7 @@ interface RestoredEditSession {
   selectedBarIndex: number;
   playback: {
     wasPlaying: boolean;
-    wasLooping: boolean;
-    wasLoopingAll: boolean;
+    transportMode: DrumTransportMode;
     slotIndex: number;
     barIndex: number;
     position?: DrumPlaybackPosition;
@@ -221,6 +241,9 @@ export default class DrumNotationPlugin extends Plugin {
   private audioContext: AudioContext | null = null;
   private readonly editRestoreSessions = new Map<string, RestoredEditSession>();
   private readonly barClipboard = new DrumBarClipboardStore();
+  private readonly transportSessions = new DrumTransportSessionStore();
+  private readonly notationControllers = new Map<symbol, DrumNotationController>();
+  private lastInteractedControllerOwner: symbol | null = null;
 
   async onload(): Promise<void> {
     await this.loadSettings();
@@ -232,7 +255,7 @@ export default class DrumNotationPlugin extends Plugin {
       // before engraving; the returned promise keeps Obsidian's export flow
       // waiting until the block renders with real glyphs.
       await ensureNotationFontsInDocument(el.ownerDocument);
-      this.renderDrumNotation(source, el, ctx);
+      await this.renderDrumNotation(source, el, ctx);
     });
 
     this.addCommand({
@@ -258,12 +281,36 @@ export default class DrumNotationPlugin extends Plugin {
         }).open();
       }
     });
+
+    this.addCommand({
+      id: "play-or-stop-active-notation",
+      name: "Play or stop active notation",
+      callback: () => this.runNotationControllerCommand((controller) => controller.playOrStop())
+    });
+    this.addCommand({
+      id: "loop-active-bar-or-selection",
+      name: "Loop active bar or selection",
+      callback: () => this.runNotationControllerCommand((controller) => controller.loopActive())
+    });
+    this.addCommand({
+      id: "increase-playback-speed",
+      name: "Increase playback speed",
+      callback: () => this.runNotationControllerCommand((controller) => controller.adjustSpeed(5))
+    });
+    this.addCommand({
+      id: "decrease-playback-speed",
+      name: "Decrease playback speed",
+      callback: () => this.runNotationControllerCommand((controller) => controller.adjustSpeed(-5))
+    });
   }
 
   onunload(): void {
     this.stopActivePlayer();
     this.stopActivePreview();
     this.closeAudioContext();
+    this.transportSessions.clear();
+    this.notationControllers.clear();
+    this.lastInteractedControllerOwner = null;
   }
 
   async loadSettings(): Promise<void> {
@@ -281,12 +328,16 @@ export default class DrumNotationPlugin extends Plugin {
     await this.saveData(this.settings);
   }
 
-	private renderDrumNotation(source: string, el: HTMLElement, ctx: MarkdownPostProcessorContext): void {
+	private async renderDrumNotation(source: string, el: HTMLElement, ctx: MarkdownPostProcessorContext): Promise<void> {
 		const parsed = parseDrumBlockWithWarnings(source);
 		let block = parsed.block;
     let parseWarnings = parsed.warnings;
     let sourceBody = source;
     const initialSection = ctx.getSectionInfo(el);
+    const practiceSessionKey = await this.resolvePracticeSessionKey(source, el, ctx, initialSection);
+    const restoredPracticeSession = practiceSessionKey
+      ? this.transportSessions.get(practiceSessionKey, source)
+      : null;
     const initialSessionKey = initialSection ? this.getEditSessionKey(ctx.sourcePath, initialSection.lineStart) : null;
     const restored = initialSessionKey ? this.editRestoreSessions.get(initialSessionKey) : undefined;
     const shouldRestoreEdit = !!restored && restored.body === source;
@@ -314,6 +365,7 @@ export default class DrumNotationPlugin extends Plugin {
     const stopButton = makeIconButton("square", "Stop");
     const loopButton = makeIconButton("repeat-1", "Loop current bar");
     const loopAllButton = makeIconButton("repeat", "Loop whole notation");
+    loopAllButton.setAttribute("aria-haspopup", "menu");
     const speedSelect = controls.createEl("select", {
       cls: "drum-notation__speed",
       attr: { "aria-label": "Playback speed" }
@@ -341,17 +393,26 @@ export default class DrumNotationPlugin extends Plugin {
       cursor: null
     };
     let currentSlotIndex = clampSlotIndex(block, restored?.playback.slotIndex ?? 0);
-    let selectedBarIndex = clampBarIndex(block, restored?.selectedBarIndex ?? barIndexForSlot(block, currentSlotIndex));
+    let selectedBarIndex = clampBarIndex(
+      block,
+      restored?.selectedBarIndex ?? restoredPracticeSession?.currentBarIndex ?? barIndexForSlot(block, currentSlotIndex)
+    );
     let editSelectedSlotIndex: number | null = restored?.selectedSlotIndex ?? selectedSlotIndexFromSession(restored?.session) ?? null;
     let highlightedEditNotes: SVGGElement[] = [];
     let gridEditor: GridEditorHandle | null = null;
-    let playbackSpeedPercent = DEFAULT_PLAYBACK_SPEED_PERCENT;
+    let playbackSpeedPercent = normalizePlaybackSpeedPercent(
+      restoredPracticeSession?.speedPercent ?? DEFAULT_PLAYBACK_SPEED_PERCENT
+    );
     let visuals = makePlaybackVisuals(block, state, root, () => playbackSpeedPercent);
-    let isLoopingBar = false;
-    let isLoopingAll = false;
-    let metronomeMode: MetronomeMode = DEFAULT_METRONOME_MODE;
-    let countInMode: CountInMode = DEFAULT_COUNT_IN_MODE;
-    const mutedInstrumentIds = new Set<string>();
+    let transportMode: DrumTransportMode = "idle";
+    let metronomeMode: MetronomeMode = restoredPracticeSession?.metronomeMode ?? DEFAULT_METRONOME_MODE;
+    let countInMode: CountInMode = restoredPracticeSession?.countInMode ?? DEFAULT_COUNT_IN_MODE;
+    const mutedInstrumentIds = new Set<string>(restoredPracticeSession?.mutedInstrumentIds ?? []);
+    let practiceSelection: PracticeSelection = normalizePracticeSelection(
+      restoredPracticeSession?.selection ?? { barIndexes: [] },
+      block.bars.length
+    );
+    let selectionModeOpen = restoredPracticeSession?.selectionModeOpen ?? false;
     let resizeTimer: number | null = null;
     let writebackTimer: number | null = null;
     let hasPendingWriteback = false;
@@ -362,6 +423,28 @@ export default class DrumNotationPlugin extends Plugin {
     const child = new MarkdownRenderChild(el);
     const renderOwner = Symbol("drum-notation-render");
     const playbackBackendFactory = (audioContext: AudioContext) => this.createPlaybackBackend(audioContext);
+    let publishingPracticeSession = false;
+
+    const makePracticeSession = (): DrumTransportSession => ({
+      body: sourceBody,
+      speedPercent: playbackSpeedPercent,
+      metronomeMode,
+      countInMode,
+      mutedInstrumentIds: [...mutedInstrumentIds],
+      selection: practiceSelection,
+      selectionModeOpen,
+      currentBarIndex: selectedBarIndex
+    });
+
+    const publishPracticeSession = () => {
+      if (!practiceSessionKey) {
+        return;
+      }
+
+      publishingPracticeSession = true;
+      this.transportSessions.set(practiceSessionKey, makePracticeSession());
+      publishingPracticeSession = false;
+    };
 
     ctx.addChild(child);
 
@@ -373,7 +456,40 @@ export default class DrumNotationPlugin extends Plugin {
 
     const renderFirstRunTip = () => {
       tipEl.empty();
-      tipEl.hidden = this.settings.dismissedFirstRunTip;
+      const selectedCount = practiceSelection.barIndexes.length;
+      const showPracticeStatus = selectionModeOpen || selectedCount > 0;
+      tipEl.toggleClass("drum-notation__tip--practice", showPracticeStatus);
+      tipEl.hidden = !showPracticeStatus && this.settings.dismissedFirstRunTip;
+
+      if (showPracticeStatus) {
+        tipEl.createSpan({
+          cls: "drum-notation__practice-label",
+          text: selectionModeOpen
+            ? `Select bars to practise · ${selectedCount} selected`
+            : `Practice selection · ${selectedCount} bar${selectedCount === 1 ? "" : "s"}`
+        });
+        const modeButton = tipEl.createEl("button", {
+          cls: "drum-notation__tip-dismiss drum-notation__practice-action",
+          text: selectionModeOpen ? "Done" : "Edit selection",
+          attr: {
+            type: "button",
+            "aria-label": selectionModeOpen ? "Done selecting practice bars" : "Edit practice selection"
+          }
+        });
+        setIcon(modeButton, selectionModeOpen ? "check" : "list-checks");
+        modeButton.createSpan({ text: selectionModeOpen ? "Done" : "Edit selection" });
+        modeButton.addEventListener("click", () => setSelectionModeOpen(!selectionModeOpen));
+
+        const clearButton = tipEl.createEl("button", {
+          cls: "drum-notation__tip-dismiss drum-notation__practice-action",
+          attr: { type: "button", "aria-label": "Clear practice selection" }
+        });
+        setIcon(clearButton, "x");
+        clearButton.createSpan({ text: "Clear" });
+        clearButton.disabled = selectedCount === 0;
+        clearButton.addEventListener("click", clearPracticeSelection);
+        return;
+      }
 
       if (this.settings.dismissedFirstRunTip) {
         return;
@@ -390,9 +506,11 @@ export default class DrumNotationPlugin extends Plugin {
       dismiss.addEventListener("click", () => {
         this.settings.dismissedFirstRunTip = true;
         void this.saveSettings();
-        root.ownerDocument.querySelectorAll<HTMLElement>(".drum-notation__tip").forEach((tip) => {
-          tip.hidden = true;
-        });
+        root.ownerDocument
+          .querySelectorAll<HTMLElement>(".drum-notation__tip:not(.drum-notation__tip--practice)")
+          .forEach((tip) => {
+            tip.hidden = true;
+          });
       });
     };
 
@@ -451,6 +569,17 @@ export default class DrumNotationPlugin extends Plugin {
       stopButton.disabled = !hasRows;
       loopButton.disabled = !hasRows;
       loopAllButton.disabled = !hasRows;
+      const selectedCount = practiceSelection.barIndexes.length;
+      const playDescription = selectedCount > 0
+        ? `Play selected bars (${selectedCount})`
+        : "Play whole notation";
+      playButton.title = playDescription;
+      playButton.setAttribute("aria-label", playDescription);
+      const loopMenuDescription = selectedCount > 0
+        ? `Loop options · ${selectedCount} selected`
+        : "Loop options";
+      loopAllButton.title = loopMenuDescription;
+      loopAllButton.setAttribute("aria-label", loopMenuDescription);
       speedSelect.disabled = !hasRows;
       playbackSpeedPercent = syncSpeedSelectValue(speedSelect, playbackSpeedPercent);
       const effectiveTempo = getEffectivePlaybackTempo(block.tempo, playbackSpeedPercent);
@@ -579,7 +708,14 @@ export default class DrumNotationPlugin extends Plugin {
             return false;
           }
 
+          const previousBody = sourceBody;
           sourceBody = nextBody;
+          if (practiceSessionKey) {
+            const nextSession = makePracticeSession();
+            if (!this.transportSessions.migrate(practiceSessionKey, previousBody, nextSession)) {
+              this.transportSessions.set(practiceSessionKey, nextSession);
+            }
+          }
           if (!this.settings.enableVisualEditMode) {
             new Notice(
               "First bar created. Enable visual edit mode in Drum Notation settings to edit it visually."
@@ -628,10 +764,50 @@ export default class DrumNotationPlugin extends Plugin {
           .split(/\s+/)
           .map((value) => Number.parseInt(value, 10))
           .filter((value) => Number.isFinite(value));
-        const selected = indexes.includes(selectedBarIndex);
+        const selected = gridEditor
+          ? indexes.includes(selectedBarIndex)
+          : isPracticeRegionSelected(practiceSelection, { barIndexes: indexes });
 
         button.classList.toggle("is-selected", selected);
+        button.classList.toggle("is-practice-selected", !gridEditor && selected);
         button.setAttr("aria-pressed", selected ? "true" : "false");
+        if (!gridEditor) {
+          const firstBar = (indexes[0] ?? 0) + 1;
+          const lastBar = (indexes[indexes.length - 1] ?? indexes[0] ?? 0) + 1;
+          const barLabel = firstBar === lastBar ? `bar ${firstBar}` : `bars ${firstBar}–${lastBar}`;
+          button.setAttr(
+            "aria-label",
+            `${selected ? "Remove" : "Add"} ${barLabel} ${selected ? "from" : "to"} practice selection`
+          );
+        }
+      });
+
+      const updatedNotes = new Set<SVGGElement>();
+      state.noteElements.forEach((elements, slotIndex) => {
+        elements?.forEach((element) => {
+          if (updatedNotes.has(element)) {
+            return;
+          }
+          updatedNotes.add(element);
+          const barIndex = barIndexForSlot(block, slotIndex);
+          const region = state.barRegions.find((candidate) => candidate.barIndexes.includes(barIndex));
+          if (!selectionModeOpen || !region) {
+            element.setAttribute(
+              "aria-label",
+              element.dataset.previewAriaLabel ?? `Preview note at slot ${slotIndex + 1}`
+            );
+            return;
+          }
+
+          const selected = isPracticeRegionSelected(practiceSelection, region);
+          const firstBar = region.barIndexes[0] + 1;
+          const lastBar = region.barIndexes[region.barIndexes.length - 1] + 1;
+          const barLabel = firstBar === lastBar ? `bar ${firstBar}` : `bars ${firstBar}–${lastBar}`;
+          element.setAttribute(
+            "aria-label",
+            `${selected ? "Remove" : "Add"} ${barLabel} ${selected ? "from" : "to"} practice selection`
+          );
+        });
       });
     };
 
@@ -643,6 +819,59 @@ export default class DrumNotationPlugin extends Plugin {
         gridEditor?.selectBar(selectedBarIndex);
       }
       updateBarSelectorState();
+      publishPracticeSession();
+    };
+
+    const clearPracticeSelection = () => {
+      if (practiceSelection.barIndexes.length === 0 && !selectionModeOpen) {
+        return;
+      }
+
+      if (this.activePlaybackOwner === renderOwner && this.activePlayer) {
+        stopLocalPlayback();
+      }
+      practiceSelection = { barIndexes: [] };
+      selectionModeOpen = false;
+      renderFirstRunTip();
+      renderBarSelectors();
+      updateHeader();
+      publishPracticeSession();
+    };
+
+    const setSelectionModeOpen = (open: boolean) => {
+      if (gridEditor && open) {
+        return;
+      }
+
+      if (selectionModeOpen === open) {
+        return;
+      }
+
+      selectionModeOpen = open;
+      if (this.activePlaybackOwner === renderOwner && this.activePlayer) {
+        stopLocalPlayback();
+      }
+      renderFirstRunTip();
+      renderBarSelectors();
+      updateHeader();
+      publishPracticeSession();
+    };
+
+    const togglePracticeBarRegion = (region: ScoreBarRegion) => {
+      if (!selectionModeOpen || gridEditor) {
+        return;
+      }
+
+      if (this.activePlaybackOwner === renderOwner && this.activePlayer) {
+        stopLocalPlayback();
+      }
+      practiceSelection = togglePracticeRegion(practiceSelection, region, block.bars.length);
+      selectedBarIndex = clampBarIndex(block, region.barIndex);
+      currentSlotIndex = block.bars[selectedBarIndex]?.startSlot ?? currentSlotIndex;
+      renderFirstRunTip();
+      updateBarSelectorState();
+      updateHeader();
+      publishPracticeSession();
     };
 
     const selectRenderedBarAtPoint = (event: MouseEvent) => {
@@ -665,17 +894,25 @@ export default class DrumNotationPlugin extends Plugin {
         return;
       }
 
-      selectBar(region.barIndex, Boolean(gridEditor));
+      if (selectionModeOpen && !gridEditor) {
+        togglePracticeBarRegion(region);
+      } else {
+        selectBar(region.barIndex, Boolean(gridEditor));
+      }
     };
 
     const renderBarSelectors = () => {
       clearBarSelectors();
 
-      if (!gridEditor || state.barRegions.length === 0) {
+      if ((!gridEditor && !selectionModeOpen && practiceSelection.barIndexes.length === 0) || state.barRegions.length === 0) {
         return;
       }
 
       const layer = notation.createDiv({ cls: "pg-bar-selectors" });
+      if (!gridEditor) {
+        layer.addClass("is-practice-selection");
+        layer.toggleClass("is-selection-open", selectionModeOpen);
+      }
 
       state.barRegions.forEach((region) => {
         const button = layer.createEl("button", {
@@ -694,7 +931,14 @@ export default class DrumNotationPlugin extends Plugin {
           "--pg-bar-selector-width": `${Math.round(region.width)}px`,
           "--pg-bar-selector-height": `${Math.round(region.height)}px`
         });
-        button.addEventListener("click", () => selectBar(region.barIndex, true));
+        button.addEventListener("click", (event) => {
+          event.stopPropagation();
+          if (gridEditor) {
+            selectBar(region.barIndex, true);
+          } else {
+            togglePracticeBarRegion(region);
+          }
+        });
       });
 
       updateBarSelectorState();
@@ -752,6 +996,12 @@ export default class DrumNotationPlugin extends Plugin {
         state.cursor = block.showCursor ? notation.createDiv({ cls: "drum-notation__cursor" }) : null;
         state.noteElements = makeRenderedNotesInteractive(block, notation, (slot) => {
           const slotBarIndex = barIndexForSlot(block, slot.index);
+          const region = state.barRegions.find((candidate) => candidate.barIndexes.includes(slotBarIndex));
+
+          if (selectionModeOpen && !gridEditor && region) {
+            togglePracticeBarRegion(region);
+            return;
+          }
 
           currentSlotIndex = slot.index;
           if (gridEditor) {
@@ -759,6 +1009,7 @@ export default class DrumNotationPlugin extends Plugin {
           } else {
             selectedBarIndex = clampBarIndex(block, slotBarIndex);
             updateBarSelectorState();
+            publishPracticeSession();
           }
           void this.previewSlot(block, slot, renderOwner, root);
         });
@@ -795,7 +1046,9 @@ export default class DrumNotationPlugin extends Plugin {
     };
 
     const handleBarChange = (barIndex: number) => {
+      selectedBarIndex = clampBarIndex(block, barIndex);
       updateMeasureRepeatProgress(notation, getMeasureRepeatProgress(block, barIndex));
+      publishPracticeSession();
     };
 
     const clearTransportHighlights = () => {
@@ -807,8 +1060,7 @@ export default class DrumNotationPlugin extends Plugin {
     const stopLocalPlayback = () => {
       this.stopActivePlayer(renderOwner);
       clearTransportHighlights();
-      isLoopingBar = false;
-      isLoopingAll = false;
+      transportMode = "idle";
       clearRepeatProgress();
     };
 
@@ -817,8 +1069,7 @@ export default class DrumNotationPlugin extends Plugin {
       clearTransportHighlights();
       visuals.clearCursor();
       clearRepeatProgress();
-      isLoopingBar = false;
-      isLoopingAll = false;
+      transportMode = "idle";
 
       if (!recoverBeforeStart) {
         return true;
@@ -837,14 +1088,14 @@ export default class DrumNotationPlugin extends Plugin {
       initialSlot = 0,
       recoverBeforeStart = false,
       useCountIn = true,
-      initialPosition?: DrumPlaybackPosition
+      initialPosition?: DrumPlaybackPosition,
+      useSelection = practiceSelection.barIndexes.length > 0
     ): Promise<boolean> => {
       if (!(await prepareTransportStart(recoverBeforeStart))) {
         return false;
       }
 
-      isLoopingBar = false;
-      isLoopingAll = false;
+      transportMode = useSelection ? "play-selection" : "play-all";
       currentSlotIndex = clampSlotIndex(block, initialSlot);
       this.activePlaybackOwner = renderOwner;
       this.activePlayer = new DrumPlayer(
@@ -861,6 +1112,7 @@ export default class DrumNotationPlugin extends Plugin {
           this.activePlayer = null;
           this.activePlaybackReset = null;
           this.activePlaybackOwner = null;
+          transportMode = "idle";
         },
         handleSlotChange,
         {
@@ -868,7 +1120,8 @@ export default class DrumNotationPlugin extends Plugin {
           endSlot: block.slots.length,
           initialSlot: currentSlotIndex,
           ...(initialPosition ? { initialPosition } : {}),
-          repeatCount: block.repeatCount,
+          repeatCount: useSelection ? 1 : block.repeatCount,
+          ...(useSelection ? { selectedBarIndexes: practiceSelection.barIndexes } : {}),
           speedPercent: playbackSpeedPercent,
           mutedInstrumentIds,
           metronomeMode,
@@ -879,8 +1132,7 @@ export default class DrumNotationPlugin extends Plugin {
       );
       this.activePlaybackReset = () => {
         clearTransportHighlights();
-        isLoopingBar = false;
-        isLoopingAll = false;
+        transportMode = "idle";
         visuals.clearCursor();
         clearRepeatProgress();
       };
@@ -908,8 +1160,7 @@ export default class DrumNotationPlugin extends Plugin {
       const barRange = getBarRange(block, barStartSlot);
       currentSlotIndex = clampSlotToRange(initialSlot ?? barRange.startSlot, barRange.startSlot, barRange.endSlot);
 
-      isLoopingBar = true;
-      isLoopingAll = false;
+      transportMode = "loop-bar";
       clearRepeatProgress();
       clearTransportHighlights();
       loopButton.addClass("is-playing");
@@ -925,8 +1176,7 @@ export default class DrumNotationPlugin extends Plugin {
           clearTransportHighlights();
           visuals.clearCursor();
           clearRepeatProgress();
-          isLoopingBar = false;
-          isLoopingAll = false;
+          transportMode = "idle";
           this.activePlayer = null;
           this.activePlaybackReset = null;
           this.activePlaybackOwner = null;
@@ -948,8 +1198,7 @@ export default class DrumNotationPlugin extends Plugin {
         clearTransportHighlights();
         visuals.clearCursor();
         clearRepeatProgress();
-        isLoopingBar = false;
-        isLoopingAll = false;
+        transportMode = "idle";
       };
       void this.activePlayer.play();
       return true;
@@ -965,8 +1214,7 @@ export default class DrumNotationPlugin extends Plugin {
         return false;
       }
 
-      isLoopingBar = false;
-      isLoopingAll = true;
+      transportMode = "loop-all";
       currentSlotIndex = clampSlotIndex(block, initialSlot);
       clearTransportHighlights();
       loopAllButton.addClass("is-playing");
@@ -982,8 +1230,7 @@ export default class DrumNotationPlugin extends Plugin {
           clearTransportHighlights();
           visuals.clearCursor();
           clearRepeatProgress();
-          isLoopingBar = false;
-          isLoopingAll = false;
+          transportMode = "idle";
           this.activePlayer = null;
           this.activePlaybackReset = null;
           this.activePlaybackOwner = null;
@@ -1007,8 +1254,70 @@ export default class DrumNotationPlugin extends Plugin {
         clearTransportHighlights();
         visuals.clearCursor();
         clearRepeatProgress();
-        isLoopingBar = false;
-        isLoopingAll = false;
+        transportMode = "idle";
+      };
+      if (!useCountIn || countInMode === "off") {
+        handleBarChange(barIndexForSlot(block, currentSlotIndex));
+      }
+      void this.activePlayer.play();
+      return true;
+    };
+
+    const startLoopSelection = async (
+      initialSlot = practiceSelection.barIndexes.length > 0
+        ? block.bars[practiceSelection.barIndexes[0]]?.startSlot ?? 0
+        : 0,
+      recoverBeforeStart = false,
+      useCountIn = true,
+      initialPosition?: DrumPlaybackPosition
+    ): Promise<boolean> => {
+      if (practiceSelection.barIndexes.length === 0) {
+        return false;
+      }
+      if (!(await prepareTransportStart(recoverBeforeStart))) {
+        return false;
+      }
+
+      transportMode = "loop-selection";
+      currentSlotIndex = clampSlotIndex(block, initialSlot);
+      clearTransportHighlights();
+      loopAllButton.addClass("is-playing");
+      this.activePlaybackOwner = renderOwner;
+      this.activePlayer = new DrumPlayer(
+        this.getAudioContext(),
+        block,
+        () => {
+          if (this.activePlaybackOwner !== renderOwner) {
+            return;
+          }
+
+          clearTransportHighlights();
+          visuals.clearCursor();
+          clearRepeatProgress();
+          transportMode = "idle";
+          this.activePlayer = null;
+          this.activePlaybackReset = null;
+          this.activePlaybackOwner = null;
+        },
+        handleSlotChange,
+        {
+          initialSlot: currentSlotIndex,
+          ...(initialPosition ? { initialPosition } : {}),
+          selectedBarIndexes: practiceSelection.barIndexes,
+          loop: true,
+          speedPercent: playbackSpeedPercent,
+          mutedInstrumentIds,
+          metronomeMode,
+          countInMode: useCountIn ? countInMode : "off",
+          onBarChange: handleBarChange
+        },
+        playbackBackendFactory
+      );
+      this.activePlaybackReset = () => {
+        clearTransportHighlights();
+        visuals.clearCursor();
+        clearRepeatProgress();
+        transportMode = "idle";
       };
       if (!useCountIn || countInMode === "off") {
         handleBarChange(barIndexForSlot(block, currentSlotIndex));
@@ -1024,17 +1333,20 @@ export default class DrumNotationPlugin extends Plugin {
 
       const restartPosition = this.activePlayer.getCurrentPlaybackPosition();
       const restartSlotIndex = restartPosition.slotIndex;
-      const wasLoopingBar = isLoopingBar;
-      const wasLoopingAll = isLoopingAll;
+      const previousTransportMode = transportMode;
       const restartBarIndex = barIndexForSlot(block, restartSlotIndex);
 
       this.stopActivePlayer(renderOwner);
-      if (wasLoopingAll) {
+      if (previousTransportMode === "loop-selection") {
+        await startLoopSelection(restartSlotIndex, true, false, restartPosition);
+      } else if (previousTransportMode === "loop-all") {
         await startLoopAll(restartSlotIndex, true, false, restartPosition);
-      } else if (wasLoopingBar) {
+      } else if (previousTransportMode === "loop-bar") {
         await startLoopBar(restartBarIndex, restartSlotIndex, true, false);
+      } else if (previousTransportMode === "play-selection") {
+        await startPlayback(restartSlotIndex, true, false, restartPosition, true);
       } else {
-        await startPlayback(restartSlotIndex, true, false, restartPosition);
+        await startPlayback(restartSlotIndex, true, false, restartPosition, false);
       }
     };
 
@@ -1054,6 +1366,7 @@ export default class DrumNotationPlugin extends Plugin {
                 mutedInstrumentIds.add(instrument.id);
               }
               updateHeader();
+              publishPracticeSession();
               void restartActivePlaybackForControls();
             });
         });
@@ -1068,6 +1381,7 @@ export default class DrumNotationPlugin extends Plugin {
           .onClick(() => {
             mutedInstrumentIds.clear();
             updateHeader();
+            publishPracticeSession();
             void restartActivePlaybackForControls();
           });
       });
@@ -1085,6 +1399,7 @@ export default class DrumNotationPlugin extends Plugin {
             .onClick(() => {
               metronomeMode = option.value;
               updateHeader();
+              publishPracticeSession();
               void restartActivePlaybackForControls();
             });
         });
@@ -1099,6 +1414,7 @@ export default class DrumNotationPlugin extends Plugin {
             .onClick(() => {
               countInMode = option.value;
               updateHeader();
+              publishPracticeSession();
               void restartActivePlaybackForControls();
             });
         });
@@ -1107,10 +1423,60 @@ export default class DrumNotationPlugin extends Plugin {
       menu.showAtMouseEvent(event);
     };
 
+    const openLoopMenu = (event: MouseEvent) => {
+      const menu = new Menu();
+      const selectedCount = practiceSelection.barIndexes.length;
+
+      menu.addItem((item) => {
+        item
+          .setTitle("Loop whole notation")
+          .setIcon("repeat")
+          .setChecked(transportMode === "loop-all")
+          .onClick(() => {
+            if (transportMode === "loop-all") {
+              stopLocalPlayback();
+            } else {
+              void startLoopAll(0, true);
+            }
+          });
+      });
+
+      if (selectedCount > 0) {
+        menu.addItem((item) => {
+          item
+            .setTitle(`Loop selected bars (${selectedCount})`)
+            .setIcon("repeat-2")
+            .setChecked(transportMode === "loop-selection")
+            .onClick(() => {
+              if (transportMode === "loop-selection") {
+                stopLocalPlayback();
+              } else {
+                void startLoopSelection(undefined, true);
+              }
+            });
+        });
+      }
+
+      menu.addSeparator();
+      menu.addItem((item) => {
+        item
+          .setTitle(selectionModeOpen ? "Done selecting" : "Select bars")
+          .setIcon(selectionModeOpen ? "check" : "list-checks")
+          .onClick(() => setSelectionModeOpen(!selectionModeOpen));
+      });
+      menu.addItem((item) => {
+        item
+          .setTitle("Clear selection")
+          .setIcon("x")
+          .setDisabled(selectedCount === 0)
+          .onClick(clearPracticeSelection);
+      });
+      menu.showAtMouseEvent(event);
+    };
+
     const schedulePlaybackRestart = (
       wasPlaying: boolean,
-      wasLooping: boolean,
-      wasLoopingAll: boolean,
+      previousTransportMode: DrumTransportMode,
       slotIndex: number,
       barIndex: number,
       position?: DrumPlaybackPosition
@@ -1125,12 +1491,16 @@ export default class DrumNotationPlugin extends Plugin {
 
       playbackRestartTimer = window.setTimeout(() => {
         playbackRestartTimer = null;
-        if (wasLoopingAll) {
+        if (previousTransportMode === "loop-selection") {
+          void startLoopSelection(slotIndex, false, false, position);
+        } else if (previousTransportMode === "loop-all") {
           void startLoopAll(slotIndex, false, false, position);
-        } else if (wasLooping) {
+        } else if (previousTransportMode === "loop-bar") {
           void startLoopBar(barIndex, undefined, false, false);
+        } else if (previousTransportMode === "play-selection") {
+          void startPlayback(slotIndex, false, false, position, true);
         } else {
-          void startPlayback(slotIndex, false, false, position);
+          void startPlayback(slotIndex, false, false, position, false);
         }
       }, PLAYBACK_RESTART_DEBOUNCE_MS);
     };
@@ -1189,8 +1559,7 @@ export default class DrumNotationPlugin extends Plugin {
               selectedBarIndex,
               playback: {
                 wasPlaying: this.activePlaybackOwner === renderOwner && this.activePlayer !== null,
-                wasLooping: isLoopingBar,
-                wasLoopingAll: isLoopingAll,
+                transportMode,
                 slotIndex: currentSlotIndex,
                 barIndex: selectedBarIndex,
                 ...(this.activePlayer
@@ -1208,7 +1577,14 @@ export default class DrumNotationPlugin extends Plugin {
       }
 
       if (wrote) {
+        const previousBody = sourceBody;
         sourceBody = nextBody;
+        if (practiceSessionKey) {
+          const nextSession = makePracticeSession();
+          if (!this.transportSessions.migrate(practiceSessionKey, previousBody, nextSession)) {
+            this.transportSessions.set(practiceSessionKey, nextSession);
+          }
+        }
         parseWarnings = parseDrumBlockWithWarnings(nextBody).warnings;
         renderParseWarnings();
         hasPendingWriteback = false;
@@ -1250,8 +1626,7 @@ export default class DrumNotationPlugin extends Plugin {
 
     const applyGridEditedBlock = (next: DrumBlock, changedSlotIndex?: number, nextSelectedBarIndex?: number) => {
       const wasPlaying = this.activePlaybackOwner === renderOwner && this.activePlayer !== null;
-      const wasLooping = isLoopingBar;
-      const wasLoopingAll = isLoopingAll;
+      const previousTransportMode = transportMode;
       const restartSlotIndex = currentSlotIndex;
       const restartPosition = this.activePlayer?.getCurrentPlaybackPosition();
       const restartBarIndex = selectedBarIndex;
@@ -1260,7 +1635,14 @@ export default class DrumNotationPlugin extends Plugin {
         this.stopActivePlayer(renderOwner);
       }
 
+      const keepSelection = hasCompatiblePracticeStructure(block, next);
       block = next;
+      practiceSelection = keepSelection
+        ? normalizePracticeSelection(practiceSelection, block.bars.length)
+        : { barIndexes: [] };
+      if (!keepSelection) {
+        selectionModeOpen = false;
+      }
       parseWarnings = parseDrumBlockWithWarnings(serializeDrumBlock(block, { mode: "authoring" })).warnings;
       selectedBarIndex =
         nextSelectedBarIndex !== undefined
@@ -1270,9 +1652,11 @@ export default class DrumNotationPlugin extends Plugin {
             : clampBarIndex(block, selectedBarIndex);
       currentSlotIndex = changedSlotIndex ?? block.bars[selectedBarIndex]?.startSlot ?? clampSlotIndex(block, currentSlotIndex);
       updateHeader();
+      renderFirstRunTip();
       renderScore();
+      publishPracticeSession();
       scheduleWriteback();
-      schedulePlaybackRestart(wasPlaying, wasLooping, wasLoopingAll, restartSlotIndex, restartBarIndex, restartPosition);
+      schedulePlaybackRestart(wasPlaying, previousTransportMode, restartSlotIndex, restartBarIndex, restartPosition);
 
       if (changedSlotIndex === undefined || wasPlaying) {
         selectEditSlot(null);
@@ -1300,6 +1684,7 @@ export default class DrumNotationPlugin extends Plugin {
 
       stopLocalPlayback();
       this.stopActivePreview(renderOwner);
+      selectionModeOpen = false;
       selectedBarIndex = clampBarIndex(block, session?.selectedBarIndex ?? selectedBarIndex);
       editSelectedSlotIndex = selectedSlotIndexFromSession(session) ?? editSelectedSlotIndex;
       root.addClass("is-editing");
@@ -1335,6 +1720,8 @@ export default class DrumNotationPlugin extends Plugin {
       });
 
       renderBarSelectors();
+      renderFirstRunTip();
+      publishPracticeSession();
       applyEditHighlight();
       return true;
     };
@@ -1352,6 +1739,9 @@ export default class DrumNotationPlugin extends Plugin {
         rememberRestoreSession: false
       });
       updateHeader();
+      renderFirstRunTip();
+      renderBarSelectors();
+      publishPracticeSession();
 
       if (options.clearRestoreSession === false) {
         return;
@@ -1432,10 +1822,85 @@ export default class DrumNotationPlugin extends Plugin {
       }, EDIT_RESTORE_RETRY_MS);
     };
 
+    const controller: DrumNotationController = {
+      owner: renderOwner,
+      root,
+      isPlaying: () => this.activePlaybackOwner === renderOwner && this.activePlayer !== null,
+      playOrStop: () => {
+        this.lastInteractedControllerOwner = renderOwner;
+        if (this.activePlaybackOwner === renderOwner && this.activePlayer) {
+          stopLocalPlayback();
+        } else {
+          void startPlayback(0, true);
+        }
+      },
+      loopActive: () => {
+        this.lastInteractedControllerOwner = renderOwner;
+        if (
+          this.activePlaybackOwner === renderOwner &&
+          (transportMode === "loop-bar" || transportMode === "loop-selection")
+        ) {
+          stopLocalPlayback();
+        } else if (practiceSelection.barIndexes.length > 0) {
+          void startLoopSelection(undefined, true);
+        } else {
+          void startLoopBar(barIndexForSlot(block, currentSlotIndex), undefined, true);
+        }
+      },
+      adjustSpeed: (deltaPercent) => {
+        this.lastInteractedControllerOwner = renderOwner;
+        const nextSpeed = normalizePlaybackSpeedPercent(playbackSpeedPercent + deltaPercent);
+        if (nextSpeed === playbackSpeedPercent) {
+          return;
+        }
+        playbackSpeedPercent = nextSpeed;
+        updateHeader();
+        publishPracticeSession();
+        void restartActivePlaybackForControls();
+      }
+    };
+    this.notationControllers.set(renderOwner, controller);
+    child.registerDomEvent(root, "pointerdown", () => {
+      this.lastInteractedControllerOwner = renderOwner;
+    });
+    child.registerDomEvent(root, "focusin", () => {
+      this.lastInteractedControllerOwner = renderOwner;
+    });
+
+    const unsubscribePracticeSession = practiceSessionKey
+      ? this.transportSessions.subscribe(practiceSessionKey, (session) => {
+          if (publishingPracticeSession || session.body !== sourceBody) {
+            return;
+          }
+
+          const nextSelection = normalizePracticeSelection(session.selection, block.bars.length);
+          const selectionChanged =
+            nextSelection.barIndexes.length !== practiceSelection.barIndexes.length ||
+            nextSelection.barIndexes.some((barIndex, index) => barIndex !== practiceSelection.barIndexes[index]);
+          if (selectionChanged && this.activePlaybackOwner === renderOwner && this.activePlayer) {
+            stopLocalPlayback();
+          }
+
+          playbackSpeedPercent = normalizePlaybackSpeedPercent(session.speedPercent);
+          metronomeMode = session.metronomeMode;
+          countInMode = session.countInMode;
+          mutedInstrumentIds.clear();
+          session.mutedInstrumentIds.forEach((instrumentId) => mutedInstrumentIds.add(instrumentId));
+          practiceSelection = nextSelection;
+          selectionModeOpen = gridEditor ? false : session.selectionModeOpen;
+          selectedBarIndex = clampBarIndex(block, session.currentBarIndex);
+          currentSlotIndex = block.bars[selectedBarIndex]?.startSlot ?? currentSlotIndex;
+          updateHeader();
+          renderFirstRunTip();
+          renderBarSelectors();
+        })
+      : null;
+
     updateHeader();
     renderFirstRunTip();
     renderParseWarnings();
     renderScore();
+    publishPracticeSession();
     queueModeAvailabilityRefresh();
     child.registerEvent(this.app.workspace.on("layout-change", () => queueModeAvailabilityRefresh()));
     child.registerEvent(this.app.workspace.on("active-leaf-change", () => queueModeAvailabilityRefresh()));
@@ -1496,7 +1961,12 @@ export default class DrumNotationPlugin extends Plugin {
       }
       clearModeRefreshTimer();
       clearEditRestoreTimer();
+      unsubscribePracticeSession?.();
       gridEditor?.destroy();
+      this.notationControllers.delete(renderOwner);
+      if (this.lastInteractedControllerOwner === renderOwner) {
+        this.lastInteractedControllerOwner = null;
+      }
       this.stopActivePlayer(renderOwner);
       this.stopActivePreview(renderOwner);
     });
@@ -1510,7 +1980,7 @@ export default class DrumNotationPlugin extends Plugin {
     });
 
     loopButton.addEventListener("click", () => {
-      if (isLoopingBar) {
+      if (transportMode === "loop-bar") {
         stopLocalPlayback();
         return;
       }
@@ -1518,18 +1988,12 @@ export default class DrumNotationPlugin extends Plugin {
       void startLoopBar(barIndexForSlot(block, currentSlotIndex), undefined, true);
     });
 
-    loopAllButton.addEventListener("click", () => {
-      if (isLoopingAll) {
-        stopLocalPlayback();
-        return;
-      }
-
-      void startLoopAll(0, true);
-    });
+    loopAllButton.addEventListener("click", openLoopMenu);
 
     speedSelect.addEventListener("change", () => {
       playbackSpeedPercent = Number(speedSelect.value);
       updateHeader();
+      publishPracticeSession();
       void restartActivePlaybackForControls();
     });
 
@@ -1554,8 +2018,7 @@ export default class DrumNotationPlugin extends Plugin {
         window.setTimeout(() => {
           schedulePlaybackRestart(
             true,
-            restored.playback.wasLooping,
-            restored.playback.wasLoopingAll,
+            restored.playback.transportMode,
             restored.playback.slotIndex,
             restored.playback.barIndex,
             restored.playback.position
@@ -1686,8 +2149,92 @@ export default class DrumNotationPlugin extends Plugin {
     return file instanceof TFile ? file : null;
   }
 
+  private async resolvePracticeSessionKey(
+    source: string,
+    el: HTMLElement,
+    ctx: MarkdownPostProcessorContext,
+    section: ReturnType<MarkdownPostProcessorContext["getSectionInfo"]>
+  ): Promise<string | null> {
+    const resolveUniqueSourceBlock = async (file: TFile): Promise<string | null> => {
+      try {
+        const markdown = await this.app.vault.cachedRead(file);
+        const matches = findExactDrumsBlockLineStarts(markdown, source);
+        return matches.length === 1 ? this.getEditSessionKey(file.path, matches[0]) : null;
+      } catch {
+        return null;
+      }
+    };
+    const contextFile = this.getSourceFile(ctx.sourcePath);
+    if (contextFile) {
+      if (section) {
+        try {
+          const markdown = await this.app.vault.cachedRead(contextFile);
+          const matches = findExactDrumsBlockLineStarts(markdown, source);
+          const sectionMatch = matches.find(
+            (lineStart) => lineStart === section.lineStart || lineStart + 1 === section.lineStart
+          );
+          if (sectionMatch !== undefined) {
+            return this.getEditSessionKey(contextFile.path, sectionMatch);
+          }
+        } catch {
+          return null;
+        }
+      }
+    }
+
+    const embed = el.closest<HTMLElement>(".internal-embed, .markdown-embed");
+    const embedSource = embed?.getAttribute("src") ?? embed?.getAttribute("data-path");
+    if (embedSource) {
+      const linkPath = embedSource.split("#", 1)[0]?.trim();
+      if (linkPath) {
+        const embeddedFile = this.app.metadataCache.getFirstLinkpathDest(linkPath, ctx.sourcePath);
+        if (embeddedFile) {
+          return resolveUniqueSourceBlock(embeddedFile);
+        }
+      }
+
+      return null;
+    }
+
+    return contextFile ? resolveUniqueSourceBlock(contextFile) : null;
+  }
+
   private getEditSessionKey(sourcePath: string, lineStart: number): string {
     return `${sourcePath}:${lineStart}`;
+  }
+
+  private runNotationControllerCommand(action: (controller: DrumNotationController) => void): void {
+    const result = this.resolveNotationController();
+    if (!result.controller) {
+      new Notice(result.ambiguous
+        ? "Choose a drum notation block before using this command."
+        : "No active drum notation block was found.");
+      return;
+    }
+
+    action(result.controller);
+  }
+
+  private resolveNotationController(): {
+    controller: DrumNotationController | null;
+    ambiguous: boolean;
+  } {
+    const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+    const connected = [...this.notationControllers.values()].filter(
+      (controller) => controller.root.isConnected
+    );
+    const lastInteracted = this.lastInteractedControllerOwner
+      ? this.notationControllers.get(this.lastInteractedControllerOwner) ?? null
+      : null;
+    const resolution = resolvePracticeControllerTarget(connected.map((controller) => ({
+      value: controller,
+      isPlaying: controller.isPlaying(),
+      isInActiveView: activeView?.containerEl.contains(controller.root) ?? false,
+      isVisible: controller.root.getClientRects().length > 0,
+      isLastInteracted: controller === lastInteracted
+    })));
+
+    return { controller: resolution.value, ambiguous: resolution.ambiguous };
   }
 
   private stopActivePlayer(owner?: symbol): void {
@@ -2009,8 +2556,7 @@ function makeInitialEditSession(body: string): RestoredEditSession {
     selectedBarIndex: 0,
     playback: {
       wasPlaying: false,
-      wasLooping: false,
-      wasLoopingAll: false,
+      transportMode: "idle",
       slotIndex: 0,
       barIndex: 0
     }

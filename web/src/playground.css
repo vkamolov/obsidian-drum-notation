@@ -747,12 +747,14 @@ body.pg-verify-workspace-maximized .pg-verify-resizer::before {
 }
 
 .pg-mute-control,
-.pg-metronome-control {
+.pg-metronome-control,
+.pg-loop-control {
   position: relative;
 }
 
 .pg-mute-menu,
-.pg-metronome-menu {
+.pg-metronome-menu,
+.pg-loop-menu {
   position: absolute;
   z-index: 20;
   top: calc(100% + 0.35rem);
@@ -767,7 +769,8 @@ body.pg-verify-workspace-maximized .pg-verify-resizer::before {
 }
 
 .pg-mute-menu[hidden],
-.pg-metronome-menu[hidden] {
+.pg-metronome-menu[hidden],
+.pg-loop-menu[hidden] {
   display: none;
 }
 
@@ -1446,7 +1449,8 @@ body.pg-verify-workspace-maximized .pg-footer {
 
   .pg-playback-speed,
   .pg-metronome-control > .pg-btn,
-  .pg-mute-control > .pg-btn {
+  .pg-mute-control > .pg-btn,
+  .pg-loop-control > .pg-btn {
     width: 100%;
   }
 

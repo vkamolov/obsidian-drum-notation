@@ -100,9 +100,18 @@ the **first** import in `app.ts`. `engrave.ts` itself was **not** changed.
 
 - Live editor (`<textarea>`) -> `parseDrumBlock` -> `renderVexflowScore`
   preview; debounced 250ms; localStorage autosave.
-- Playback: Play / Stop / Loop Bar via `DrumPlayer` + lazy `AudioContext`;
+- Playback: Play / Stop / Loop Bar plus a Loop menu for the whole notation or
+  a selected multi-bar practice phrase, via `DrumPlayer` + lazy `AudioContext`;
   cursor + note highlight ported from `main.ts`; click-a-note preview via
   `DrumSynth`.
+- Practice selection: choose **Select bars** from the Loop menu, then click,
+  tap, or keyboard-activate rendered bars/notes. **Play** runs the selected
+  phrase once and **Loop selected bars** repeats it. Selection follows score
+  order, treats compact `%xN` regions atomically, and intentionally ignores
+  section navigation and the authored `Repeat:` count.
+- Practice controls and selection are page-session state. They survive score
+  rerenders but are cleared by a reload and are never written to
+  `localStorage`.
 - Authoring toolbar: example picker, title, tempo, time signature, grid, repeat,
   and legend controls. Toolbar edits rewrite the notation textarea in an
   Obsidian-ready authoring form that keeps `Title`, `Tempo`, `Time`, and `Grid`
@@ -161,7 +170,12 @@ In the browser at `localhost:5173`:
    contains an Obsidian-ready block with `Title`, `Tempo`, `Time`, and `Grid`.
    The advanced diagnostics panel can be opened to compare normalized output
    with the current authoring text.
-2. Click **Play** → audio + moving cursor/highlight.
+2. Click **Play** → audio + moving cursor/highlight. Open **Loop**, choose
+   **Select bars**, select two rendered bars, and finish selection. Confirm
+   **Play** runs the phrase once, **Loop selected bars (2)** repeats it, and
+   Stop retains the green practice outlines. Changing the selection stops
+   playback; changing speed, mute, metronome, or count-in restarts at the same
+   musical occurrence without another count-in.
 3. Click **Edit** → a selected-bar grid opens below the live preview. Use the
    Bar chips, or click a rendered notation bar, to switch which bar is shown.
    Click an empty HH cell → fills (normal) and immediately updates the editor
@@ -190,6 +204,9 @@ Console should be free of errors/warnings.
 
 ## Known limitations / things to scrutinize
 
+- **Practice state:** playback controls and selected bars are memory-only for
+  the current page. Reloading clears them; the notation and theme remain the
+  only normal playground values saved to `localStorage`.
 - **Agent verification privacy:** source PNG/JPEG/WebP images, pasted agent
   responses, reports, and review state remain ephemeral. Only an explicit Save
   writes normalized notation to the existing playground `localStorage` key.

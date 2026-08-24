@@ -42,6 +42,12 @@ import {
   recoverAudioContext
 } from "../../src/playback";
 import { DrumPlayer } from "../../src/player";
+import {
+  hasCompatiblePracticeStructure,
+  isPracticeRegionSelected,
+  normalizePracticeSelection,
+  togglePracticeRegion
+} from "../../src/practice";
 import { getMeasureRepeatProgress } from "../../src/repeat-progress";
 import { serializeDrumBlock } from "../../src/serializer";
 import { validateDrumNotation } from "../../src/validation";
@@ -53,11 +59,13 @@ import {
   DrumBlock,
   DrumPlaybackPosition,
   DrumSlot,
+  DrumTransportMode,
   GridResolution,
   LegendMode,
   MAX_MEASURE_REPEAT_COUNT,
   MetronomeMode,
   ParseWarning,
+  PracticeSelection,
   ScoreBarRegion
 } from "../../src/types";
 import { normalizeLabel } from "../../src/util";
@@ -135,6 +143,7 @@ const playBtn = $<HTMLButtonElement>("pg-play");
 const stopBtn = $<HTMLButtonElement>("pg-stop");
 const loopBtn = $<HTMLButtonElement>("pg-loop");
 const loopAllBtn = $<HTMLButtonElement>("pg-loop-all");
+const loopMenu = $<HTMLDivElement>("pg-loop-menu");
 const speedSelect = $<HTMLSelectElement>("pg-speed");
 const metronomeBtn = $<HTMLButtonElement>("pg-metronome");
 const metronomeMenu = $<HTMLDivElement>("pg-metronome-menu");
@@ -206,12 +215,13 @@ let editSelectedSlotIndex: number | null = null;
 let selectedBarIndex = 0;
 let currentSlotIndex = 0;
 let lastRenderError: string | null = null;
-let isLooping = false;
-let isLoopingAll = false;
+let transportMode: DrumTransportMode = "idle";
 let playbackSpeedPercent = DEFAULT_PLAYBACK_SPEED_PERCENT;
 let metronomeMode: MetronomeMode = DEFAULT_METRONOME_MODE;
 let countInMode: CountInMode = DEFAULT_COUNT_IN_MODE;
 const mutedInstrumentIds = new Set<string>();
+let practiceSelection: PracticeSelection = { barIndexes: [] };
+let selectionModeOpen = false;
 let gridEditor: GridEditorHandle | null = null;
 let isApplyingGridEdit = false;
 let audioRecoveryWarning: string | null = null;
@@ -345,6 +355,15 @@ function renderPreview(): void {
   const scrollSnapshot = capturePreviewScroll();
   const parsed = parseDrumBlockWithWarnings(editor.value);
   const block = parsed.block;
+  if (currentBlock && !hasCompatiblePracticeStructure(currentBlock, block)) {
+    if (practiceSelection.barIndexes.length > 0) {
+      stopPlayback();
+    }
+    practiceSelection = { barIndexes: [] };
+    selectionModeOpen = false;
+  } else {
+    practiceSelection = normalizePracticeSelection(practiceSelection, block.bars.length);
+  }
   currentBlock = block;
   currentParseWarnings = parsed.warnings;
   lastRenderError = null;
@@ -373,6 +392,17 @@ function renderPreview(): void {
   stopBtn.disabled = !hasRows;
   loopBtn.disabled = !hasRows;
   loopAllBtn.disabled = !hasRows;
+  const selectedCount = practiceSelection.barIndexes.length;
+  const playDescription = selectedCount > 0
+    ? `Play selected bars (${selectedCount})`
+    : "Play whole notation";
+  playBtn.title = playDescription;
+  playBtn.setAttribute("aria-label", playDescription);
+  const loopDescription = selectedCount > 0
+    ? `Loop options · ${selectedCount} selected`
+    : "Loop options";
+  loopAllBtn.title = loopDescription;
+  loopAllBtn.setAttribute("aria-label", loopDescription);
   speedSelect.disabled = !hasRows;
   metronomeBtn.disabled = block.slots.length === 0;
   muteBtn.disabled = !hasRows;
@@ -417,11 +447,44 @@ function renderPreview(): void {
 }
 
 function renderFirstRunTip(): void {
-  if (isFirstRunTipDismissed()) {
+  const selectedCount = practiceSelection.barIndexes.length;
+  const showPracticeStatus = selectionModeOpen || selectedCount > 0;
+  if (!showPracticeStatus && isFirstRunTipDismissed()) {
     return;
   }
 
-  const tip = preview.createDiv({ cls: "drum-notation__tip pg-discovery-tip" });
+  const tip = preview.createDiv({
+    cls: `drum-notation__tip pg-discovery-tip${showPracticeStatus ? " drum-notation__tip--practice" : ""}`
+  });
+  if (showPracticeStatus) {
+    tip.createSpan({
+      cls: "drum-notation__practice-label",
+      text: selectionModeOpen
+        ? `Select bars to practise · ${selectedCount} selected`
+        : `Practice selection · ${selectedCount} bar${selectedCount === 1 ? "" : "s"}`
+    });
+    const modeButton = tip.createEl("button", {
+      cls: "drum-notation__tip-dismiss drum-notation__practice-action",
+      attr: {
+        type: "button",
+        "aria-label": selectionModeOpen ? "Done selecting practice bars" : "Edit practice selection"
+      }
+    });
+    modeButton.append(createIconSvg(selectionModeOpen ? "check" : "list-checks"));
+    modeButton.createSpan({ text: selectionModeOpen ? "Done" : "Edit selection" });
+    modeButton.addEventListener("click", () => setSelectionModeOpen(!selectionModeOpen));
+
+    const clearButton = tip.createEl("button", {
+      cls: "drum-notation__tip-dismiss drum-notation__practice-action",
+      attr: { type: "button", "aria-label": "Clear practice selection" }
+    });
+    clearButton.append(createIconSvg("x"));
+    clearButton.createSpan({ text: "Clear" });
+    clearButton.disabled = selectedCount === 0;
+    clearButton.addEventListener("click", clearPracticeSelection);
+    return;
+  }
+
   tip.createSpan({
     text: "Tip: Try the pencil/edit controls to edit notes visually, or choose an example from the list."
   });
@@ -452,6 +515,12 @@ function drawScore(block: DrumBlock, score: HTMLElement): void {
     cursorEl = block.showCursor ? score.createDiv({ cls: "drum-notation__cursor" }) : null;
     noteElements = makeRenderedNotesInteractive(block, score, (slot) => {
       const slotBarIndex = barIndexForSlot(block, slot.index);
+      const region = barRegions.find((candidate) => candidate.barIndexes.includes(slotBarIndex));
+
+      if (selectionModeOpen && !gridEditor && region) {
+        togglePracticeBarRegion(region);
+        return;
+      }
 
       currentSlotIndex = slot.index;
       if (gridEditor) {
@@ -609,12 +678,16 @@ function clearBarSelectors(): void {
 }
 
 function renderBarSelectors(block: DrumBlock, score: HTMLElement): void {
-  if (!gridEditor || barRegions.length === 0) {
+  if ((!gridEditor && !selectionModeOpen && practiceSelection.barIndexes.length === 0) || barRegions.length === 0) {
     return;
   }
 
   clearBarSelectors();
   const layer = score.createDiv({ cls: "pg-bar-selectors" });
+  if (!gridEditor) {
+    layer.addClass("is-practice-selection");
+    layer.toggleClass("is-selection-open", selectionModeOpen);
+  }
 
   barRegions.forEach((region) => {
     const button = layer.createEl("button", {
@@ -633,7 +706,14 @@ function renderBarSelectors(block: DrumBlock, score: HTMLElement): void {
       "--pg-bar-selector-width": `${Math.round(region.width)}px`,
       "--pg-bar-selector-height": `${Math.round(region.height)}px`
     });
-    button.addEventListener("click", () => selectBar(region.barIndex, true));
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      if (gridEditor) {
+        selectBar(region.barIndex, true);
+      } else {
+        togglePracticeBarRegion(region);
+      }
+    });
   });
 
   updateBarSelectorState(block);
@@ -650,10 +730,50 @@ function updateBarSelectorState(block: DrumBlock | null = currentBlock): void {
       .split(/\s+/)
       .map((value) => Number.parseInt(value, 10))
       .filter((value) => Number.isFinite(value));
-    const selected = indexes.includes(selectedBarIndex);
+    const selected = gridEditor
+      ? indexes.includes(selectedBarIndex)
+      : isPracticeRegionSelected(practiceSelection, { barIndexes: indexes });
 
     button.classList.toggle("is-selected", selected);
+    button.classList.toggle("is-practice-selected", !gridEditor && selected);
     button.setAttr("aria-pressed", selected ? "true" : "false");
+    if (!gridEditor) {
+      const firstBar = (indexes[0] ?? 0) + 1;
+      const lastBar = (indexes[indexes.length - 1] ?? indexes[0] ?? 0) + 1;
+      const barLabel = firstBar === lastBar ? `bar ${firstBar}` : `bars ${firstBar}–${lastBar}`;
+      button.setAttr(
+        "aria-label",
+        `${selected ? "Remove" : "Add"} ${barLabel} ${selected ? "from" : "to"} practice selection`
+      );
+    }
+  });
+
+  const updatedNotes = new Set<SVGGElement>();
+  noteElements.forEach((elements, slotIndex) => {
+    elements?.forEach((element) => {
+      if (updatedNotes.has(element)) {
+        return;
+      }
+      updatedNotes.add(element);
+      const barIndex = barIndexForSlot(block, slotIndex);
+      const region = barRegions.find((candidate) => candidate.barIndexes.includes(barIndex));
+      if (!selectionModeOpen || !region) {
+        element.setAttribute(
+          "aria-label",
+          element.dataset.previewAriaLabel ?? `Preview note at slot ${slotIndex + 1}`
+        );
+        return;
+      }
+
+      const regionSelected = isPracticeRegionSelected(practiceSelection, region);
+      const firstBar = region.barIndexes[0] + 1;
+      const lastBar = region.barIndexes[region.barIndexes.length - 1] + 1;
+      const barLabel = firstBar === lastBar ? `bar ${firstBar}` : `bars ${firstBar}–${lastBar}`;
+      element.setAttribute(
+        "aria-label",
+        `${regionSelected ? "Remove" : "Add"} ${barLabel} ${regionSelected ? "from" : "to"} practice selection`
+      );
+    });
   });
 }
 
@@ -697,7 +817,45 @@ function selectRenderedBarAtPoint(event: MouseEvent): void {
     return;
   }
 
-  selectBar(region.barIndex, Boolean(gridEditor));
+  if (selectionModeOpen && !gridEditor) {
+    togglePracticeBarRegion(region);
+  } else {
+    selectBar(region.barIndex, Boolean(gridEditor));
+  }
+}
+
+function clearPracticeSelection(): void {
+  if (practiceSelection.barIndexes.length === 0 && !selectionModeOpen) {
+    return;
+  }
+  stopPlayback();
+  practiceSelection = { barIndexes: [] };
+  selectionModeOpen = false;
+  renderPreview();
+}
+
+function setSelectionModeOpen(open: boolean): void {
+  if (gridEditor && open) {
+    return;
+  }
+  if (selectionModeOpen === open) {
+    return;
+  }
+  stopPlayback();
+  selectionModeOpen = open;
+  setLoopMenuOpen(false);
+  renderPreview();
+}
+
+function togglePracticeBarRegion(region: ScoreBarRegion): void {
+  if (!selectionModeOpen || gridEditor || !currentBlock) {
+    return;
+  }
+  stopPlayback();
+  practiceSelection = togglePracticeRegion(practiceSelection, region, currentBlock.bars.length);
+  selectedBarIndex = clampBarIndex(currentBlock, region.barIndex);
+  currentSlotIndex = currentBlock.bars[selectedBarIndex]?.startSlot ?? currentSlotIndex;
+  renderPreview();
 }
 
 function barIndexForSlot(block: DrumBlock, slotIndex: number): number {
@@ -747,8 +905,7 @@ function setPlaying(button: HTMLButtonElement, on: boolean): void {
 function stopPlayback(): void {
   player?.stop();
   player = null;
-  isLooping = false;
-  isLoopingAll = false;
+  transportMode = "idle";
   setPlaying(playBtn, false);
   setPlaying(loopBtn, false);
   setPlaying(loopAllBtn, false);
@@ -770,7 +927,8 @@ async function play(
   initialSlot = 0,
   recoverBeforeStart = false,
   useCountIn = true,
-  initialPosition?: DrumPlaybackPosition
+  initialPosition?: DrumPlaybackPosition,
+  useSelection = practiceSelection.barIndexes.length > 0
 ): Promise<boolean> {
   if (!(await preparePlaybackStart(recoverBeforeStart))) {
     return false;
@@ -782,6 +940,7 @@ async function play(
 
   const block = currentBlock;
   currentSlotIndex = clampSlotIndex(block, initialSlot);
+  transportMode = useSelection ? "play-selection" : "play-all";
   setPlaying(playBtn, true);
   player = new DrumPlayer(
     getAudioContext(),
@@ -790,6 +949,7 @@ async function play(
       setPlaying(playBtn, false);
       clearVisuals();
       clearRepeatProgress();
+      transportMode = "idle";
       player = null;
     },
     (slotIndex) => {
@@ -801,7 +961,8 @@ async function play(
       endSlot: block.slots.length,
       initialSlot: currentSlotIndex,
       ...(initialPosition ? { initialPosition } : {}),
-      repeatCount: block.repeatCount,
+      repeatCount: useSelection ? 1 : block.repeatCount,
+      ...(useSelection ? { selectedBarIndexes: practiceSelection.barIndexes } : {}),
       speedPercent: playbackSpeedPercent,
       mutedInstrumentIds,
       metronomeMode,
@@ -818,7 +979,7 @@ async function play(
 }
 
 function loopBar(): void {
-  if (isLooping) {
+  if (transportMode === "loop-bar") {
     stopPlayback();
     return;
   }
@@ -848,7 +1009,7 @@ async function startLoopBar(
   const barStartSlot = bar?.startSlot ?? clampSlotIndex(block, currentSlotIndex);
   const range = getBarRange(block, barStartSlot);
   currentSlotIndex = clampSlotToRange(initialSlot ?? range.startSlot, range.startSlot, range.endSlot);
-  isLooping = true;
+  transportMode = "loop-bar";
   setPlaying(loopBtn, true);
   player = new DrumPlayer(
     getAudioContext(),
@@ -857,7 +1018,7 @@ async function startLoopBar(
       setPlaying(loopBtn, false);
       clearVisuals();
       clearRepeatProgress();
-      isLooping = false;
+      transportMode = "idle";
       player = null;
     },
     (slotIndex) => {
@@ -880,18 +1041,6 @@ async function startLoopBar(
   return true;
 }
 
-function loopAll(): void {
-  if (isLoopingAll) {
-    stopPlayback();
-    return;
-  }
-  if (!currentBlock || currentBlock.rows.length === 0) {
-    return;
-  }
-
-  void startLoopAll(0, true);
-}
-
 async function startLoopAll(
   initialSlot = 0,
   recoverBeforeStart = false,
@@ -908,7 +1057,7 @@ async function startLoopAll(
 
   const block = currentBlock;
   currentSlotIndex = clampSlotIndex(block, initialSlot);
-  isLoopingAll = true;
+  transportMode = "loop-all";
   setPlaying(loopAllBtn, true);
   player = new DrumPlayer(
     getAudioContext(),
@@ -917,7 +1066,7 @@ async function startLoopAll(
       setPlaying(loopAllBtn, false);
       clearVisuals();
       clearRepeatProgress();
-      isLoopingAll = false;
+      transportMode = "idle";
       player = null;
     },
     (slotIndex) => {
@@ -945,10 +1094,65 @@ async function startLoopAll(
   return true;
 }
 
+async function startLoopSelection(
+  initialSlot = practiceSelection.barIndexes.length > 0 && currentBlock
+    ? currentBlock.bars[practiceSelection.barIndexes[0]]?.startSlot ?? 0
+    : 0,
+  recoverBeforeStart = false,
+  useCountIn = true,
+  initialPosition?: DrumPlaybackPosition
+): Promise<boolean> {
+  if (!(await preparePlaybackStart(recoverBeforeStart))) {
+    return false;
+  }
+  if (!currentBlock || currentBlock.rows.length === 0 || practiceSelection.barIndexes.length === 0) {
+    return false;
+  }
+
+  const block = currentBlock;
+  currentSlotIndex = clampSlotIndex(block, initialSlot);
+  transportMode = "loop-selection";
+  setPlaying(loopAllBtn, true);
+  player = new DrumPlayer(
+    getAudioContext(),
+    block,
+    () => {
+      setPlaying(loopAllBtn, false);
+      clearVisuals();
+      clearRepeatProgress();
+      transportMode = "idle";
+      player = null;
+    },
+    (slotIndex) => {
+      currentSlotIndex = slotIndex;
+      moveCursor(slotIndex);
+    },
+    {
+      initialSlot: currentSlotIndex,
+      ...(initialPosition ? { initialPosition } : {}),
+      selectedBarIndexes: practiceSelection.barIndexes,
+      loop: true,
+      speedPercent: playbackSpeedPercent,
+      mutedInstrumentIds,
+      metronomeMode,
+      countInMode: useCountIn ? countInMode : "off",
+      onBarChange: (barIndex) => {
+        selectedBarIndex = clampBarIndex(block, barIndex);
+        showRepeatProgressForBar(block, barIndex);
+      }
+    },
+    createPlaybackBackend
+  );
+  if (!useCountIn || countInMode === "off") {
+    showRepeatProgressForBar(block, barIndexForSlot(block, currentSlotIndex));
+  }
+  void player.play();
+  return true;
+}
+
 function restartPlaybackAfterEdit(
   wasPlaying: boolean,
-  wasLooping: boolean,
-  wasLoopingAll: boolean,
+  previousTransportMode: DrumTransportMode,
   restartSlotIndex: number,
   restartBarIndex: number,
   restartPosition?: DrumPlaybackPosition
@@ -957,27 +1161,29 @@ function restartPlaybackAfterEdit(
     return;
   }
 
-  if (wasLoopingAll) {
+  if (previousTransportMode === "loop-selection") {
+    void startLoopSelection(restartSlotIndex, false, false, restartPosition);
+  } else if (previousTransportMode === "loop-all") {
     void startLoopAll(restartSlotIndex, false, false, restartPosition);
-  } else if (wasLooping) {
+  } else if (previousTransportMode === "loop-bar") {
     void startLoopBar(restartBarIndex, undefined, false, false);
+  } else if (previousTransportMode === "play-selection") {
+    void play(restartSlotIndex, false, false, restartPosition, true);
   } else {
-    void play(restartSlotIndex, false, false, restartPosition);
+    void play(restartSlotIndex, false, false, restartPosition, false);
   }
 }
 
 function capturePlaybackRestart(): (barIndex?: number) => void {
   const wasPlaying = player !== null;
-  const wasLooping = isLooping;
-  const wasLoopingAll = isLoopingAll;
+  const previousTransportMode = transportMode;
   const restartPosition = player?.getCurrentPlaybackPosition();
   const restartSlotIndex = restartPosition?.slotIndex ?? currentSlotIndex;
   const restartBarIndex = selectedBarIndex;
 
   return (barIndex = restartBarIndex) => restartPlaybackAfterEdit(
     wasPlaying,
-    wasLooping,
-    wasLoopingAll,
+    previousTransportMode,
     restartSlotIndex,
     barIndex,
     restartPosition
@@ -991,17 +1197,20 @@ async function restartPlaybackForControlChange(): Promise<void> {
 
   const restartPosition = player.getCurrentPlaybackPosition();
   const restartSlotIndex = restartPosition.slotIndex;
-  const wasLooping = isLooping;
-  const wasLoopingAll = isLoopingAll;
+  const previousTransportMode = transportMode;
   const restartBarIndex = barIndexForSlot(currentBlock, restartSlotIndex);
 
   stopPlayback();
-  if (wasLoopingAll) {
+  if (previousTransportMode === "loop-selection") {
+    await startLoopSelection(restartSlotIndex, true, false, restartPosition);
+  } else if (previousTransportMode === "loop-all") {
     await startLoopAll(restartSlotIndex, true, false, restartPosition);
-  } else if (wasLooping) {
+  } else if (previousTransportMode === "loop-bar") {
     await startLoopBar(restartBarIndex, restartSlotIndex, true, false);
+  } else if (previousTransportMode === "play-selection") {
+    await play(restartSlotIndex, true, false, restartPosition, true);
   } else {
-    await play(restartSlotIndex, true, false, restartPosition);
+    await play(restartSlotIndex, true, false, restartPosition, false);
   }
 }
 
@@ -1082,6 +1291,88 @@ function syncPlaybackControls(block: DrumBlock): void {
 
   if (!muteMenu.hidden) {
     renderMuteMenu();
+  }
+
+  if (!loopMenu.hidden) {
+    renderLoopMenu();
+  }
+}
+
+function renderLoopMenu(): void {
+  const previouslyFocusedIndex = [
+    ...loopMenu.querySelectorAll<HTMLButtonElement>("button:not(:disabled)")
+  ].findIndex((item) => item === activeDocument.activeElement);
+  loopMenu.empty();
+  const selectedCount = practiceSelection.barIndexes.length;
+  const addItem = (
+    label: string,
+    checked: boolean | null,
+    onActivate: () => void,
+    disabled = false
+  ) => {
+    const item = loopMenu.createEl("button", {
+      cls: "pg-metronome-menu__item",
+      attr: {
+        type: "button",
+        role: checked === null ? "menuitem" : "menuitemcheckbox",
+        ...(checked === null ? {} : { "aria-checked": checked ? "true" : "false" })
+      }
+    });
+    item.createSpan({
+      cls: "pg-metronome-menu__check",
+      text: checked === true ? "✓" : ""
+    });
+    item.createSpan({ text: label });
+    item.disabled = disabled;
+    item.addEventListener("click", () => {
+      setLoopMenuOpen(false);
+      onActivate();
+    });
+  };
+
+  addItem("Loop whole notation", transportMode === "loop-all", () => {
+    if (transportMode === "loop-all") {
+      stopPlayback();
+    } else {
+      void startLoopAll(0, true);
+    }
+  });
+  if (selectedCount > 0) {
+    addItem(`Loop selected bars (${selectedCount})`, transportMode === "loop-selection", () => {
+      if (transportMode === "loop-selection") {
+        stopPlayback();
+      } else {
+        void startLoopSelection(undefined, true);
+      }
+    });
+  }
+
+  loopMenu.createDiv({ cls: "pg-metronome-menu__label", text: "Practice selection" });
+  addItem(selectionModeOpen ? "Done selecting" : "Select bars", selectionModeOpen, () => {
+    setSelectionModeOpen(!selectionModeOpen);
+  });
+  addItem("Clear selection", null, clearPracticeSelection, selectedCount === 0);
+
+  if (previouslyFocusedIndex >= 0) {
+    const items = [...loopMenu.querySelectorAll<HTMLButtonElement>("button:not(:disabled)")];
+    items[Math.min(previouslyFocusedIndex, items.length - 1)]?.focus();
+  }
+}
+
+function setLoopMenuOpen(open: boolean): void {
+  loopMenu.hidden = !open;
+  loopAllBtn.setAttribute("aria-expanded", open ? "true" : "false");
+  if (open) {
+    setMetronomeMenuOpen(false);
+    setMuteMenuOpen(false);
+    renderLoopMenu();
+    const focusFirstItem = () => {
+      if (!loopMenu.hidden && !loopMenu.contains(activeDocument.activeElement)) {
+        loopMenu.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
+      }
+    };
+    focusFirstItem();
+    window.requestAnimationFrame(focusFirstItem);
   }
 }
 
@@ -1178,6 +1469,7 @@ function setMetronomeMenuOpen(open: boolean): void {
   metronomeMenu.hidden = !open;
   metronomeBtn.setAttribute("aria-expanded", open ? "true" : "false");
   if (open) {
+    setLoopMenuOpen(false);
     setMuteMenuOpen(false);
     renderMetronomeMenu();
   }
@@ -1262,6 +1554,7 @@ function setMuteMenuOpen(open: boolean): void {
   muteMenu.hidden = !open;
   muteBtn.setAttribute("aria-expanded", open ? "true" : "false");
   if (open) {
+    setLoopMenuOpen(false);
     setMetronomeMenuOpen(false);
     renderMuteMenu();
   }
@@ -1404,6 +1697,10 @@ function enterEditMode(): void {
     renderNotes(currentBlock, editor.value);
     return;
   }
+  if (selectionModeOpen) {
+    selectionModeOpen = false;
+    renderPreview();
+  }
   stopPlayback();
   stopPreview();
   selectedBarIndex = barIndexForSlot(currentBlock, currentSlotIndex);
@@ -1450,6 +1747,7 @@ function exitEditMode(): void {
   activeDocument.body.classList.remove("pg-editing");
   editBtn.classList.remove("is-playing");
   editRoot.hidden = true;
+  renderPreview();
 }
 
 /* ---------- diagnostics ---------- */
@@ -2556,7 +2854,36 @@ function init(): void {
   });
   stopBtn.addEventListener("click", stopPlayback);
   loopBtn.addEventListener("click", loopBar);
-  loopAllBtn.addEventListener("click", loopAll);
+  loopAllBtn.addEventListener("click", (event) => {
+    event.stopPropagation();
+    setLoopMenuOpen(loopMenu.hidden);
+  });
+  loopMenu.addEventListener("click", (event) => event.stopPropagation());
+  loopMenu.addEventListener("keydown", (event) => {
+    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
+      return;
+    }
+
+    const items = [...loopMenu.querySelectorAll<HTMLButtonElement>("button:not(:disabled)")];
+    if (items.length === 0) {
+      return;
+    }
+    event.preventDefault();
+    const targetIndex = items.findIndex((item) => item === event.target);
+    const activeIndex =
+      targetIndex >= 0
+        ? targetIndex
+        : items.findIndex((item) => item === activeDocument.activeElement);
+    const nextIndex =
+      event.key === "Home"
+        ? 0
+        : event.key === "End"
+          ? items.length - 1
+          : event.key === "ArrowUp"
+            ? (activeIndex <= 0 ? items.length : activeIndex) - 1
+            : (activeIndex + 1) % items.length;
+    items[nextIndex]?.focus();
+  });
   speedSelect.addEventListener("change", () => {
     playbackSpeedPercent = Number(speedSelect.value);
     if (currentBlock) {
@@ -2575,13 +2902,19 @@ function init(): void {
   });
   muteMenu.addEventListener("click", (event) => event.stopPropagation());
   activeDocument.addEventListener("click", () => {
+    setLoopMenuOpen(false);
     setMetronomeMenuOpen(false);
     setMuteMenuOpen(false);
   });
   activeDocument.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
+      const returnFocusToLoop = !loopMenu.hidden && loopMenu.contains(activeDocument.activeElement);
+      setLoopMenuOpen(false);
       setMetronomeMenuOpen(false);
       setMuteMenuOpen(false);
+      if (returnFocusToLoop) {
+        loopAllBtn.focus();
+      }
       if (activeDocument.body.classList.contains("pg-verify-workspace-maximized")) {
         setVerificationWorkspaceMaximized(false);
       }

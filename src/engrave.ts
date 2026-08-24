@@ -2051,7 +2051,9 @@ function makeRenderedNotesInteractive(
     group.classList.add("drum-notation__interactive-note");
     group.setAttribute("tabindex", "0");
     group.setAttribute("role", "button");
-    group.setAttribute("aria-label", `Preview ${instrumentList} at slot ${slot.index + 1}`);
+    const previewLabel = `Preview ${instrumentList} at slot ${slot.index + 1}`;
+    group.dataset.previewAriaLabel = previewLabel;
+    group.setAttribute("aria-label", previewLabel);
     group.addEventListener("keydown", (event) => {
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();

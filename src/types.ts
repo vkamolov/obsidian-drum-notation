@@ -144,8 +144,21 @@ export interface PlaybackOptions {
   mutedInstrumentIds?: ReadonlySet<string>;
   metronomeMode?: MetronomeMode;
   countInMode?: CountInMode;
+  selectedBarIndexes?: readonly number[];
   onBarChange?: (barIndex: number) => void;
 }
+
+export interface PracticeSelection {
+  barIndexes: number[];
+}
+
+export type DrumTransportMode =
+  | "idle"
+  | "play-all"
+  | "play-selection"
+  | "loop-bar"
+  | "loop-all"
+  | "loop-selection";
 
 export interface DrumPlaybackPosition {
   slotIndex: number;
