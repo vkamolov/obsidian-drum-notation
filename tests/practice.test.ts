@@ -22,6 +22,11 @@ function makeSession(overrides: Partial<DrumTransportSession> = {}): DrumTranspo
     selection: { barIndexes: [] },
     selectionModeOpen: false,
     currentBarIndex: 0,
+    tempoRamp: {
+      config: null,
+      progress: { completedPasses: 0, completed: false },
+      armed: false
+    },
     ...overrides
   };
 }
@@ -131,6 +136,39 @@ describe("DrumTransportSessionStore", () => {
       mutedInstrumentIds: ["kick", "snare"],
       selection: { barIndexes: [1, 3] }
     }));
+  });
+
+  it("clones and shares tempo-ramp progress without retaining mutable target arrays", () => {
+    const store = new DrumTransportSessionStore();
+    const session = makeSession({
+      tempoRamp: {
+        config: {
+          target: { kind: "selected-bars", barIndexes: [2, 1] },
+          startBpm: 70,
+          stepBpm: 5,
+          passesPerStep: 4,
+          ceilingBpm: 90,
+          endBehavior: "hold"
+        },
+        progress: { completedPasses: 3, completed: false },
+        armed: true
+      }
+    });
+
+    store.set("note.md:4", session);
+    const restored = store.get("note.md:4", session.body);
+    expect(restored?.tempoRamp).toMatchObject({
+      armed: true,
+      progress: { completedPasses: 3, completed: false },
+      config: { target: { kind: "selected-bars", barIndexes: [1, 2] } }
+    });
+
+    if (restored?.tempoRamp.config?.target.kind === "selected-bars") {
+      restored.tempoRamp.config.target.barIndexes.push(9);
+    }
+    expect(store.get("note.md:4", session.body)?.tempoRamp.config).toMatchObject({
+      target: { kind: "selected-bars", barIndexes: [1, 2] }
+    });
   });
 
   it("preserves two-bar count-in mode in session-local state", () => {

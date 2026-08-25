@@ -748,7 +748,8 @@ body.pg-verify-workspace-maximized .pg-verify-resizer::before {
 
 .pg-mute-control,
 .pg-metronome-control,
-.pg-loop-control {
+.pg-loop-control,
+.pg-speed-control {
   position: relative;
 }
 
@@ -758,7 +759,8 @@ body.pg-verify-workspace-maximized .pg-verify-resizer::before {
 
 .pg-mute-menu,
 .pg-metronome-menu,
-.pg-loop-menu {
+.pg-loop-menu,
+.pg-speed-menu {
   position: absolute;
   z-index: 20;
   top: calc(100% + 0.35rem);
@@ -774,8 +776,15 @@ body.pg-verify-workspace-maximized .pg-verify-resizer::before {
 
 .pg-mute-menu[hidden],
 .pg-metronome-menu[hidden],
-.pg-loop-menu[hidden] {
+.pg-loop-menu[hidden],
+.pg-speed-menu[hidden] {
   display: none;
+}
+
+.pg-speed-menu {
+  min-width: 15rem;
+  max-height: min(28rem, 70vh);
+  overflow-y: auto;
 }
 
 .pg-mute-menu__item,
@@ -1388,6 +1397,29 @@ body.pg-verify-workspace-maximized .pg-footer {
   color: #fff;
   background: var(--pg-accent);
   border-color: color-mix(in srgb, var(--pg-accent) 85%, #000 15%);
+}
+
+.pg-tempo-ramp-dialog {
+  width: min(28rem, calc(100vw - 2rem));
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+}
+
+.pg-tempo-ramp-dialog__title {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.pg-tempo-ramp-dialog__select {
+  width: min(14rem, 62vw);
+}
+
+.pg-tempo-ramp-dialog__summary {
+  min-height: 1.2rem;
+  margin: 0;
+  color: var(--pg-muted);
+  font-size: 0.78rem;
+  line-height: 1.4;
 }
 
 /* ---- responsive: stack on narrow screens ---- */

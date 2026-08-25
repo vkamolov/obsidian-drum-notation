@@ -16,7 +16,9 @@ import {
   getEffectivePlaybackTempo,
   getMetronomePulses,
   getSafeClickSubdivision,
+  getSafeClickSubdivisionAtTempo,
   isClickSubdivisionSafe,
+  isClickSubdivisionSafeAtTempo,
   isGapClickBar,
   normalizePlaybackSpeedPercent,
   recoverAudioContext
@@ -222,6 +224,130 @@ HH | x---`);
     expect(backend.scheduled[0].slotDuration).toBeCloseTo(getSecondsPerSlot(block, 150));
   });
 
+  it("schedules tempo-ramp passes at exact BPM without recreating the backend", async () => {
+    const block = parseDrumBlock(`Tempo: 120
+HH | x---`);
+    const backend = new FakePlaybackBackend();
+    const factory = vi.fn(() => backend) as DrumPlaybackBackendFactory;
+    const onPassStart = vi.fn();
+    const onPassComplete = vi.fn();
+    const onEnded = vi.fn();
+    const player = new DrumPlayer(
+      {} as AudioContext,
+      block,
+      onEnded,
+      vi.fn(),
+      {
+        tempoRamp: {
+          config: {
+            target: { kind: "whole-notation" },
+            startBpm: 60,
+            stepBpm: 10,
+            passesPerStep: 1,
+            ceilingBpm: 70,
+            endBehavior: "stop"
+          },
+          progress: { completedPasses: 0, completed: false }
+        },
+        onTempoRampPassStart: onPassStart,
+        onTempoRampPassComplete: onPassComplete
+      },
+      factory
+    );
+
+    await player.play();
+
+    expect(factory).toHaveBeenCalledTimes(1);
+    expect(onPassStart.mock.calls[0]?.[0]).toMatchObject({ tempoBpm: 60, passInStep: 1 });
+    expect(notationSchedules(backend)[0].slotDuration).toBeCloseTo(0.25);
+
+    scheduledTimers[scheduledTimers.length - 1]?.();
+
+    expect(onPassComplete.mock.calls[0]?.[0]).toMatchObject({ completedPasses: 1, tempoBpm: 70 });
+    expect(onPassStart.mock.calls[1]?.[0]).toMatchObject({ tempoBpm: 70, atCeiling: true });
+    expect(notationSchedules(backend)[4].slotDuration).toBeCloseTo(60 / 70 / 4);
+    expect(factory).toHaveBeenCalledTimes(1);
+    backend.currentTime = notationSchedules(backend)[4].time + 0.01;
+    expect(player.getCurrentPlaybackPosition()).toMatchObject({
+      slotIndex: 0,
+      blockPassIndex: 1,
+      roadmapEntryIndex: 0
+    });
+
+    scheduledTimers[scheduledTimers.length - 1]?.();
+
+    expect(onPassComplete.mock.calls[1]?.[0]).toMatchObject({ completedPasses: 2, completed: true });
+    expect(onEnded).toHaveBeenCalledTimes(1);
+  });
+
+  it("runs trainer count-in at the current exact ramp BPM", async () => {
+    const block = parseDrumBlock(`Tempo: 120
+HH | x---`);
+    const backend = new FakePlaybackBackend();
+    const player = new DrumPlayer(
+      {} as AudioContext,
+      block,
+      vi.fn(),
+      vi.fn(),
+      {
+        countInMode: "1-bar",
+        tempoRamp: {
+          config: {
+            target: { kind: "whole-notation" },
+            startBpm: 60,
+            stepBpm: 5,
+            passesPerStep: 4,
+            ceilingBpm: 80,
+            endBehavior: "hold"
+          },
+          progress: { completedPasses: 4, completed: false }
+        }
+      },
+      (() => backend) as DrumPlaybackBackendFactory
+    );
+
+    await player.play();
+
+    expect(metronomeSchedules(backend)).toHaveLength(4);
+    expect(notationSchedules(backend)[0].time).toBeCloseTo(10.08 + 4 * (60 / 65));
+  });
+
+  it("steps an unsafe advanced-click subdivision down at the active ramp BPM", async () => {
+    const block = parseDrumBlock("Tempo: 60\nTime: 4/4\nHH | x---------------");
+    const backend = new FakePlaybackBackend();
+    const onPassStart = vi.fn();
+    const player = new DrumPlayer(
+      {} as AudioContext,
+      block,
+      vi.fn(),
+      vi.fn(),
+      {
+        clickSubdivision: "4-per-beat",
+        tempoRamp: {
+          config: {
+            target: { kind: "whole-notation" },
+            startBpm: 250,
+            stepBpm: 10,
+            passesPerStep: 1,
+            ceilingBpm: 260,
+            endBehavior: "hold"
+          },
+          progress: { completedPasses: 1, completed: false }
+        },
+        onTempoRampPassStart: onPassStart
+      },
+      (() => backend) as DrumPlaybackBackendFactory
+    );
+
+    await player.play();
+
+    expect(onPassStart).toHaveBeenCalledWith(expect.objectContaining({
+      tempoBpm: 260,
+      clickSubdivision: "3-per-beat"
+    }));
+    expect(metronomeSchedules(backend)).toHaveLength(0);
+  });
+
   it("schedules buzz rolls for the corrected Grid 16 visual span", async () => {
     const block = parseDrumBlock(`Tempo: 100
 SD | z--o`);
@@ -369,6 +495,14 @@ HH | x-----------`);
     expect(isClickSubdivisionSafe(block, 150, "3-per-beat")).toBe(false);
     expect(isClickSubdivisionSafe(block, 150, "4-per-beat")).toBe(false);
     expect(getSafeClickSubdivision(block, 150, "4-per-beat")).toBe("2-per-beat");
+  });
+
+  it("enforces the click-rate cap against an exact trainer BPM", () => {
+    const block = parseDrumBlock("Tempo: 60\nTime: 4/4\nHH | x---------------");
+
+    expect(isClickSubdivisionSafeAtTempo(block, 240, "4-per-beat")).toBe(true);
+    expect(isClickSubdivisionSafeAtTempo(block, 260, "4-per-beat")).toBe(false);
+    expect(getSafeClickSubdivisionAtTempo(block, 260, "4-per-beat")).toBe("3-per-beat");
   });
 
   it("starts gap cycles with clicked bars and follows exact on/off patterns", () => {

@@ -316,6 +316,52 @@ test("advanced click menu, badge, and gap cues remain compact and accessible", a
   await expect(page.locator("#pg-preview .drum-notation__gap-overlays")).toHaveCount(0);
 });
 
+test("tempo ramp setup runs exact BPM stages and preserves completed progress", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "wakeLock", { configurable: true, value: undefined });
+  });
+  await page.goto("/");
+  await page.locator("#pg-editor").fill([
+    "Title: Tempo ladder",
+    "Tempo: 100",
+    "Time: 4/4",
+    "Grid: 16",
+    "HH | x-x-x-x-x-x-x-x-",
+    "SD | ----o-------o---",
+    "BD | o-------o-o-----"
+  ].join("\n"));
+  await expect(page.locator("#pg-title")).toHaveValue("Tempo ladder");
+
+  const speed = page.locator("#pg-speed");
+  await speed.click();
+  await expect(page.getByRole("menuitemradio", { name: "100% · 100 BPM" })).toBeChecked();
+  await expect(page.getByRole("menuitemradio", { name: "50% · 50 BPM" })).toBeVisible();
+  await page.getByRole("menuitem", { name: "Tempo ramp…" }).click();
+
+  const dialog = page.getByRole("dialog", { name: "Tempo ramp trainer" });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("spinbutton", { name: "Start BPM" }).fill("250");
+  await dialog.getByRole("spinbutton", { name: "Increase by BPM" }).fill("10");
+  await dialog.getByRole("spinbutton", { name: "Every N passes" }).fill("1");
+  await dialog.getByRole("spinbutton", { name: "Ceiling BPM" }).fill("260");
+  await dialog.getByRole("combobox", { name: "At ceiling" }).selectOption("stop");
+  await expect(dialog).toContainText("250 → 260 BPM · 1 pass each");
+  await dialog.getByRole("button", { name: "Start ramp" }).click();
+
+  await expect(speed).toHaveText(/250 BPM/);
+  await expect(speed).toHaveAttribute("aria-label", /Tempo ramp/);
+  await expect(page.locator("#pg-preview .drum-notation__practice-label")).toContainText("Tempo ramp");
+  await expect.poll(async () => speed.textContent(), { timeout: 5_000 }).toContain("260 BPM");
+  await expect.poll(async () => page.locator("#pg-preview .drum-notation__practice-label").textContent(), {
+    timeout: 5_000
+  }).toContain("Ramp complete · 260 BPM");
+
+  await speed.click();
+  await expect(page.getByRole("menuitem", { name: "Run tempo ramp again" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Reset ramp" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Turn off trainer" })).toBeVisible();
+});
+
 test("wake lock control is disabled when the API is unavailable", async ({ page }) => {
   await page.addInitScript(() => {
     Object.defineProperty(navigator, "wakeLock", {

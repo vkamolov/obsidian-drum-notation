@@ -257,10 +257,22 @@ export function isClickSubdivisionSafe(
   speedPercent: number,
   subdivision: ClickSubdivision
 ): boolean {
+  return isClickSubdivisionSafeAtTempo(
+    block,
+    getEffectivePlaybackTempo(block.tempo, speedPercent),
+    subdivision
+  );
+}
+
+export function isClickSubdivisionSafeAtTempo(
+  block: DrumBlock,
+  effectiveTempoBpm: number,
+  subdivision: ClickSubdivision
+): boolean {
   const factor = getClickSubdivisionFactor(subdivision);
   if (factor === 1) return true;
 
-  const effectiveTempo = getEffectivePlaybackTempo(block.tempo, speedPercent);
+  const effectiveTempo = Number.isFinite(effectiveTempoBpm) ? Math.max(0, effectiveTempoBpm) : 0;
   const meters = block.bars.length > 0
     ? block.bars.map((bar) => bar.timeSignature)
     : [block.timeSignature];
@@ -276,13 +288,25 @@ export function getSafeClickSubdivision(
   speedPercent: number,
   requested: ClickSubdivision
 ): ClickSubdivision {
+  return getSafeClickSubdivisionAtTempo(
+    block,
+    getEffectivePlaybackTempo(block.tempo, speedPercent),
+    requested
+  );
+}
+
+export function getSafeClickSubdivisionAtTempo(
+  block: DrumBlock,
+  effectiveTempoBpm: number,
+  requested: ClickSubdivision
+): ClickSubdivision {
   const requestedFactor = getClickSubdivisionFactor(requested);
   const candidates = [...CLICK_SUBDIVISION_OPTIONS]
     .map((option) => option.value)
     .filter((candidate) => getClickSubdivisionFactor(candidate) <= requestedFactor)
     .sort((left, right) => getClickSubdivisionFactor(right) - getClickSubdivisionFactor(left));
 
-  return candidates.find((candidate) => isClickSubdivisionSafe(block, speedPercent, candidate))
+  return candidates.find((candidate) => isClickSubdivisionSafeAtTempo(block, effectiveTempoBpm, candidate))
     ?? DEFAULT_CLICK_SUBDIVISION;
 }
 

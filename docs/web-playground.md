@@ -126,7 +126,16 @@ the **first** import in `app.ts`. `engrave.ts` itself was **not** changed.
   gap-free.
 - Subdivision choices above 16 clicks per second are disabled. Increasing the
   tempo or playback speed automatically selects the fastest safe subdivision.
-  A guided Tempo Ramp Trainer remains planned for 1.10.0.
+- The speed menu shows fixed choices as percentage plus effective BPM and opens
+  a Tempo Ramp Trainer for exact 30–260 BPM ladders. A ramp can target the
+  captured current bar, selected bars, or the complete notation; its setup
+  controls BPM step, passes per tempo, ceiling, and Hold/Stop behavior.
+- Tempo-ramp progress is page-session state. Manual Stop preserves completed
+  passes, Resume begins the current target again at its current ladder BPM, and
+  Reset returns to the configured starting BPM. Count-in uses the current ramp
+  BPM only at transport start or manual resume. Gap-click phase continues across
+  tempo steps, while unsafe click subdivisions step down and stay at the safer
+  choice.
 - **Keep screen awake** is enabled for the page session when the browser and
   secure context support Screen Wake Lock. It is marked unavailable otherwise.
   Continuous loops intentionally retain the lock until Stop, so users should

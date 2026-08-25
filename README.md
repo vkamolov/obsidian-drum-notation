@@ -97,9 +97,23 @@ For timing practice, **Click subdivision** can add 2, 3, or 4 clicks inside each
 
 **Gap click** alternates clicked and silent performed bars using 1-on/1-off, 2-on/2-off, or 4-on/4-off cycles. The cycle continues through loops, compact repeats, section-repeat traversals, selected phrases, and authored `Repeat:` passes. Amber score cues show the current or upcoming silent bar; in **Metronome only** mode a gap bar is intentionally silent while cursor and bar progress continue. Count-in always remains beat-only and gap-free.
 
-A guided Tempo Ramp Trainer remains planned for 1.10.0; Advanced Click is the timing foundation it will build on.
+Open the playback-speed menu and choose **Tempo ramp…** to build an exact-BPM
+practice ladder from 30–260 BPM. Capture the current bar, the selected phrase,
+or the complete notation; choose the BPM increase, passes at each tempo, ceiling,
+and whether to hold or stop there. The setup preview shows the full ladder before
+it starts. **Stop** preserves completed passes, **Resume tempo ramp** continues
+from the current stage, and **Reset ramp** starts again from the configured first
+tempo. Progress counts completed target passes, not playing accuracy. The
+trainer currently supports ascending ladders only.
 
-Speed, metronome, click subdivision, gap click, count-in, mute, practice-selection, and current-bar choices are playback-only: they do not change the fenced notation text. Obsidian restores them when the same source block is rendered again during the current plugin session; the playground keeps them for the current page session. They are not written to plugin data or browser storage. Changing speed, metronome, subdivision, gap mode, count-in, or mute during playback restarts from the same musical occurrence and gap-cycle position without replaying the count-in. Instrument mutes do not silence the metronome or count-in. Muting affects transport playback only, so clicking a rendered note or previewing an editor cell remains audible.
+Trainer count-in uses the current ladder BPM and runs on the initial start or a
+manual resume, never between tempo steps. Gap-click phase continues across tempo
+changes. If a higher ramp tempo makes the chosen click subdivision unsafe, the
+plugin keeps the fastest safe choice and reports the change. Choosing a fixed
+speed disarms the trainer but retains its setup and progress; fixed-speed menu
+items show both percentage and effective BPM.
+
+Speed, tempo-ramp state, metronome, click subdivision, gap click, count-in, mute, practice-selection, and current-bar choices are playback-only: they do not change the fenced notation text. Obsidian restores them when the same source block is rendered again during the current plugin session; the playground keeps them for the current page session. They are not written to plugin data or browser storage. Changing speed, metronome, subdivision, gap mode, count-in, or mute during playback restarts from the same musical occurrence and gap-cycle position without replaying the count-in. Instrument mutes do not silence the metronome or count-in. Muting affects transport playback only, so clicking a rendered note or previewing an editor cell remains audible.
 
 On mobile, if playback becomes silent after Obsidian was backgrounded or another audio app was used, tap **Play** again. If sound does not recover, relaunch Obsidian. This can happen when the mobile WebView audio session is interrupted.
 
@@ -825,6 +839,8 @@ Use **Loop Bar** in the rendered view to loop the bar containing the current cur
 
 ## Recent Changes
 
+- `1.10.0` adds an exact-BPM Tempo Ramp Trainer for guided practice ladders
+  across a bar, selected phrase, or complete notation.
 - `1.9.0` adds configurable click subdivisions and occurrence-aware gap-click
   practice across loops, selections, and repeated passages.
 - `1.8.1` adds an optional two-bar count-in and keeps supported screens awake
@@ -855,6 +871,11 @@ Build once:
 ```bash
 npm run build
 ```
+
+Tempo-ramp playback stores exact seconds-per-quarter on every performed
+occurrence and uses piecewise timing when resolving future playback positions.
+Future system-level tempo changes should reuse this timing infrastructure rather
+than add a second tempo-map implementation.
 
 Watch during development:
 

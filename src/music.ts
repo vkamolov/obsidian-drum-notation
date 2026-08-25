@@ -142,6 +142,10 @@ export function getSecondsPerQuarter(block: DrumBlock, speedPercent = 100): numb
   return 60 / getEffectivePlaybackTempo(block.tempo, speedPercent);
 }
 
+export function getSecondsPerQuarterAtTempo(tempoBpm: number): number {
+  return 60 / Math.max(Number.EPSILON, tempoBpm);
+}
+
 export function getSlotStartSeconds(
   block: DrumBlock,
   slot: DrumSlot,
@@ -155,7 +159,14 @@ export function getSlotDurationSeconds(
   slot: DrumSlot,
   speedPercent = 100
 ): number {
-  return slot.durationQuarter * getSecondsPerQuarter(block, speedPercent);
+  return getSlotDurationSecondsAtSecondsPerQuarter(slot, getSecondsPerQuarter(block, speedPercent));
+}
+
+export function getSlotDurationSecondsAtSecondsPerQuarter(
+  slot: DrumSlot,
+  secondsPerQuarter: number
+): number {
+  return slot.durationQuarter * secondsPerQuarter;
 }
 
 export function getSlotBoundaryQuarter(block: DrumBlock, slotIndex: number): number {
@@ -178,10 +189,24 @@ export function getRangeDurationSeconds(
   endSlot: number,
   speedPercent = 100
 ): number {
+  return getRangeDurationSecondsAtSecondsPerQuarter(
+    block,
+    startSlot,
+    endSlot,
+    getSecondsPerQuarter(block, speedPercent)
+  );
+}
+
+export function getRangeDurationSecondsAtSecondsPerQuarter(
+  block: DrumBlock,
+  startSlot: number,
+  endSlot: number,
+  secondsPerQuarter: number
+): number {
   const startQuarter = getSlotBoundaryQuarter(block, startSlot);
   const endQuarter = getSlotBoundaryQuarter(block, endSlot);
 
-  return Math.max(0, endQuarter - startQuarter) * getSecondsPerQuarter(block, speedPercent);
+  return Math.max(0, endQuarter - startQuarter) * secondsPerQuarter;
 }
 
 export function getSlotIndexAtQuarter(
@@ -214,16 +239,28 @@ export function getSlotIndexAtQuarter(
 }
 
 export function getSlotVisualDurationSeconds(block: DrumBlock, targetSlot: DrumSlot, speedPercent = 100): number {
+  return getSlotVisualDurationSecondsAtSecondsPerQuarter(
+    block,
+    targetSlot,
+    getSecondsPerQuarter(block, speedPercent)
+  );
+}
+
+export function getSlotVisualDurationSecondsAtSecondsPerQuarter(
+  block: DrumBlock,
+  targetSlot: DrumSlot,
+  secondsPerQuarter: number
+): number {
   const bar = block.bars.find((candidate) => candidate.slots.some((slot) => slot.index === targetSlot.index));
 
   if (!bar) {
-    return getSlotDurationSeconds(block, targetSlot, speedPercent);
+    return getSlotDurationSecondsAtSecondsPerQuarter(targetSlot, secondsPerQuarter);
   }
 
   const region = bar.rhythmRegions[targetSlot.regionIndex];
 
   if (!region || region.kind === "tuplet") {
-    return getSlotDurationSeconds(block, targetSlot, speedPercent);
+    return getSlotDurationSecondsAtSecondsPerQuarter(targetSlot, secondsPerQuarter);
   }
 
   const beatSlots = bar.slots.slice(
@@ -233,7 +270,7 @@ export function getSlotVisualDurationSeconds(block: DrumBlock, targetSlot: DrumS
   const indexInBeat = beatSlots.findIndex((slot) => slot.index === targetSlot.index);
 
   if (indexInBeat < 0 || targetSlot.hits.length === 0) {
-    return getSlotDurationSeconds(block, targetSlot, speedPercent);
+    return getSlotDurationSecondsAtSecondsPerQuarter(targetSlot, secondsPerQuarter);
   }
 
   const hitIndexes = beatSlots
@@ -242,7 +279,7 @@ export function getSlotVisualDurationSeconds(block: DrumBlock, targetSlot: DrumS
   const hitPosition = hitIndexes.indexOf(indexInBeat);
 
   if (hitPosition < 0) {
-    return getSlotDurationSeconds(block, targetSlot, speedPercent);
+    return getSlotDurationSecondsAtSecondsPerQuarter(targetSlot, secondsPerQuarter);
   }
 
   const span = getGridSpanToNextHit(
@@ -253,8 +290,8 @@ export function getSlotVisualDurationSeconds(block: DrumBlock, targetSlot: DrumS
   ).supportedSpan;
 
   return Math.max(
-    getSlotDurationSeconds(block, targetSlot, speedPercent),
-    span * getSlotDurationSeconds(block, targetSlot, speedPercent)
+    getSlotDurationSecondsAtSecondsPerQuarter(targetSlot, secondsPerQuarter),
+    span * getSlotDurationSecondsAtSecondsPerQuarter(targetSlot, secondsPerQuarter)
   );
 }
 

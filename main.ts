@@ -77,7 +77,9 @@ import {
   getMetronomeModeLabel,
   getPlaybackInstruments,
   getSafeClickSubdivision,
+  getSafeClickSubdivisionAtTempo,
   isClickSubdivisionSafe,
+  isClickSubdivisionSafeAtTempo,
   MAX_PLAYBACK_SPEED_PERCENT,
   METRONOME_MODE_OPTIONS,
   MIN_PLAYBACK_SPEED_PERCENT,
@@ -114,6 +116,25 @@ import {
 } from "./src/setup";
 import { createSynthPlaybackBackend } from "./src/synth";
 import {
+  cloneTempoRampConfig,
+  createDefaultTempoRampConfig,
+  getTempoRampPassInStep,
+  getTempoRampPreview,
+  getTempoRampTempoBpm,
+  isValidTempoRampConfigValues,
+  isMaterialTempoRampSessionChange,
+  MAX_TEMPO_RAMP_BPM,
+  MAX_TEMPO_RAMP_PASSES,
+  MAX_TEMPO_RAMP_STEP_BPM,
+  MIN_TEMPO_RAMP_BPM,
+  MIN_TEMPO_RAMP_PASSES,
+  MIN_TEMPO_RAMP_STEP_BPM,
+  normalizeTempoRampConfig,
+  normalizeTempoRampConfigValues,
+  normalizeTempoRampProgress,
+  type TempoRampSessionState
+} from "./src/tempo-ramp";
+import {
   ClickSubdivision,
   CursorPosition,
   CountInMode,
@@ -127,7 +148,10 @@ import {
   ParseWarning,
   PlaybackBarState,
   PracticeSelection,
-  ScoreBarRegion
+  ScoreBarRegion,
+  TempoRampConfig,
+  TempoRampPassState,
+  TempoRampTarget
 } from "./src/types";
 
 const WRITEBACK_DEBOUNCE_MS = 450;
@@ -405,11 +429,14 @@ export default class DrumNotationPlugin extends Plugin {
     const loopButton = makeIconButton("repeat-1", "Loop current bar");
     const loopAllButton = makeIconButton("repeat", "Loop whole notation");
     loopAllButton.setAttribute("aria-haspopup", "menu");
-    const speedSelect = controls.createEl("select", {
-      cls: "drum-notation__speed",
-      attr: { "aria-label": "Playback speed" }
+    const speedButton = controls.createEl("button", {
+      cls: "drum-notation__button drum-notation__speed",
+      attr: {
+        type: "button",
+        "aria-label": "Playback speed",
+        "aria-haspopup": "menu"
+      }
     });
-    populatePlaybackSpeedOptions(speedSelect);
     const metronomeButton = makeIconButton("timer", "Metronome: Off");
     metronomeButton.setAttribute("aria-haspopup", "menu");
     const muteButton = makeIconButton("volume-2", "Mute instruments");
@@ -452,6 +479,21 @@ export default class DrumNotationPlugin extends Plugin {
       restoredPracticeSession?.clickSubdivision ?? DEFAULT_CLICK_SUBDIVISION
     );
     let gapClickMode: GapClickMode = restoredPracticeSession?.gapClickMode ?? DEFAULT_GAP_CLICK_MODE;
+    const restoredTempoRampConfig = normalizeTempoRampConfig(
+      restoredPracticeSession?.tempoRamp.config,
+      block
+    ) ?? (!restoredPracticeSession?.tempoRamp.armed
+      ? normalizeTempoRampConfigValues(restoredPracticeSession?.tempoRamp.config)
+      : null);
+    let tempoRamp: TempoRampSessionState = {
+      config: restoredTempoRampConfig,
+      progress: normalizeTempoRampProgress(
+        restoredTempoRampConfig,
+        restoredPracticeSession?.tempoRamp.progress
+      ),
+      armed: Boolean(restoredPracticeSession?.tempoRamp.armed && restoredTempoRampConfig)
+    };
+    let activeTempoRampPass: TempoRampPassState | null = null;
     let activePlaybackBarIndex: number | null = null;
     let activePlaybackBarState: PlaybackBarState | null = null;
     const mutedInstrumentIds = new Set<string>(restoredPracticeSession?.mutedInstrumentIds ?? []);
@@ -482,7 +524,8 @@ export default class DrumNotationPlugin extends Plugin {
       mutedInstrumentIds: [...mutedInstrumentIds],
       selection: practiceSelection,
       selectionModeOpen,
-      currentBarIndex: selectedBarIndex
+      currentBarIndex: selectedBarIndex,
+      tempoRamp
     });
 
     const publishPracticeSession = () => {
@@ -526,11 +569,34 @@ export default class DrumNotationPlugin extends Plugin {
       return details.join(" · ");
     };
 
+    const getTempoRampStatus = (): string | null => {
+      const config = tempoRamp.config;
+      if (!config) return null;
+      if (tempoRamp.progress.completed) {
+        return `Ramp complete · ${config.ceilingBpm} BPM`;
+      }
+      if (!tempoRamp.armed && transportMode === "idle") {
+        return null;
+      }
+
+      const completedPasses = activeTempoRampPass?.completedPasses ?? tempoRamp.progress.completedPasses;
+      const tempoBpm = activeTempoRampPass?.tempoBpm ?? getTempoRampTempoBpm(config, completedPasses);
+      const target = formatTempoRampTarget(config.target);
+      if (tempoBpm >= config.ceilingBpm) {
+        return `Tempo ramp · ${target} · Ceiling · ${tempoBpm} BPM`;
+      }
+
+      const passInStep = activeTempoRampPass?.passInStep ?? getTempoRampPassInStep(config, completedPasses);
+      const nextTempo = getTempoRampTempoBpm(config, completedPasses + (config.passesPerStep - passInStep + 1));
+      return `Tempo ramp · ${target} · ${tempoBpm} BPM · pass ${passInStep}/${config.passesPerStep} · next ${nextTempo} BPM`;
+    };
+
     const renderFirstRunTip = () => {
       tipEl.empty();
       const selectedCount = practiceSelection.barIndexes.length;
       const advancedClickStatus = getAdvancedClickStatus();
-      const showPracticeStatus = selectionModeOpen || selectedCount > 0 || advancedClickStatus !== null;
+      const tempoRampStatus = getTempoRampStatus();
+      const showPracticeStatus = selectionModeOpen || selectedCount > 0 || advancedClickStatus !== null || tempoRampStatus !== null;
       tipEl.toggleClass("drum-notation__tip--practice", showPracticeStatus);
       tipEl.hidden = !showPracticeStatus && this.settings.dismissedFirstRunTip;
 
@@ -542,14 +608,13 @@ export default class DrumNotationPlugin extends Plugin {
             : null;
         tipEl.createSpan({
           cls: "drum-notation__practice-label",
-          text: [selectionStatus, advancedClickStatus].filter(Boolean).join(" · ")
+          text: [selectionStatus, tempoRampStatus, advancedClickStatus].filter(Boolean).join(" · ")
         });
         if (!selectionStatus) {
           return;
         }
         const modeButton = tipEl.createEl("button", {
           cls: "drum-notation__tip-dismiss drum-notation__practice-action",
-          text: selectionModeOpen ? "Done" : "Edit selection",
           attr: {
             type: "button",
             "aria-label": selectionModeOpen ? "Done selecting practice bars" : "Edit practice selection"
@@ -614,15 +679,23 @@ export default class DrumNotationPlugin extends Plugin {
       }
     };
 
+    const getCurrentEffectiveTempo = (): number =>
+      tempoRamp.armed && tempoRamp.config
+        ? activeTempoRampPass?.tempoBpm ?? getTempoRampTempoBpm(tempoRamp.config, tempoRamp.progress.completedPasses)
+        : getEffectivePlaybackTempo(block.tempo, playbackSpeedPercent);
+
     const normalizeClickSubdivisionForCurrentSpeed = (notifyUser: boolean): boolean => {
-      const safeSubdivision = getSafeClickSubdivision(block, playbackSpeedPercent, clickSubdivision);
+      const effectiveTempo = getCurrentEffectiveTempo();
+      const safeSubdivision = tempoRamp.armed
+        ? getSafeClickSubdivisionAtTempo(block, effectiveTempo, clickSubdivision)
+        : getSafeClickSubdivision(block, playbackSpeedPercent, clickSubdivision);
       if (safeSubdivision === clickSubdivision) {
         return false;
       }
 
       clickSubdivision = safeSubdivision;
       if (notifyUser) {
-        new Notice(`Click subdivision changed to ${getClickSubdivisionLabel(safeSubdivision)} at the current tempo and speed.`);
+        new Notice(`Click subdivision changed to ${getClickSubdivisionLabel(safeSubdivision)} at ${formatTempo(effectiveTempo)} BPM.`);
       }
       return true;
     };
@@ -662,9 +735,11 @@ export default class DrumNotationPlugin extends Plugin {
       loopButton.disabled = !hasRows;
       loopAllButton.disabled = !hasRows;
       const selectedCount = practiceSelection.barIndexes.length;
-      const playDescription = selectedCount > 0
-        ? `Play selected bars (${selectedCount})`
-        : "Play whole notation";
+      const playDescription = tempoRamp.armed && tempoRamp.config
+        ? `Play tempo ramp · ${formatTempoRampTarget(tempoRamp.config.target)}`
+        : selectedCount > 0
+          ? `Play selected bars (${selectedCount})`
+          : "Play whole notation";
       playButton.title = playDescription;
       playButton.setAttribute("aria-label", playDescription);
       const loopMenuDescription = selectedCount > 0
@@ -672,12 +747,16 @@ export default class DrumNotationPlugin extends Plugin {
         : "Loop options";
       loopAllButton.title = loopMenuDescription;
       loopAllButton.setAttribute("aria-label", loopMenuDescription);
-      speedSelect.disabled = !hasRows;
-      playbackSpeedPercent = syncSpeedSelectValue(speedSelect, playbackSpeedPercent);
-      const effectiveTempo = getEffectivePlaybackTempo(block.tempo, playbackSpeedPercent);
-      const speedDescription = `Playback speed ${playbackSpeedPercent}% · ${formatTempo(effectiveTempo)} BPM`;
-      speedSelect.title = speedDescription;
-      speedSelect.setAttribute("aria-label", speedDescription);
+      speedButton.disabled = !hasRows;
+      const effectiveTempo = tempoRamp.armed && tempoRamp.config
+        ? activeTempoRampPass?.tempoBpm ?? getTempoRampTempoBpm(tempoRamp.config, tempoRamp.progress.completedPasses)
+        : getEffectivePlaybackTempo(block.tempo, playbackSpeedPercent);
+      const speedDescription = tempoRamp.armed
+        ? `Tempo ramp · ${formatTempo(effectiveTempo)} BPM`
+        : `Playback speed ${playbackSpeedPercent}% · ${formatTempo(effectiveTempo)} BPM`;
+      speedButton.setText(tempoRamp.armed ? `${formatTempo(effectiveTempo)} BPM ▲` : `${playbackSpeedPercent}%`);
+      speedButton.title = speedDescription;
+      speedButton.setAttribute("aria-label", speedDescription);
       metronomeButton.disabled = block.slots.length === 0;
       metronomeButton.classList.toggle("is-active", metronomeMode !== "off" || countInMode !== "off");
       metronomeButton.classList.toggle("is-metronome-off", metronomeMode === "off");
@@ -992,6 +1071,17 @@ export default class DrumNotationPlugin extends Plugin {
         stopLocalPlayback();
       }
       practiceSelection = { barIndexes: [] };
+      if (tempoRamp.config?.target.kind === "selected-bars") {
+        tempoRamp = {
+          config: {
+            ...tempoRamp.config,
+            target: { kind: "selected-bars", barIndexes: [] }
+          },
+          progress: { completedPasses: 0, completed: false },
+          armed: false
+        };
+        activeTempoRampPass = null;
+      }
       selectionModeOpen = false;
       renderFirstRunTip();
       renderBarSelectors();
@@ -1027,6 +1117,20 @@ export default class DrumNotationPlugin extends Plugin {
         stopLocalPlayback();
       }
       practiceSelection = togglePracticeRegion(practiceSelection, region, block.bars.length);
+      if (tempoRamp.config?.target.kind === "selected-bars") {
+        tempoRamp = {
+          config: {
+            ...tempoRamp.config,
+            target: {
+              kind: "selected-bars",
+              barIndexes: [...practiceSelection.barIndexes]
+            }
+          },
+          progress: { completedPasses: 0, completed: false },
+          armed: practiceSelection.barIndexes.length > 0 && tempoRamp.armed
+        };
+        activeTempoRampPass = null;
+      }
       selectedBarIndex = clampBarIndex(block, region.barIndex);
       currentSlotIndex = block.bars[selectedBarIndex]?.startSlot ?? currentSlotIndex;
       renderFirstRunTip();
@@ -1217,6 +1321,50 @@ export default class DrumNotationPlugin extends Plugin {
       publishPracticeSession();
     };
 
+    const handleTempoRampPassStart = (passState: TempoRampPassState) => {
+      const previousSubdivision = clickSubdivision;
+      clickSubdivision = passState.clickSubdivision;
+      activeTempoRampPass = { ...passState };
+      if (previousSubdivision !== clickSubdivision) {
+        new Notice(
+          `Click subdivision changed to ${getClickSubdivisionLabel(clickSubdivision)} at ${passState.tempoBpm} BPM.`
+        );
+      }
+      updateHeader();
+      renderFirstRunTip();
+      publishPracticeSession();
+    };
+
+    const handleTempoRampPassComplete = (passState: TempoRampPassState) => {
+      tempoRamp = {
+        ...tempoRamp,
+        progress: {
+          completedPasses: passState.completedPasses,
+          completed: passState.completed
+        }
+      };
+      activeTempoRampPass = { ...passState };
+      updateHeader();
+      renderFirstRunTip();
+      publishPracticeSession();
+    };
+
+    const getTempoRampPlaybackOptions = () => {
+      if (!tempoRamp.armed || !tempoRamp.config) {
+        return {};
+      }
+      const config = cloneTempoRampConfig(tempoRamp.config);
+      if (!config) return {};
+      return {
+        tempoRamp: {
+          config,
+          progress: { ...tempoRamp.progress }
+        },
+        onTempoRampPassStart: handleTempoRampPassStart,
+        onTempoRampPassComplete: handleTempoRampPassComplete
+      };
+    };
+
     const clearTransportHighlights = () => {
       playButton.removeClass("is-playing");
       loopButton.removeClass("is-playing");
@@ -1229,6 +1377,7 @@ export default class DrumNotationPlugin extends Plugin {
       transportMode = "idle";
       activePlaybackBarIndex = null;
       activePlaybackBarState = null;
+      activeTempoRampPass = null;
       clearRepeatProgress();
       clearGapOverlays();
       renderFirstRunTip();
@@ -1242,6 +1391,7 @@ export default class DrumNotationPlugin extends Plugin {
       transportMode = "idle";
       activePlaybackBarIndex = null;
       activePlaybackBarState = null;
+      activeTempoRampPass = null;
       clearGapOverlays();
       renderFirstRunTip();
 
@@ -1307,7 +1457,8 @@ export default class DrumNotationPlugin extends Plugin {
           countInMode: useCountIn ? countInMode : "off",
           clickSubdivision,
           gapClickMode,
-          onBarChange: handleBarChange
+          onBarChange: handleBarChange,
+          ...getTempoRampPlaybackOptions()
         },
         playbackBackendFactory
       );
@@ -1386,7 +1537,8 @@ export default class DrumNotationPlugin extends Plugin {
           countInMode: useCountIn ? countInMode : "off",
           clickSubdivision,
           gapClickMode,
-          onBarChange: handleBarChange
+          onBarChange: handleBarChange,
+          ...getTempoRampPlaybackOptions()
         },
         playbackBackendFactory
       );
@@ -1454,7 +1606,8 @@ export default class DrumNotationPlugin extends Plugin {
           countInMode: useCountIn ? countInMode : "off",
           clickSubdivision,
           gapClickMode,
-          onBarChange: handleBarChange
+          onBarChange: handleBarChange,
+          ...getTempoRampPlaybackOptions()
         },
         playbackBackendFactory
       );
@@ -1482,9 +1635,10 @@ export default class DrumNotationPlugin extends Plugin {
         : 0,
       recoverBeforeStart = false,
       useCountIn = true,
-      initialPosition?: DrumPlaybackPosition
+      initialPosition?: DrumPlaybackPosition,
+      selectedBarIndexes: readonly number[] = practiceSelection.barIndexes
     ): Promise<boolean> => {
-      if (practiceSelection.barIndexes.length === 0) {
+      if (selectedBarIndexes.length === 0) {
         return false;
       }
       if (!(await prepareTransportStart(recoverBeforeStart))) {
@@ -1521,7 +1675,7 @@ export default class DrumNotationPlugin extends Plugin {
         {
           initialSlot: currentSlotIndex,
           ...(initialPosition ? { initialPosition } : {}),
-          selectedBarIndexes: practiceSelection.barIndexes,
+          selectedBarIndexes,
           loop: true,
           speedPercent: playbackSpeedPercent,
           mutedInstrumentIds,
@@ -1529,7 +1683,8 @@ export default class DrumNotationPlugin extends Plugin {
           countInMode: useCountIn ? countInMode : "off",
           clickSubdivision,
           gapClickMode,
-          onBarChange: handleBarChange
+          onBarChange: handleBarChange,
+          ...getTempoRampPlaybackOptions()
         },
         playbackBackendFactory
       );
@@ -1551,19 +1706,59 @@ export default class DrumNotationPlugin extends Plugin {
       return true;
     };
 
+    const startArmedTempoRamp = async (
+      recoverBeforeStart: boolean,
+      useCountIn = true
+    ): Promise<boolean> => {
+      const config = tempoRamp.config;
+      if (!tempoRamp.armed || !config) {
+        return startPlayback(0, recoverBeforeStart, useCountIn);
+      }
+
+      if (tempoRamp.progress.completed) {
+        tempoRamp = {
+          ...tempoRamp,
+          progress: { completedPasses: 0, completed: false }
+        };
+        publishPracticeSession();
+      }
+      activeTempoRampPass = null;
+
+      if (config.target.kind === "current-bar") {
+        return startLoopBar(config.target.barIndex, undefined, recoverBeforeStart, useCountIn);
+      }
+      if (config.target.kind === "selected-bars") {
+        const firstSlot = block.bars[config.target.barIndexes[0]]?.startSlot ?? 0;
+        return startLoopSelection(
+          firstSlot,
+          recoverBeforeStart,
+          useCountIn,
+          undefined,
+          config.target.barIndexes
+        );
+      }
+      return startLoopAll(0, recoverBeforeStart, useCountIn);
+    };
+
     const restartActivePlaybackForControls = async () => {
       if (this.activePlaybackOwner !== renderOwner || !this.activePlayer) {
         return;
       }
 
-      const restartPosition = this.activePlayer.getCurrentPlaybackPosition();
+      const currentPosition = this.activePlayer.getCurrentPlaybackPosition();
+      const restartPosition = tempoRamp.armed
+        ? { ...currentPosition, blockPassIndex: 0 }
+        : currentPosition;
       const restartSlotIndex = restartPosition.slotIndex;
       const previousTransportMode = transportMode;
       const restartBarIndex = barIndexForSlot(block, restartSlotIndex);
 
       this.stopActivePlayer(renderOwner);
       if (previousTransportMode === "loop-selection") {
-        await startLoopSelection(restartSlotIndex, true, false, restartPosition);
+        const selected = tempoRamp.armed && tempoRamp.config?.target.kind === "selected-bars"
+          ? tempoRamp.config.target.barIndexes
+          : practiceSelection.barIndexes;
+        await startLoopSelection(restartSlotIndex, true, false, restartPosition, selected);
       } else if (previousTransportMode === "loop-all") {
         await startLoopAll(restartSlotIndex, true, false, restartPosition);
       } else if (previousTransportMode === "loop-bar") {
@@ -1613,6 +1808,148 @@ export default class DrumNotationPlugin extends Plugin {
       menu.showAtMouseEvent(event);
     };
 
+    const setFixedPlaybackSpeed = (speedPercent: number) => {
+      playbackSpeedPercent = normalizePlaybackSpeedPercent(speedPercent);
+      tempoRamp = { ...tempoRamp, armed: false };
+      activeTempoRampPass = null;
+      normalizeClickSubdivisionForCurrentSpeed(true);
+      updateHeader();
+      renderFirstRunTip();
+      publishPracticeSession();
+      void restartActivePlaybackForControls();
+    };
+
+    const openTempoRampSetup = () => {
+      const defaultConfig = createDefaultTempoRampConfig(
+        block,
+        getCurrentEffectiveTempo(),
+        practiceSelection,
+        selectedBarIndex
+      );
+      const preservedValues = normalizeTempoRampConfigValues(tempoRamp.config);
+      const initialConfig = normalizeTempoRampConfig(tempoRamp.config, block) ??
+        (preservedValues ? { ...preservedValues, target: defaultConfig.target } : defaultConfig);
+
+      new TempoRampSetupModal(this.app, {
+        initialConfig,
+        currentBarIndex: selectedBarIndex,
+        selectedBarIndexes: practiceSelection.barIndexes,
+        onSubmit: (config) => {
+          const normalized = normalizeTempoRampConfig(config, block);
+          if (!normalized) return;
+          stopLocalPlayback();
+          tempoRamp = {
+            config: normalized,
+            progress: { completedPasses: 0, completed: false },
+            armed: true
+          };
+          activeTempoRampPass = null;
+          normalizeClickSubdivisionForCurrentSpeed(true);
+          updateHeader();
+          renderFirstRunTip();
+          publishPracticeSession();
+          void startArmedTempoRamp(true, true);
+        }
+      }).open();
+    };
+
+    const resetTempoRamp = () => {
+      if (!tempoRamp.config) return;
+      const wasPlaying = this.activePlaybackOwner === renderOwner && this.activePlayer !== null;
+      stopLocalPlayback();
+      tempoRamp = {
+        ...tempoRamp,
+        armed: true,
+        progress: { completedPasses: 0, completed: false }
+      };
+      activeTempoRampPass = null;
+      normalizeClickSubdivisionForCurrentSpeed(true);
+      updateHeader();
+      renderFirstRunTip();
+      publishPracticeSession();
+      if (wasPlaying) {
+        void startArmedTempoRamp(true, true);
+      }
+    };
+
+    const turnOffTempoRamp = () => {
+      const config = tempoRamp.config;
+      if (!config) return;
+      const rampBpm = getCurrentEffectiveTempo();
+      const fixedPercent = normalizePlaybackSpeedPercent((rampBpm / block.tempo) * 100);
+      const fixedBpm = getEffectivePlaybackTempo(block.tempo, fixedPercent);
+      setFixedPlaybackSpeed(fixedPercent);
+      if (Math.abs(fixedBpm - rampBpm) >= 0.05) {
+        new Notice(
+          `Tempo ramp ended at ${formatTempo(rampBpm)} BPM; fixed playback is limited to ${formatTempo(fixedBpm)} BPM (${fixedPercent}%).`
+        );
+      }
+    };
+
+    const openSpeedMenu = (event: MouseEvent) => {
+      const menu = new Menu();
+
+      for (const speed of getPlaybackSpeedOptionValues()) {
+        menu.addItem((item) => {
+          item
+            .setTitle(`${speed}% · ${formatTempo(getEffectivePlaybackTempo(block.tempo, speed))} BPM`)
+            .setChecked(!tempoRamp.armed && playbackSpeedPercent === speed)
+            .onClick(() => setFixedPlaybackSpeed(speed));
+        });
+      }
+
+      menu.addSeparator();
+      menu.addItem((item) => {
+        item
+          .setTitle("Tempo ramp…")
+          .setIcon("trending-up")
+          .onClick(openTempoRampSetup);
+      });
+      if (
+        tempoRamp.config &&
+        (!tempoRamp.armed || this.activePlaybackOwner !== renderOwner || !this.activePlayer)
+      ) {
+        menu.addItem((item) => {
+          item
+            .setTitle(tempoRamp.progress.completed ? "Run tempo ramp again" : "Resume tempo ramp")
+            .setIcon("play")
+            .onClick(() => {
+              tempoRamp = {
+                ...tempoRamp,
+                armed: true,
+                progress: tempoRamp.progress.completed
+                  ? { completedPasses: 0, completed: false }
+                  : tempoRamp.progress
+              };
+              activeTempoRampPass = null;
+              normalizeClickSubdivisionForCurrentSpeed(true);
+              updateHeader();
+              renderFirstRunTip();
+              publishPracticeSession();
+              void startArmedTempoRamp(true, true);
+            });
+        });
+      }
+      if (tempoRamp.config) {
+        menu.addItem((item) => {
+          item
+            .setTitle("Reset ramp")
+            .setIcon("rotate-ccw")
+            .onClick(resetTempoRamp);
+        });
+      }
+      if (tempoRamp.armed) {
+        menu.addItem((item) => {
+          item
+            .setTitle("Turn off trainer")
+            .setIcon("x")
+            .onClick(turnOffTempoRamp);
+        });
+      }
+
+      menu.showAtMouseEvent(event);
+    };
+
     const openMetronomeMenu = (event: MouseEvent) => {
       const menu = new Menu();
 
@@ -1634,10 +1971,13 @@ export default class DrumNotationPlugin extends Plugin {
 
       menu.addSeparator();
       CLICK_SUBDIVISION_OPTIONS.forEach((option) => {
-        const safe = isClickSubdivisionSafe(block, playbackSpeedPercent, option.value);
+        const effectiveTempo = getCurrentEffectiveTempo();
+        const safe = tempoRamp.armed
+          ? isClickSubdivisionSafeAtTempo(block, effectiveTempo, option.value)
+          : isClickSubdivisionSafe(block, playbackSpeedPercent, option.value);
         menu.addItem((item) => {
           item
-            .setTitle(`Click subdivision: ${getClickSubdivisionMenuLabel(block, option.value)}${safe ? "" : " · unavailable at this speed"}`)
+            .setTitle(`Click subdivision: ${getClickSubdivisionMenuLabel(block, option.value)}${safe ? "" : ` · unavailable at ${formatTempo(effectiveTempo)} BPM`}`)
             .setChecked(clickSubdivision === option.value)
             .setDisabled(!safe)
             .onClick(() => {
@@ -1689,34 +2029,45 @@ export default class DrumNotationPlugin extends Plugin {
       const menu = new Menu();
       const selectedCount = practiceSelection.barIndexes.length;
 
-      menu.addItem((item) => {
-        item
-          .setTitle("Loop whole notation")
-          .setIcon("repeat")
-          .setChecked(transportMode === "loop-all")
-          .onClick(() => {
-            if (transportMode === "loop-all") {
-              stopLocalPlayback();
-            } else {
-              void startLoopAll(0, true);
-            }
-          });
-      });
-
-      if (selectedCount > 0) {
+      if (tempoRamp.armed && tempoRamp.config) {
+        const rampTargetLabel = formatTempoRampTarget(tempoRamp.config.target);
         menu.addItem((item) => {
           item
-            .setTitle(`Loop selected bars (${selectedCount})`)
-            .setIcon("repeat-2")
-            .setChecked(transportMode === "loop-selection")
+            .setTitle(`Tempo ramp · ${rampTargetLabel}`)
+            .setIcon("trending-up")
+            .setChecked(this.activePlaybackOwner === renderOwner && this.activePlayer !== null)
             .onClick(() => {
-              if (transportMode === "loop-selection") {
+              if (this.activePlaybackOwner === renderOwner && this.activePlayer) {
                 stopLocalPlayback();
               } else {
-                void startLoopSelection(undefined, true);
+                void startArmedTempoRamp(true, true);
               }
             });
         });
+      } else {
+        menu.addItem((item) => {
+          item
+            .setTitle("Loop whole notation")
+            .setIcon("repeat")
+            .setChecked(transportMode === "loop-all")
+            .onClick(() => {
+              if (transportMode === "loop-all") stopLocalPlayback();
+              else void startLoopAll(0, true);
+            });
+        });
+
+        if (selectedCount > 0) {
+          menu.addItem((item) => {
+            item
+              .setTitle(`Loop selected bars (${selectedCount})`)
+              .setIcon("repeat-2")
+              .setChecked(transportMode === "loop-selection")
+              .onClick(() => {
+                if (transportMode === "loop-selection") stopLocalPlayback();
+                else void startLoopSelection(undefined, true);
+              });
+          });
+        }
       }
 
       menu.addSeparator();
@@ -1753,16 +2104,22 @@ export default class DrumNotationPlugin extends Plugin {
 
       playbackRestartTimer = window.setTimeout(() => {
         playbackRestartTimer = null;
+        const restartPosition = tempoRamp.armed && position
+          ? { ...position, blockPassIndex: 0 }
+          : position;
         if (previousTransportMode === "loop-selection") {
-          void startLoopSelection(slotIndex, false, false, position);
+          const selected = tempoRamp.armed && tempoRamp.config?.target.kind === "selected-bars"
+            ? tempoRamp.config.target.barIndexes
+            : practiceSelection.barIndexes;
+          void startLoopSelection(slotIndex, false, false, restartPosition, selected);
         } else if (previousTransportMode === "loop-all") {
-          void startLoopAll(slotIndex, false, false, position);
+          void startLoopAll(slotIndex, false, false, restartPosition);
         } else if (previousTransportMode === "loop-bar") {
-          void startLoopBar(barIndex, undefined, false, false, position);
+          void startLoopBar(barIndex, undefined, false, false, restartPosition);
         } else if (previousTransportMode === "play-selection") {
-          void startPlayback(slotIndex, false, false, position, true);
+          void startPlayback(slotIndex, false, false, restartPosition, true);
         } else {
-          void startPlayback(slotIndex, false, false, position, false);
+          void startPlayback(slotIndex, false, false, restartPosition, false);
         }
       }, PLAYBACK_RESTART_DEBOUNCE_MS);
     };
@@ -1899,6 +2256,23 @@ export default class DrumNotationPlugin extends Plugin {
 
       const keepSelection = hasCompatiblePracticeStructure(block, next);
       block = next;
+      if (tempoRamp.config) {
+        const validConfig = normalizeTempoRampConfig(tempoRamp.config, block);
+        if (validConfig) {
+          tempoRamp = {
+            ...tempoRamp,
+            config: validConfig,
+            progress: normalizeTempoRampProgress(validConfig, tempoRamp.progress)
+          };
+        } else {
+          tempoRamp = {
+            config: normalizeTempoRampConfigValues(tempoRamp.config),
+            progress: { completedPasses: 0, completed: false },
+            armed: false
+          };
+          activeTempoRampPass = null;
+        }
+      }
       normalizeClickSubdivisionForCurrentSpeed(false);
       practiceSelection = keepSelection
         ? normalizePracticeSelection(practiceSelection, block.bars.length)
@@ -2094,16 +2468,18 @@ export default class DrumNotationPlugin extends Plugin {
         if (this.activePlaybackOwner === renderOwner && this.activePlayer) {
           stopLocalPlayback();
         } else {
-          void startPlayback(0, true);
+          void (tempoRamp.armed ? startArmedTempoRamp(true, true) : startPlayback(0, true));
         }
       },
       loopActive: () => {
         this.lastInteractedControllerOwner = renderOwner;
         if (
           this.activePlaybackOwner === renderOwner &&
-          (transportMode === "loop-bar" || transportMode === "loop-selection")
+          (tempoRamp.armed || transportMode === "loop-bar" || transportMode === "loop-selection")
         ) {
           stopLocalPlayback();
+        } else if (tempoRamp.armed) {
+          void startArmedTempoRamp(true, true);
         } else if (practiceSelection.barIndexes.length > 0) {
           void startLoopSelection(undefined, true);
         } else {
@@ -2113,14 +2489,10 @@ export default class DrumNotationPlugin extends Plugin {
       adjustSpeed: (deltaPercent) => {
         this.lastInteractedControllerOwner = renderOwner;
         const nextSpeed = normalizePlaybackSpeedPercent(playbackSpeedPercent + deltaPercent);
-        if (nextSpeed === playbackSpeedPercent) {
+        if (nextSpeed === playbackSpeedPercent && !tempoRamp.armed) {
           return;
         }
-        playbackSpeedPercent = nextSpeed;
-        normalizeClickSubdivisionForCurrentSpeed(true);
-        updateHeader();
-        publishPracticeSession();
-        void restartActivePlaybackForControls();
+        setFixedPlaybackSpeed(nextSpeed);
       }
     };
     this.notationControllers.set(renderOwner, controller);
@@ -2141,7 +2513,21 @@ export default class DrumNotationPlugin extends Plugin {
           const selectionChanged =
             nextSelection.barIndexes.length !== practiceSelection.barIndexes.length ||
             nextSelection.barIndexes.some((barIndex, index) => barIndex !== practiceSelection.barIndexes[index]);
-          if (selectionChanged && this.activePlaybackOwner === renderOwner && this.activePlayer) {
+          const validTempoRampConfig = normalizeTempoRampConfig(session.tempoRamp.config, block);
+          const nextTempoRampConfig = validTempoRampConfig ?? (!session.tempoRamp.armed
+            ? normalizeTempoRampConfigValues(session.tempoRamp.config)
+            : null);
+          const nextTempoRamp: TempoRampSessionState = {
+            config: nextTempoRampConfig,
+            progress: normalizeTempoRampProgress(nextTempoRampConfig, session.tempoRamp.progress),
+            armed: Boolean(session.tempoRamp.armed && validTempoRampConfig)
+          };
+          const materialRampChange = isMaterialTempoRampSessionChange(tempoRamp, nextTempoRamp);
+          if (
+            (selectionChanged || materialRampChange) &&
+            this.activePlaybackOwner === renderOwner &&
+            this.activePlayer
+          ) {
             stopLocalPlayback();
           }
 
@@ -2154,6 +2540,10 @@ export default class DrumNotationPlugin extends Plugin {
             session.clickSubdivision
           );
           gapClickMode = session.gapClickMode;
+          tempoRamp = nextTempoRamp;
+          if (materialRampChange) {
+            activeTempoRampPass = null;
+          }
           mutedInstrumentIds.clear();
           session.mutedInstrumentIds.forEach((instrumentId) => mutedInstrumentIds.add(instrumentId));
           practiceSelection = nextSelection;
@@ -2242,7 +2632,7 @@ export default class DrumNotationPlugin extends Plugin {
     });
 
     playButton.addEventListener("click", () => {
-      void startPlayback(0, true);
+      void (tempoRamp.armed ? startArmedTempoRamp(true, true) : startPlayback(0, true));
     });
 
     stopButton.addEventListener("click", () => {
@@ -2250,23 +2640,22 @@ export default class DrumNotationPlugin extends Plugin {
     });
 
     loopButton.addEventListener("click", () => {
-      if (transportMode === "loop-bar") {
+      if (
+        transportMode === "loop-bar" ||
+        (tempoRamp.armed && this.activePlaybackOwner === renderOwner && this.activePlayer)
+      ) {
         stopLocalPlayback();
         return;
       }
 
-      void startLoopBar(barIndexForSlot(block, currentSlotIndex), undefined, true);
+      void (tempoRamp.armed
+        ? startArmedTempoRamp(true, true)
+        : startLoopBar(barIndexForSlot(block, currentSlotIndex), undefined, true));
     });
 
     loopAllButton.addEventListener("click", openLoopMenu);
 
-    speedSelect.addEventListener("change", () => {
-      playbackSpeedPercent = Number(speedSelect.value);
-      normalizeClickSubdivisionForCurrentSpeed(true);
-      updateHeader();
-      publishPracticeSession();
-      void restartActivePlaybackForControls();
-    });
+    speedButton.addEventListener("click", openSpeedMenu);
 
     metronomeButton.addEventListener("click", openMetronomeMenu);
     muteButton.addEventListener("click", openMuteMenu);
@@ -2721,15 +3110,16 @@ function clampSlotToRange(slotIndex: number, startSlot: number, endSlot: number)
 }
 
 function formatTempo(tempo: number): string {
-  return Number.isInteger(tempo) ? String(tempo) : tempo.toFixed(1);
+  const rounded = Math.round(tempo);
+  return Math.abs(tempo - rounded) < 1e-9 ? String(rounded) : tempo.toFixed(1);
 }
 
-const PLAYBACK_SPEED_TEMP_OPTION_ATTR = "data-drum-speed-temporary";
-
-function populatePlaybackSpeedOptions(select: HTMLSelectElement): void {
-  for (const speed of getPlaybackSpeedOptionValues()) {
-    select.createEl("option", { text: `${speed}%`, value: String(speed) });
+function formatTempoRampTarget(target: TempoRampTarget): string {
+  if (target.kind === "current-bar") return `Bar ${target.barIndex + 1}`;
+  if (target.kind === "selected-bars") {
+    return `Selected bars (${target.barIndexes.length})`;
   }
+  return "Whole notation";
 }
 
 function getPlaybackSpeedOptionValues(): number[] {
@@ -2748,25 +3138,6 @@ function getPlaybackSpeedOptionValues(): number[] {
   }
 
   return speeds;
-}
-
-function syncSpeedSelectValue(select: HTMLSelectElement, speedPercent: number): number {
-  const normalized = normalizePlaybackSpeedPercent(speedPercent);
-
-  select.querySelectorAll(`option[${PLAYBACK_SPEED_TEMP_OPTION_ATTR}="true"]`).forEach((option) => option.remove());
-
-  const hasOption = Array.from(select.options).some((option) => Number(option.value) === normalized);
-
-  if (!hasOption) {
-    const option = select.createEl("option", { text: `${normalized}%`, value: String(normalized) });
-    option.setAttribute(PLAYBACK_SPEED_TEMP_OPTION_ATTR, "true");
-    const insertBefore = Array.from(select.options).find((candidate) => Number(candidate.value) < normalized) ?? null;
-    select.insertBefore(option, insertBefore);
-  }
-
-  select.value = String(normalized);
-
-  return normalized;
 }
 
 function barIndexForSlot(block: DrumBlock, slotIndex: number): number {
@@ -2833,6 +3204,184 @@ function makeInitialEditSession(body: string): RestoredEditSession {
       barIndex: 0
     }
   };
+}
+
+interface TempoRampSetupModalOptions {
+  initialConfig: TempoRampConfig;
+  currentBarIndex: number;
+  selectedBarIndexes: readonly number[];
+  onSubmit: (config: TempoRampConfig) => void;
+}
+
+class TempoRampSetupModal extends Modal {
+  constructor(
+    app: App,
+    private readonly options: TempoRampSetupModalOptions
+  ) {
+    super(app);
+  }
+
+  onOpen(): void {
+    this.titleEl.setText("Tempo ramp trainer");
+    this.contentEl.empty();
+    this.contentEl.addClass("drum-notation__setup-modal");
+
+    const initial = this.options.initialConfig;
+    let targetSelect!: HTMLSelectElement;
+    let startInput!: HTMLInputElement;
+    let stepInput!: HTMLInputElement;
+    let passesInput!: HTMLInputElement;
+    let ceilingInput!: HTMLInputElement;
+    let endSelect!: HTMLSelectElement;
+
+    new Setting(this.contentEl)
+      .setName("Target")
+      .setDesc("Capture the bar or phrase that each trainer pass will repeat.")
+      .addDropdown((dropdown) => {
+        targetSelect = dropdown.selectEl;
+        dropdown
+          .addOption("current-bar", `Current bar (${this.options.currentBarIndex + 1})`)
+          .addOption(
+            "selected-bars",
+            this.options.selectedBarIndexes.length > 0
+              ? `Selected bars (${this.options.selectedBarIndexes.length})`
+              : "Selected bars (none)"
+          )
+          .addOption("whole-notation", "Whole notation")
+          .setValue(initial.target.kind);
+        const selectedOption = targetSelect.querySelector<HTMLOptionElement>('option[value="selected-bars"]');
+        if (selectedOption) {
+          selectedOption.disabled = this.options.selectedBarIndexes.length === 0;
+        }
+      });
+
+    const addNumberSetting = (
+      name: string,
+      description: string,
+      value: number,
+      minimum: number,
+      maximum: number
+    ): HTMLInputElement => {
+      let input!: HTMLInputElement;
+      new Setting(this.contentEl).setName(name).setDesc(description).addText((text) => {
+        input = text.inputEl;
+        input.type = "number";
+        input.min = String(minimum);
+        input.max = String(maximum);
+        input.step = "1";
+        input.inputMode = "numeric";
+        input.addClass("drum-notation__setup-number");
+        text.setValue(String(value));
+      });
+      return input;
+    };
+
+    startInput = addNumberSetting(
+      "Start BPM",
+      `From ${MIN_TEMPO_RAMP_BPM} to ${MAX_TEMPO_RAMP_BPM} BPM.`,
+      initial.startBpm,
+      MIN_TEMPO_RAMP_BPM,
+      MAX_TEMPO_RAMP_BPM
+    );
+    stepInput = addNumberSetting(
+      "Increase by BPM",
+      `Raise the tempo by ${MIN_TEMPO_RAMP_STEP_BPM}–${MAX_TEMPO_RAMP_STEP_BPM} BPM.`,
+      initial.stepBpm,
+      MIN_TEMPO_RAMP_STEP_BPM,
+      MAX_TEMPO_RAMP_STEP_BPM
+    );
+    passesInput = addNumberSetting(
+      "Every N passes",
+      `Complete ${MIN_TEMPO_RAMP_PASSES}–${MAX_TEMPO_RAMP_PASSES} passes before each increase.`,
+      initial.passesPerStep,
+      MIN_TEMPO_RAMP_PASSES,
+      MAX_TEMPO_RAMP_PASSES
+    );
+    ceilingInput = addNumberSetting(
+      "Ceiling BPM",
+      "Must be higher than the starting tempo.",
+      initial.ceilingBpm,
+      MIN_TEMPO_RAMP_BPM,
+      MAX_TEMPO_RAMP_BPM
+    );
+
+    new Setting(this.contentEl).setName("At ceiling").addDropdown((dropdown) => {
+      endSelect = dropdown.selectEl;
+      dropdown
+        .addOption("hold", "Hold and keep looping")
+        .addOption("stop", "Stop after the final passes")
+        .setValue(initial.endBehavior);
+    });
+
+    const summary = this.contentEl.createDiv({
+      cls: "drum-notation__setup-summary",
+      attr: { "aria-live": "polite" }
+    });
+    const buttons = this.contentEl.createDiv({ cls: "drum-notation__confirm-buttons" });
+    const cancelButton = buttons.createEl("button", { text: "Cancel", attr: { type: "button" } });
+    const startButton = buttons.createEl("button", {
+      cls: "mod-cta",
+      text: "Start ramp",
+      attr: { type: "button" }
+    });
+
+    const readConfig = (): TempoRampConfig => {
+      const targetValue = targetSelect.value;
+      const target: TempoRampTarget = targetValue === "whole-notation"
+        ? { kind: "whole-notation" }
+        : targetValue === "selected-bars"
+          ? { kind: "selected-bars", barIndexes: [...this.options.selectedBarIndexes] }
+          : { kind: "current-bar", barIndex: this.options.currentBarIndex };
+      return {
+        target,
+        startBpm: Number(startInput.value),
+        stepBpm: Number(stepInput.value),
+        passesPerStep: Number(passesInput.value),
+        ceilingBpm: Number(ceilingInput.value),
+        endBehavior: endSelect.value === "stop" ? "stop" : "hold"
+      };
+    };
+
+    const updateState = () => {
+      const config = readConfig();
+      const valid = isValidTempoRampConfigValues(config) &&
+        (config.target.kind !== "selected-bars" || config.target.barIndexes.length > 0);
+      startButton.disabled = !valid;
+      summary.setText(
+        valid
+          ? `${getTempoRampPreview(config).join(" → ")} BPM · ${config.passesPerStep} pass${config.passesPerStep === 1 ? "" : "es"} each`
+          : `Enter an ascending ladder from ${MIN_TEMPO_RAMP_BPM} to ${MAX_TEMPO_RAMP_BPM} BPM.`
+      );
+    };
+
+    [targetSelect, startInput, stepInput, passesInput, ceilingInput, endSelect].forEach((control) => {
+      control.addEventListener("input", updateState);
+      control.addEventListener("change", updateState);
+    });
+    cancelButton.addEventListener("click", () => this.close());
+    startButton.addEventListener("click", () => {
+      const config = readConfig();
+      if (!isValidTempoRampConfigValues(config)) return;
+      this.options.onSubmit(config);
+      this.close();
+    });
+    this.modalEl.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && !(event.target instanceof HTMLButtonElement) && !startButton.disabled) {
+        event.preventDefault();
+        startButton.click();
+      }
+    });
+
+    updateState();
+    this.contentEl.ownerDocument.defaultView?.requestAnimationFrame(() => {
+      startInput.focus();
+      startInput.select();
+    });
+  }
+
+  onClose(): void {
+    this.contentEl.empty();
+  }
 }
 
 interface DrumSetupModalOptions {

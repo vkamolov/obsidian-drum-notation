@@ -13,6 +13,13 @@ import {
   normalizeClickSubdivision,
   normalizeGapClickMode
 } from "./playback";
+import {
+  TempoRampSessionState,
+  cloneTempoRampConfig,
+  normalizeTempoRampConfigValues,
+  normalizeTempoRampProgress,
+  tempoRampConfigsEqual
+} from "./tempo-ramp";
 
 export interface DrumTransportSession {
   body: string;
@@ -25,6 +32,7 @@ export interface DrumTransportSession {
   selection: PracticeSelection;
   selectionModeOpen: boolean;
   currentBarIndex: number;
+  tempoRamp: TempoRampSessionState;
 }
 
 export type DrumTransportSessionListener = (session: DrumTransportSession) => void;
@@ -233,6 +241,7 @@ export class DrumTransportSessionStore {
 }
 
 function normalizeSession(session: DrumTransportSession): DrumTransportSession {
+  const tempoRampConfig = normalizeTempoRampConfigValues(session.tempoRamp?.config);
   return {
     ...session,
     clickSubdivision: normalizeClickSubdivision(session.clickSubdivision ?? DEFAULT_CLICK_SUBDIVISION),
@@ -241,7 +250,12 @@ function normalizeSession(session: DrumTransportSession): DrumTransportSession {
     selection: {
       barIndexes: [...new Set(session.selection.barIndexes)].sort((left, right) => left - right)
     },
-    currentBarIndex: Math.max(0, Math.round(session.currentBarIndex))
+    currentBarIndex: Math.max(0, Math.round(session.currentBarIndex)),
+    tempoRamp: {
+      config: tempoRampConfig,
+      progress: normalizeTempoRampProgress(tempoRampConfig, session.tempoRamp?.progress),
+      armed: Boolean(session.tempoRamp?.armed && tempoRampConfig)
+    }
   };
 }
 
@@ -249,7 +263,12 @@ function cloneSession(session: DrumTransportSession): DrumTransportSession {
   return {
     ...session,
     mutedInstrumentIds: [...session.mutedInstrumentIds],
-    selection: { barIndexes: [...session.selection.barIndexes] }
+    selection: { barIndexes: [...session.selection.barIndexes] },
+    tempoRamp: {
+      config: cloneTempoRampConfig(session.tempoRamp.config),
+      progress: { ...session.tempoRamp.progress },
+      armed: session.tempoRamp.armed
+    }
   };
 }
 
@@ -263,6 +282,10 @@ function sessionsEqual(left: DrumTransportSession, right: DrumTransportSession):
     left.gapClickMode === right.gapClickMode &&
     left.selectionModeOpen === right.selectionModeOpen &&
     left.currentBarIndex === right.currentBarIndex &&
+    left.tempoRamp.armed === right.tempoRamp.armed &&
+    left.tempoRamp.progress.completedPasses === right.tempoRamp.progress.completedPasses &&
+    left.tempoRamp.progress.completed === right.tempoRamp.progress.completed &&
+    tempoRampConfigsEqual(left.tempoRamp.config, right.tempoRamp.config) &&
     arraysEqual(left.mutedInstrumentIds, right.mutedInstrumentIds) &&
     arraysEqual(left.selection.barIndexes, right.selection.barIndexes)
   );

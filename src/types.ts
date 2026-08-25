@@ -146,8 +146,11 @@ export interface PlaybackOptions {
   countInMode?: CountInMode;
   clickSubdivision?: ClickSubdivision;
   gapClickMode?: GapClickMode;
+  tempoRamp?: TempoRampPlaybackState;
   selectedBarIndexes?: readonly number[];
   onBarChange?: (barIndex: number, state: PlaybackBarState) => void;
+  onTempoRampPassStart?: (state: TempoRampPassState) => void;
+  onTempoRampPassComplete?: (state: TempoRampPassState) => void;
 }
 
 export interface PracticeSelection {
@@ -174,6 +177,41 @@ export interface PlaybackBarState {
   isGapBar: boolean;
   nextBarIndex: number | null;
   isNextGapBar: boolean;
+}
+
+export type TempoRampTarget =
+  | { kind: "current-bar"; barIndex: number }
+  | { kind: "selected-bars"; barIndexes: number[] }
+  | { kind: "whole-notation" };
+
+export type TempoRampEndBehavior = "hold" | "stop";
+
+export interface TempoRampConfig {
+  target: TempoRampTarget;
+  startBpm: number;
+  stepBpm: number;
+  passesPerStep: number;
+  ceilingBpm: number;
+  endBehavior: TempoRampEndBehavior;
+}
+
+export interface TempoRampProgress {
+  completedPasses: number;
+  completed: boolean;
+}
+
+export interface TempoRampPlaybackState {
+  config: TempoRampConfig;
+  progress: TempoRampProgress;
+}
+
+export interface TempoRampPassState extends TempoRampProgress {
+  tempoBpm: number;
+  nextTempoBpm: number;
+  passInStep: number;
+  passesPerStep: number;
+  atCeiling: boolean;
+  clickSubdivision: ClickSubdivision;
 }
 
 export interface DrumRow {

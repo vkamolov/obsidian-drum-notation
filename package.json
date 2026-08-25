@@ -1,6 +1,6 @@
 {
   "name": "obsidian-drum-notation",
-  "version": "1.9.0",
+  "version": "1.10.0",
   "description": "Create, hear, edit, and organize drum notation for practice, lessons, songs, and gigs, with playback, loops, and tempo tools.",
   "main": "main.js",
   "scripts": {
