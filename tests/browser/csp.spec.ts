@@ -519,6 +519,87 @@ test("verification mode keeps source and report ephemeral", async ({ page }) => 
   expect(await page.evaluate(() => sessionStorage.getItem("test.revoked-object-urls"))).toBe("3");
 });
 
+test("verification mode requires confirmation before accepting unfenced notation", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Verify agent result" }).click();
+  const source = "Here is the notation:\nHH | x-x-x-x-x-x-x-x-";
+  const response = page.locator("#pg-agent-response");
+  const accept = page.getByRole("button", { name: "Treat pasted text as one drums block" });
+
+  await response.fill(source);
+  await page.getByRole("button", { name: "Extract and verify" }).click();
+  await expect(page.locator("#pg-verify-message")).toContainText("including any surrounding text");
+  await expect(accept).toBeVisible();
+  await expect(page.getByRole("tab")).toHaveCount(0);
+
+  await response.evaluate((input: HTMLTextAreaElement) => {
+    input.value = `${input.value}\nComment: changed without an input event`;
+  });
+  await accept.click();
+  await expect(page.getByRole("tab")).toHaveCount(0);
+  await expect(page.locator("#pg-verify-message")).toContainText("changed or no longer validates");
+
+  await response.fill(source);
+  await page.getByRole("button", { name: "Extract and verify" }).click();
+  await response.fill(`${source}\nComment: changed`);
+  await expect(accept).toBeHidden();
+  await expect(page.locator("#pg-verify-message")).toContainText("Select Extract and verify");
+
+  await response.fill(source);
+  await page.getByRole("button", { name: "Extract and verify" }).click();
+  await accept.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("tab", { name: "Segment 1" })).toBeVisible();
+  await expect(page.locator("#pg-editor")).toHaveValue(source);
+  await expect(page.locator("#pg-signal-parser")).toContainText("Valid · clean");
+  await expect(page.locator("#pg-signal-report")).toHaveText("Not supplied");
+  await expect(page.locator("#pg-verify-message")).toContainText("complete pasted text as one drums block");
+
+  await page.getByRole("button", { name: "Clear" }).click();
+  await response.fill("```\nHH | x---------------\n```");
+  await page.getByRole("button", { name: "Extract and verify" }).click();
+  await expect(accept).toBeHidden();
+  await expect(page.locator("#pg-verify-message")).toContainText("No fenced drums blocks found");
+});
+
+test("split voicing preserves dotted lower-voice sixteenth positions", async ({ page }) => {
+  await page.setViewportSize({ width: 1910, height: 900 });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Verify agent result" }).click();
+  const source = `Title: Exercise #1
+Tempo: 100
+Time: 4/4
+Grid: 16
+Legend: used
+Voicing: split
+HH | -x-----x-x-----x
+RB | --x--x--x--x--x-
+SN | ----o-------o---
+KD | o--o--o---o--o--`;
+  const response = `\`\`\`drums\n${source}\n\`\`\``;
+  const noteX = async (slotIndex: number, instrument: string): Promise<number> => {
+    const value = await page.locator(
+      `g[data-slot-index="${slotIndex}"][data-drum-instrument-labels="${instrument}"] .vf-notehead text`
+    ).first().getAttribute("x");
+    return Number(value);
+  };
+  const expectWrittenOrdering = async (): Promise<void> => {
+    expect(await noteX(3, "Kick")).toBeGreaterThan(await noteX(2, "Ride bell"));
+    expect(await noteX(13, "Kick")).toBeGreaterThan(await noteX(12, "Snare"));
+  };
+
+  await page.locator("#pg-agent-response").fill(response);
+  await page.getByRole("button", { name: "Extract and verify" }).click();
+  await expectWrittenOrdering();
+
+  await page.locator("#pg-editor").fill(source.replace("Voicing: split", "Voicing: single"));
+  await page.waitForTimeout(300);
+  await expectWrittenOrdering();
+  await page.locator("#pg-editor").fill(source);
+  await page.waitForTimeout(300);
+  await expectWrittenOrdering();
+});
+
 test("verification mode hands off the prompt before an ephemeral focused crop", async ({ page }) => {
   await page.addInitScript(() => {
     const revokeObjectUrl = URL.revokeObjectURL.bind(URL);

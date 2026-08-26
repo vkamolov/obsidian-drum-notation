@@ -153,6 +153,11 @@ the **first** import in `app.ts`. `engrave.ts` itself was **not** changed.
   its intake controls and the source/notation/preview workspace. Drag it upward
   to enlarge the comparison area, double-click to restore its default size, or
   use **Full screen** and **Restore** (Escape also restores) for focused review.
+- When verification finds no Markdown fence but the complete pasted text
+  validates as drum notation, it offers **Treat pasted text as one drums
+  block**. Nothing is extracted until the user confirms that the complete box,
+  including any surrounding text, should become one ephemeral segment. Generic,
+  malformed, unclosed, and report-only fences never use this recovery path.
 - Grouped native example picker (`examples.ts`) organized by purpose, including
   ten core rudiment exercises. Copy for Obsidian, Copy normalized in diagnostics,
   and light/dark theme toggle (persisted). If the browser blocks

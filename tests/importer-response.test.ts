@@ -31,6 +31,47 @@ describe("agent response extraction", () => {
     expect(result.segments[0].validation.status).toBe("clean");
   });
 
+  it("offers clean unfenced notation without extracting it automatically", () => {
+    const source = "Title: Exercise\nHH | x-x-x-x-x-x-x-x-";
+    const result = extractAgentResponse(source);
+
+    expect(result.segments).toEqual([]);
+    expect(result.unfencedCandidate).toMatchObject({
+      source,
+      validation: { status: "clean" }
+    });
+    expect(result.errors).toContain("No fenced drums blocks found.");
+  });
+
+  it("offers warning-bearing unfenced notation for explicit review", () => {
+    const source = "HH | x-x-x-x-x-x-x-x";
+    const result = extractAgentResponse(source);
+
+    expect(result.segments).toEqual([]);
+    expect(result.unfencedCandidate?.validation.status).toBe("warnings");
+    expect(result.unfencedCandidate?.validation.warnings.map((warning) => warning.code)).toContain("row-length-mismatch");
+  });
+
+  it("keeps surrounding text inside an explicitly confirmed unfenced candidate", () => {
+    const source = "Here is the notation:\nHH | x-x-x-x-x-x-x-x-";
+    const result = extractAgentResponse(source);
+
+    expect(result.unfencedCandidate?.source).toBe(source);
+    expect(result.unfencedCandidate?.validation.status).not.toBe("invalid");
+  });
+
+  it("does not offer unfenced recovery for prose, fenced near-misses, or oversized text", () => {
+    expect(extractAgentResponse("Here is the notation.").unfencedCandidate).toBeNull();
+    expect(extractAgentResponse("```\nHH | x---------------\n```").unfencedCandidate).toBeNull();
+    expect(extractAgentResponse("~~~drums\nHH | x---------------\n~~~").unfencedCandidate).toBeNull();
+    expect(extractAgentResponse("```drums\nHH | x---------------").unfencedCandidate).toBeNull();
+    expect(extractAgentResponse(`\`\`\`drum-import-report\n${report}\n\`\`\``).unfencedCandidate).toBeNull();
+
+    const oversized = extractAgentResponse(`HH | ${"x".repeat(MAX_IMPORT_BLOCK_BYTES)}`);
+    expect(oversized.unfencedCandidate).toBeNull();
+    expect(oversized.errors.some((error) => error.includes("Unfenced pasted text exceeds"))).toBe(true);
+  });
+
   it("accepts a valid report and compares notation cores", () => {
     const result = extractAgentResponse(`\`\`\`drums\nHH | x-x-x-x-x-x-x-x-\n\`\`\`\n\`\`\`drum-import-report\n${report}\n\`\`\``);
     expect(result.reportState).toBe("valid");

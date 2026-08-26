@@ -1,4 +1,4 @@
-import { Barline, BarlineType, Beam, Dot, Stave, StaveNote, Stem, Tuplet } from "vexflow/bravura";
+import { Barline, BarlineType, Beam, Dot, Stave, StaveNote, Stem, Tickable, Tuplet, Voice } from "vexflow/bravura";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { applySectionRepeatBarlineTypes, buildGridVisualBarNotes, buildSplitVisualBarNotes, getScoreSystemHeights } from "../src/engrave";
 import { parseDrumBlock } from "../src/parser";
@@ -81,6 +81,14 @@ function buildSplit(source: string) {
 
 function voiceTicks(notes: readonly { getTicks: () => { value: () => number } }[]): number {
   return notes.reduce((total, note) => total + note.getTicks().value(), 0);
+}
+
+function expectCompleteVoices(timeSignature: string, voices: readonly (readonly Tickable[])[]): void {
+  voices.forEach((notes) => {
+    const voice = new Voice(timeSignature).setStrict(false);
+    voice.addTickables([...notes]);
+    expect(voice.getTicksUsed().value()).toBe(voice.getTotalTicks().value());
+  });
 }
 
 describe("articulation engraving", () => {
@@ -396,6 +404,7 @@ describe("rest engraving", () => {
       expect(visualBar.noteSlots).toEqual([]);
       expect(visualBar.cursorSlots).toEqual([]);
       expect(visualBar.beams).toEqual([]);
+      expectCompleteVoices(timeSignature, visualBar.voices);
     }
   );
 
@@ -410,9 +419,43 @@ describe("rest engraving", () => {
     expect(visualBar.noteSlots.map((slot) => slot.index)).toEqual([4, 8]);
     expect(visualBar.cursorSlots.map((slot) => slot.index)).toEqual([4, 8]);
   });
+
+  it("gives dotted Grid 32 notes their complete intrinsic duration", () => {
+    const { visualBar } = buildBeams("4/4", 32, "x-----x-------------------------");
+    const first = visualBar.hitNotes[0];
+    const second = visualBar.hitNotes[1];
+
+    expect(first.getDuration()).toBe("8");
+    expect(first.getModifiersByType("Dot")).toHaveLength(1);
+    expect(first.getTicks().value()).toBe(second.getTicks().value() * 3);
+  });
 });
 
 describe("split drum voicing", () => {
+  it("keeps dotted lower-voice hits aligned to their written sixteenth slots", () => {
+    const { visualBar } = buildSplit(`HH | -x-----x-x-----x
+RB | --x--x--x--x--x-
+SN | ----o-------o---
+KD | o--o--o---o--o--`);
+    const entries = visualBar.noteSlots.map((slot, index) => ({
+      slotIndex: slot.index,
+      instrument: slot.hits[0]?.instrument.id,
+      note: visualBar.hitNotes[index]
+    }));
+    const kicks = entries.filter((entry) => entry.instrument === "kick");
+    const firstKick = kicks.find((entry) => entry.slotIndex === 0)?.note;
+    const secondKick = kicks.find((entry) => entry.slotIndex === 3)?.note;
+    const finalKick = kicks.find((entry) => entry.slotIndex === 13)?.note;
+
+    expect(kicks.map((entry) => entry.slotIndex)).toEqual([0, 3, 6, 10, 13]);
+    expect(firstKick?.getModifiersByType("Dot")).toHaveLength(1);
+    expect(finalKick?.getModifiersByType("Dot")).toHaveLength(1);
+    expect(firstKick?.getTicks().value()).toBe((secondKick?.getTicks().value() ?? 0) * 3);
+    expect(finalKick?.getTicks().value()).toBe((secondKick?.getTicks().value() ?? 0) * 3);
+    expect(new Set(visualBar.voices.map(voiceTicks)).size).toBe(1);
+    expectCompleteVoices("4/4", visualBar.voices);
+  });
+
   it("uses independent up-stem and down-stem voices for simultaneous hands and feet", () => {
     const { visualBar } = buildSplit(`HH | x-x-
 BD | o---`);

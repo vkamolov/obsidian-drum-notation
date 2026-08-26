@@ -2099,6 +2099,7 @@ function makeStaveNote(
     const rest = new StaveNote({
       keys: [restKeyForDuration(duration)],
       duration: `${duration}r`,
+      dots,
       clef: "percussion",
       stemDirection
     });
@@ -2113,6 +2114,7 @@ function makeStaveNote(
   const note = new StaveNote({
     keys,
     duration,
+    dots,
     clef: "percussion",
     stemDirection
   });

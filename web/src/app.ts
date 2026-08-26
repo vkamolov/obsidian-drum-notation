@@ -127,6 +127,8 @@ import {
   compareReportCore,
   detectRasterImageKind,
   DrumImportReport,
+  ExtractedAgentResponse,
+  ExtractedImportSegment,
   extractAgentResponse,
   HumanReviewState,
   isAllowedRasterDimensions,
@@ -217,6 +219,8 @@ const clearVerificationBtn = $<HTMLButtonElement>("pg-clear-verification");
 const verificationUndoBtn = $<HTMLButtonElement>("pg-verify-undo");
 const saveVerifiedBtn = $<HTMLButtonElement>("pg-save-verified");
 const verificationMessage = $<HTMLParagraphElement>("pg-verify-message");
+const unfencedRecovery = $<HTMLDivElement>("pg-unfenced-recovery");
+const acceptUnfencedBtn = $<HTMLButtonElement>("pg-accept-unfenced");
 const segmentTabs = $<HTMLDivElement>("pg-segment-tabs");
 const signalParser = $<HTMLElement>("pg-signal-parser");
 const signalReport = $<HTMLElement>("pg-signal-report");
@@ -307,6 +311,7 @@ let verificationReport: DrumImportReport | null = null;
 let verificationReportState: ImportReportState = "missing";
 let verificationResponseErrors: string[] = [];
 let verificationUndoStack: string[] = [];
+let pendingUnfencedResponse: string | null = null;
 let sourceObjectUrl: string | null = null;
 let focusedCropObjectUrl: string | null = null;
 let focusedCropBlob: Blob | null = null;
@@ -2888,6 +2893,7 @@ function exitVerificationModeToDraft(): void {
   stopPlayback();
   exitEditMode();
   verificationActive = false;
+  clearPendingUnfencedRecovery();
   setVerificationWorkspaceMaximized(false);
   activeDocument.body.classList.remove("pg-verifying");
   verifyPanel.hidden = true;
@@ -2904,13 +2910,20 @@ function exitVerificationModeToDraft(): void {
   updateVerificationUndoButton();
 }
 
-function extractVerificationResponse(): void {
-  enterVerificationMode();
-  const extracted = extractAgentResponse(agentResponseInput.value);
+function clearPendingUnfencedRecovery(): void {
+  pendingUnfencedResponse = null;
+  unfencedRecovery.hidden = true;
+}
+
+function applyVerificationExtraction(
+  extracted: ExtractedAgentResponse,
+  segments: readonly ExtractedImportSegment[],
+  responseErrors: readonly string[]
+): void {
   verificationReport = extracted.report;
   verificationReportState = extracted.reportState;
-  verificationResponseErrors = extracted.errors;
-  verificationSegments = extracted.segments.map((segment) => ({
+  verificationResponseErrors = [...responseErrors];
+  verificationSegments = segments.map((segment) => ({
     source: segment.source,
     edited: segment.source,
     reportBaseline: segment.validation.status === "invalid"
@@ -2933,6 +2946,50 @@ function extractVerificationResponse(): void {
     verificationResponseErrors.length > 0
   );
   selectVerificationSegment(0);
+}
+
+function extractVerificationResponse(): void {
+  enterVerificationMode();
+  clearPendingUnfencedRecovery();
+  const response = agentResponseInput.value;
+  const extracted = extractAgentResponse(response);
+
+  if (extracted.segments.length === 0 && extracted.unfencedCandidate) {
+    verificationReport = extracted.report;
+    verificationReportState = extracted.reportState;
+    verificationResponseErrors = extracted.errors;
+    verificationSegments = [];
+    selectedVerificationSegment = -1;
+    pendingUnfencedResponse = response;
+    unfencedRecovery.hidden = false;
+    renderSegmentTabs();
+    renderVerificationSignals();
+    setVerificationMessage(
+      "No fenced drums block was found. The complete contents of the box—including any surrounding text—can be treated as one notation block."
+    );
+    acceptUnfencedBtn.focus();
+    return;
+  }
+
+  applyVerificationExtraction(extracted, extracted.segments, extracted.errors);
+}
+
+function acceptUnfencedVerificationResponse(): void {
+  const response = agentResponseInput.value;
+  const extracted = extractAgentResponse(response);
+  const candidate = extracted.unfencedCandidate;
+
+  if (pendingUnfencedResponse === null || response !== pendingUnfencedResponse || !candidate || extracted.segments.length > 0) {
+    clearPendingUnfencedRecovery();
+    setVerificationMessage("The pasted text changed or no longer validates. Select Extract and verify again.", true);
+    return;
+  }
+
+  clearPendingUnfencedRecovery();
+  applyVerificationExtraction(extracted, [candidate], []);
+  setVerificationMessage(
+    "Treated the complete pasted text as one drums block. Source, report, and review state remain ephemeral."
+  );
 }
 
 function setCropStatus(message: string, error = false): void {
@@ -3197,6 +3254,7 @@ async function loadSourceImage(file: File | undefined): Promise<void> {
 function clearVerificationWorkspace(): void {
   stopPlayback();
   exitEditMode();
+  clearPendingUnfencedRecovery();
   verificationSegments = [];
   selectedVerificationSegment = -1;
   verificationReport = null;
@@ -3754,6 +3812,14 @@ function init(): void {
     void copyText(copyPromptBtn, importPrompt.textContent ?? "");
   });
   extractResponseBtn.addEventListener("click", extractVerificationResponse);
+  acceptUnfencedBtn.addEventListener("click", acceptUnfencedVerificationResponse);
+  agentResponseInput.addEventListener("input", () => {
+    if (pendingUnfencedResponse === null) {
+      return;
+    }
+    clearPendingUnfencedRecovery();
+    setVerificationMessage("Pasted text changed. Select Extract and verify to validate it again.");
+  });
   clearVerificationBtn.addEventListener("click", clearVerificationWorkspace);
   verificationUndoBtn.addEventListener("click", undoVerificationEdit);
   saveVerifiedBtn.addEventListener("click", saveVerifiedNotation);

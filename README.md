@@ -839,6 +839,8 @@ Use **Loop Bar** in the rendered view to loop the bar containing the current cur
 
 ## Recent Changes
 
+- `1.10.1` corrects dotted-note alignment in split-voice engraving and adds an
+  explicitly confirmed recovery path for valid unfenced notation imports.
 - `1.10.0` adds an exact-BPM Tempo Ramp Trainer for guided practice ladders
   across a bar, selected phrase, or complete notation.
 - `1.9.0` adds configurable click subdivisions and occurrence-aware gap-click

@@ -50,6 +50,7 @@ export interface ExtractedImportSegment {
 
 export interface ExtractedAgentResponse {
   segments: ExtractedImportSegment[];
+  unfencedCandidate: ExtractedImportSegment | null;
   report: DrumImportReport | null;
   reportState: ImportReportState;
   errors: string[];
@@ -134,12 +135,20 @@ export function parseImportReport(value: unknown, blockCount: number): DrumImpor
 export function extractAgentResponse(response: string): ExtractedAgentResponse {
   const errors: string[] = [];
   if (byteLength(response) > MAX_AGENT_RESPONSE_BYTES) {
-    return { segments: [], report: null, reportState: "missing", errors: [`Response exceeds ${MAX_AGENT_RESPONSE_BYTES} bytes.`] };
+    return {
+      segments: [],
+      unfencedCandidate: null,
+      report: null,
+      reportState: "missing",
+      errors: [`Response exceeds ${MAX_AGENT_RESPONSE_BYTES} bytes.`]
+    };
   }
 
-  const lines = response.replace(/\r\n?/g, "\n").split("\n");
+  const normalizedResponse = response.replace(/\r\n?/g, "\n");
+  const lines = normalizedResponse.split("\n");
   const drumBlocks: string[] = [];
   const reportBlocks: string[] = [];
+  const hasMarkdownFence = lines.some((line) => /^\s*(?:`{3,}|~{3,})/.test(line));
 
   for (let index = 0; index < lines.length; index++) {
     const opening = lines[index].match(/^```(drums|drum-import-report)\s*$/);
@@ -173,28 +182,40 @@ export function extractAgentResponse(response: string): ExtractedAgentResponse {
     }
   }
 
+  let unfencedCandidate: ExtractedImportSegment | null = null;
   if (drumBlocks.length === 0) {
     errors.push("No fenced drums blocks found.");
+    const source = normalizedResponse.trim();
+    if (!hasMarkdownFence && source.length > 0) {
+      if (byteLength(source) > MAX_IMPORT_BLOCK_BYTES) {
+        errors.push(`Unfenced pasted text exceeds ${MAX_IMPORT_BLOCK_BYTES} bytes.`);
+      } else {
+        const validation = validateDrumNotation(source);
+        if (validation.status !== "invalid") {
+          unfencedCandidate = { source, validation };
+        }
+      }
+    }
   }
   const segments = drumBlocks.map((source) => ({ source, validation: validateDrumNotation(source) }));
   if (reportBlocks.length === 0) {
-    return { segments, report: null, reportState: "missing", errors };
+    return { segments, unfencedCandidate, report: null, reportState: "missing", errors };
   }
   if (reportBlocks.length > 1) {
     errors.push("More than one drum-import-report block was supplied.");
-    return { segments, report: null, reportState: "malformed", errors };
+    return { segments, unfencedCandidate, report: null, reportState: "malformed", errors };
   }
 
   try {
     const report = parseImportReport(JSON.parse(reportBlocks[0]), drumBlocks.length);
     if (!report) {
       errors.push("The drum-import-report does not match schema version 1.");
-      return { segments, report: null, reportState: "malformed", errors };
+      return { segments, unfencedCandidate, report: null, reportState: "malformed", errors };
     }
-    return { segments, report, reportState: "valid", errors };
+    return { segments, unfencedCandidate, report, reportState: "valid", errors };
   } catch {
     errors.push("The drum-import-report is not valid JSON.");
-    return { segments, report: null, reportState: "malformed", errors };
+    return { segments, unfencedCandidate, report: null, reportState: "malformed", errors };
   }
 }
 

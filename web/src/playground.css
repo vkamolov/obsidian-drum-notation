@@ -347,6 +347,7 @@ body.pg-verify-workspace-maximized .pg-verify-resizer::before {
 }
 
 .pg-verify-message,
+.pg-unfenced-recovery,
 .pg-segment-tabs,
 .pg-signal-grid,
 .pg-report-details {
@@ -355,6 +356,15 @@ body.pg-verify-workspace-maximized .pg-verify-resizer::before {
 
 .pg-verify-message.is-error {
   color: #b91c1c;
+}
+
+.pg-unfenced-recovery {
+  display: flex;
+  align-items: center;
+}
+
+.pg-unfenced-recovery[hidden] {
+  display: none;
 }
 
 .pg-segment-tabs {
