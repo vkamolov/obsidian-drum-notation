@@ -1432,6 +1432,13 @@ body.pg-verify-workspace-maximized .pg-footer {
   line-height: 1.4;
 }
 
+.pg-tap-tempo-button {
+  align-self: center;
+  min-width: 9rem;
+  min-height: 4.5rem;
+  font-size: 1.2rem;
+}
+
 /* ---- responsive: stack on narrow screens ---- */
 @media (max-width: 760px) {
   .pg-topbar {

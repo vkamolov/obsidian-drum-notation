@@ -14,8 +14,10 @@ function makeSession(overrides: Partial<DrumTransportSession> = {}): DrumTranspo
   return {
     body: "HH | xxxx",
     speedPercent: 100,
+    exactTempoBpm: null,
     metronomeMode: "off",
     countInMode: "off",
+    countInCadence: "transport-start",
     clickSubdivision: "beat",
     gapClickMode: "off",
     mutedInstrumentIds: [],
@@ -27,6 +29,15 @@ function makeSession(overrides: Partial<DrumTransportSession> = {}): DrumTranspo
       progress: { completedPasses: 0, completed: false },
       armed: false
     },
+    tempoRampRunMetrics: null,
+    repetitionGoal: {
+      config: null,
+      progress: { completedPasses: 0, completed: false },
+      armed: false,
+      runMetrics: null
+    },
+    completedSummary: null,
+    completedSummaryHandled: false,
     ...overrides
   };
 }
@@ -189,6 +200,59 @@ describe("DrumTransportSessionStore", () => {
       clickSubdivision: "3-per-beat",
       gapClickMode: "2-on-2-off"
     }));
+  });
+
+  it("clones exact tempo, cadence, goals, metrics, and summaries", () => {
+    const metrics = {
+      startedAtEpochMs: 100,
+      elapsedActiveMs: 500,
+      activeSinceClockMs: null,
+      startBpm: 90,
+      endBpm: 95,
+      performedPasses: 3,
+      status: "paused" as const
+    };
+    const store = new DrumTransportSessionStore();
+    store.set("note.md:4", makeSession({
+      exactTempoBpm: 95,
+      countInCadence: "every-pass",
+      repetitionGoal: {
+        config: { target: { kind: "selected-bars", barIndexes: [2, 1] }, totalPasses: 8 },
+        progress: { completedPasses: 3, completed: false },
+        armed: true,
+        runMetrics: metrics
+      },
+      completedSummary: {
+        kind: "repetition-goal",
+        target: { kind: "current-bar", barIndex: 0 },
+        startedAtEpochMs: 100,
+        elapsedActiveMs: 500,
+        startBpm: 90,
+        endBpm: 95,
+        performedPasses: 3,
+        requestedPasses: 8,
+        completed: false
+      }
+    }));
+
+    const restored = store.get("note.md:4", "HH | xxxx");
+    expect(restored).toMatchObject({
+      exactTempoBpm: 95,
+      countInCadence: "every-pass",
+      repetitionGoal: {
+        config: { target: { kind: "selected-bars", barIndexes: [1, 2] }, totalPasses: 8 },
+        progress: { completedPasses: 3, completed: false },
+        runMetrics: { performedPasses: 3 }
+      },
+      completedSummary: { requestedPasses: 8, performedPasses: 3 }
+    });
+
+    if (restored?.repetitionGoal.config?.target.kind === "selected-bars") {
+      restored.repetitionGoal.config.target.barIndexes.push(9);
+    }
+    expect(store.get("note.md:4", "HH | xxxx")?.repetitionGoal.config).toMatchObject({
+      target: { barIndexes: [1, 2] }
+    });
   });
 
   it("isolates source blocks and migrates a plugin-authored body", () => {

@@ -113,8 +113,9 @@ the **first** import in `app.ts`. `engrave.ts` itself was **not** changed.
   rerenders but are cleared by a reload and are never written to
   `localStorage`.
 - The metronome menu offers one- and two-bar count-ins. Count-in sounds even
-  with the metronome off, runs once at transport start, and does not repeat
-  between loop passes or control-triggered restarts.
+  with the metronome off. **Once at start** is the default; **Before every
+  pass** applies to repetition goals, tempo ramps, and loop modes. Control-
+  triggered restarts never add another count-in.
 - Click subdivision adds 2, 3, or 4 clicks inside each existing metronome
   pulse. Menu labels identify familiar note values when possible: three per
   beat is eighth-note triplets in 4/4 and eighths in 6/8. Downbeats, main
@@ -136,6 +137,18 @@ the **first** import in `app.ts`. `engrave.ts` itself was **not** changed.
   BPM only at transport start or manual resume. Gap-click phase continues across
   tempo steps, while unsafe click subdivisions step down and stay at the safer
   choice.
+- The Loop menu opens a finite **Practice repetitions** goal for the current
+  bar, selected bars, or whole notation. Goals accept 1–999 passes with 4, 8,
+  16, and 32 as quick choices. Stop pauses without counting an incomplete pass;
+  Finish session creates an early summary, and Reset starts the counters again.
+- **Tap tempo** is available from the speed menu while stopped. Two or more
+  taps set an exact 30–260 BPM tempo; Space and Enter activate the large Tap
+  control. Choosing a percentage returns to percentage mode.
+- Repetition goals and tempo ramps track performed passes and active session
+  time. Active session time includes count-in and playback but excludes stopped
+  or unloaded time. A completed or early-finished run can be copied as a
+  Markdown summary. The playground never writes a practice log or persists the
+  summary across reloads.
 - **Keep screen awake** is enabled for the page session when the browser and
   secure context support Screen Wake Lock. It is marked unavailable otherwise.
   Continuous loops intentionally retain the lock until Stop, so users should
@@ -248,9 +261,10 @@ Console should be free of errors/warnings.
 
 ## Known limitations / things to scrutinize
 
-- **Practice state:** playback controls and selected bars are memory-only for
-  the current page. Reloading clears them; the notation and theme remain the
-  only normal playground values saved to `localStorage`.
+- **Practice state:** playback controls, selected bars, exact BPM, repetition
+  goals, session metrics, and summaries are memory-only for the current page.
+  Reloading clears them; the notation and theme remain the only normal
+  playground values saved to `localStorage`.
 - **Agent verification privacy:** source PNG/JPEG/WebP images, pasted agent
   responses, reports, and review state remain ephemeral. Only an explicit Save
   writes normalized notation to the existing playground `localStorage` key.

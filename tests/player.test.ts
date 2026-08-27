@@ -224,6 +224,100 @@ HH | x---`);
     expect(backend.scheduled[0].slotDuration).toBeCloseTo(getSecondsPerSlot(block, 150));
   });
 
+  it("uses exact BPM and stops after a finite pass goal", async () => {
+    const block = parseDrumBlock("Tempo: 120\nHH | x---");
+    const backend = new FakePlaybackBackend();
+    const onPassStart = vi.fn();
+    const onPassComplete = vi.fn();
+    const onEnded = vi.fn();
+    const player = new DrumPlayer(
+      {} as AudioContext,
+      block,
+      onEnded,
+      vi.fn(),
+      {
+        exactTempoBpm: 90,
+        passLimit: 2,
+        onPassStart,
+        onPassComplete
+      },
+      (() => backend) as DrumPlaybackBackendFactory
+    );
+
+    await player.play();
+    expect(notationSchedules(backend)[0].slotDuration).toBeCloseTo(60 / 90 / 4);
+    expect(onPassStart).toHaveBeenCalledWith({ passIndex: 0, completedPasses: 0, tempoBpm: 90 });
+
+    scheduledTimers[scheduledTimers.length - 1]?.();
+    expect(onPassComplete).toHaveBeenCalledWith({ passIndex: 0, completedPasses: 1, tempoBpm: 90 });
+    expect(onPassStart).toHaveBeenLastCalledWith({ passIndex: 1, completedPasses: 1, tempoBpm: 90 });
+
+    scheduledTimers[scheduledTimers.length - 1]?.();
+    expect(onPassComplete).toHaveBeenLastCalledWith({ passIndex: 1, completedPasses: 2, tempoBpm: 90 });
+    expect(onEnded).toHaveBeenCalledTimes(1);
+  });
+
+  it("adds beat-only count-in before every later pass", async () => {
+    const block = parseDrumBlock("Tempo: 120\nHH | x---------------");
+    const backend = new FakePlaybackBackend();
+    const player = new DrumPlayer(
+      {} as AudioContext,
+      block,
+      vi.fn(),
+      vi.fn(),
+      {
+        exactTempoBpm: 60,
+        countInMode: "1-bar",
+        countInCadence: "every-pass",
+        passLimit: 2
+      },
+      (() => backend) as DrumPlaybackBackendFactory
+    );
+
+    await player.play();
+    expect(metronomeSchedules(backend)).toHaveLength(4);
+    scheduledTimers[scheduledTimers.length - 1]?.();
+    expect(metronomeSchedules(backend)).toHaveLength(8);
+    expect(metronomeSchedules(backend).every((entry) => entry.hits[0]?.velocity !== 0.45)).toBe(true);
+    const secondPassStart = notationSchedules(backend)[16].time;
+    expect(secondPassStart).toBeCloseTo(10.08 + 12);
+  });
+
+  it("uses the upcoming ramp BPM for an every-pass count-in", async () => {
+    const block = parseDrumBlock("Tempo: 120\nHH | x---");
+    const backend = new FakePlaybackBackend();
+    const player = new DrumPlayer(
+      {} as AudioContext,
+      block,
+      vi.fn(),
+      vi.fn(),
+      {
+        countInMode: "1-bar",
+        countInCadence: "every-pass",
+        tempoRamp: {
+          config: {
+            target: { kind: "whole-notation" },
+            startBpm: 60,
+            stepBpm: 10,
+            passesPerStep: 1,
+            ceilingBpm: 70,
+            endBehavior: "stop"
+          },
+          progress: { completedPasses: 0, completed: false }
+        }
+      },
+      (() => backend) as DrumPlaybackBackendFactory
+    );
+
+    await player.play();
+    scheduledTimers[scheduledTimers.length - 1]?.();
+
+    const secondCountIn = metronomeSchedules(backend).slice(4);
+    expect(secondCountIn).toHaveLength(4);
+    expect(secondCountIn[1].time - secondCountIn[0].time).toBeCloseTo(60 / 70);
+    expect(notationSchedules(backend)[4].time - secondCountIn[0].time).toBeCloseTo(4 * 60 / 70);
+  });
+
   it("schedules tempo-ramp passes at exact BPM without recreating the backend", async () => {
     const block = parseDrumBlock(`Tempo: 120
 HH | x---`);

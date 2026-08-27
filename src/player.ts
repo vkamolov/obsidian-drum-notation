@@ -14,6 +14,7 @@ import {
   filterMutedHits,
   getCountInDurationQuarter,
   getCountInPulses,
+  getEffectivePlaybackTempo,
   getMetronomePulses,
   getSafeClickSubdivisionAtTempo,
   isGapClickBar,
@@ -33,6 +34,7 @@ import {
   DrumBlock,
   DrumPlaybackPosition,
   PlaybackOptions,
+  PlaybackPassState,
   TempoRampPassState
 } from "./types";
 
@@ -209,7 +211,12 @@ export class DrumPlayer {
     const transportStartTime = backend.currentTime + 0.08;
     this.playbackStartTime = transportStartTime + countInDurationSeconds;
 
-    this.scheduleCountIn(transportStartTime, backend);
+    this.scheduleCountIn(
+      transportStartTime,
+      backend,
+      this.initialSlot,
+      this.initialSecondsPerQuarter
+    );
 
     this.scheduleBlockPass(
       initial.blockPassIndex,
@@ -256,17 +263,22 @@ export class DrumPlayer {
     };
   }
 
-  private scheduleCountIn(transportStartTime: number, backend: DrumPlaybackBackend): void {
+  private scheduleCountIn(
+    transportStartTime: number,
+    backend: DrumPlaybackBackend,
+    startSlot: number,
+    secondsPerQuarter: number
+  ): void {
     getCountInPulses(
       this.block,
       this.options.countInMode ?? "off",
-      this.initialSlot
+      startSlot
     ).forEach((pulse) => {
       backend.scheduleHits(
         [createMetronomeHit(pulse.kind)],
-        transportStartTime + pulse.quarterOffset * this.initialSecondsPerQuarter,
-        pulse.intervalQuarter * this.initialSecondsPerQuarter,
-        pulse.intervalQuarter * this.initialSecondsPerQuarter
+        transportStartTime + pulse.quarterOffset * secondsPerQuarter,
+        pulse.intervalQuarter * secondsPerQuarter,
+        pulse.intervalQuarter * secondsPerQuarter
       );
     });
   }
@@ -284,6 +296,7 @@ export class DrumPlayer {
 
     const backend = this.backend;
     const secondsPerQuarter = this.getSecondsPerQuarterForPass(blockPassIndex);
+    this.options.onPassStart?.(this.getPassState(blockPassIndex, false));
     const rampPassState = this.getTempoRampPassStartState(blockPassIndex);
     if (rampPassState) {
       const safeSubdivision = getSafeClickSubdivisionAtTempo(
@@ -345,13 +358,26 @@ export class DrumPlayer {
         if (completedRampState) {
           this.options.onTempoRampPassComplete?.(completedRampState);
         }
+        this.options.onPassComplete?.(this.getPassState(blockPassIndex, true));
 
         if (this.canContinueAfterPass(blockPassIndex)) {
+          const nextPassIndex = blockPassIndex + 1;
+          let nextPassStartTime = occurrenceStartTime;
+          if (this.options.countInCadence === "every-pass") {
+            const nextSecondsPerQuarter = this.getSecondsPerQuarterForPass(nextPassIndex);
+            this.scheduleCountIn(
+              nextPassStartTime,
+              backend,
+              this.roadmap[0].startSlot,
+              nextSecondsPerQuarter
+            );
+            nextPassStartTime += this.getInterPassCountInDurationSeconds(nextPassIndex);
+          }
           this.scheduleBlockPass(
-            blockPassIndex + 1,
+            nextPassIndex,
             0,
             this.roadmap[0].startSlot,
-            occurrenceStartTime,
+            nextPassStartTime,
             barOccurrenceIndex
           );
         } else {
@@ -488,6 +514,9 @@ export class DrumPlayer {
   }
 
   private canContinueAfterPass(blockPassIndex: number): boolean {
+    if (this.options.passLimit !== undefined) {
+      return blockPassIndex + 1 < this.getRepeatCount();
+    }
     const ramp = this.options.tempoRamp;
     if (ramp) {
       return !shouldStopTempoRampAfterPass(
@@ -499,6 +528,9 @@ export class DrumPlayer {
   }
 
   private getRepeatCount(): number {
+    if (this.options.passLimit !== undefined) {
+      return Math.max(1, Math.round(this.options.passLimit));
+    }
     if (this.options.tempoRamp || this.options.loop) {
       return Number.POSITIVE_INFINITY;
     }
@@ -518,6 +550,18 @@ export class DrumPlayer {
     let firstOccurrenceInPass = firstBarOccurrenceIndex;
 
     while (true) {
+      if (this.options.countInCadence === "every-pass") {
+        const countInDuration = this.getInterPassCountInDurationSeconds(blockPassIndex);
+        if (elapsedInPass < countInDuration) {
+          return {
+            slotIndex: this.roadmap[0]?.startSlot ?? this.rangeStartSlot,
+            roadmapEntryIndex: 0,
+            blockPassIndex,
+            barOccurrenceIndex: firstOccurrenceInPass
+          };
+        }
+        elapsedInPass -= countInDuration;
+      }
       const secondsPerQuarter = this.getSecondsPerQuarterForPass(blockPassIndex);
       const entryDurations = this.roadmap.map((entry) =>
         getRangeDurationSecondsAtSecondsPerQuarter(
@@ -573,10 +617,48 @@ export class DrumPlayer {
       );
     }
 
+    if (this.options.exactTempoBpm !== undefined) {
+      return getSecondsPerQuarterAtTempo(this.options.exactTempoBpm);
+    }
+
     return getSecondsPerQuarter(
       this.block,
       normalizePlaybackSpeedPercent(this.options.speedPercent ?? 100)
     );
+  }
+
+  private getPassState(blockPassIndex: number, completed: boolean): PlaybackPassState {
+    return {
+      passIndex: blockPassIndex,
+      completedPasses: blockPassIndex + (completed ? 1 : 0),
+      tempoBpm: this.getTempoBpmForPass(blockPassIndex)
+    };
+  }
+
+  private getTempoBpmForPass(blockPassIndex: number): number {
+    const ramp = this.options.tempoRamp;
+    if (ramp) {
+      return getTempoRampTempoBpm(
+        ramp.config,
+        ramp.progress.completedPasses + blockPassIndex
+      );
+    }
+    if (this.options.exactTempoBpm !== undefined) {
+      return Math.max(1, this.options.exactTempoBpm);
+    }
+    return getEffectivePlaybackTempo(
+      this.block.tempo,
+      normalizePlaybackSpeedPercent(this.options.speedPercent ?? 100)
+    );
+  }
+
+  private getInterPassCountInDurationSeconds(blockPassIndex: number): number {
+    if (this.options.countInCadence !== "every-pass") return 0;
+    return getCountInDurationQuarter(
+      this.block,
+      this.options.countInMode ?? "off",
+      this.roadmap[0]?.startSlot ?? this.rangeStartSlot
+    ) * this.getSecondsPerQuarterForPass(blockPassIndex);
   }
 
   private getTempoRampPassStartState(blockPassIndex: number): TempoRampPassState | null {

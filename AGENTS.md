@@ -16,6 +16,9 @@ GitHub remote:
 https://github.com/vkamolov/obsidian-drum-notation.git
 ```
 
+`docs/roadmap.md` records what has shipped, what is in development, and what is
+deliberately deferred. Read it before proposing new features.
+
 ## Build And Test
 
 Use these commands after relevant changes:
@@ -122,6 +125,9 @@ Current repeat support:
 - `%xN` repeats the previous one bar N times and renders as one compact repeat
   bar with an `xN` marker.
 - Separate `%` lines remain separate visible repeat bars.
+- `[` and `]` mark a paired, non-empty, non-overlapping section that plays
+  twice. A section may span rendered systems and remains editable source
+  notation rather than expanded copied bars.
 - `%2` is reserved for a future two-bar repeat feature and is not currently
   modeled.
 
@@ -132,11 +138,11 @@ repeat playback back to the repeated source bar's written notes.
 Deferred repeat features:
 
 - two-bar repeats
-- section repeat signs
 - first/second endings
 - D.S., D.C., Segno, Coda, and other roadmap symbols
 
-These need explicit span and playback-roadmap semantics.
+These need explicit span and playback-roadmap semantics. Do not treat the
+already-supported two-pass section markers as deferred.
 
 ## Playback Direction
 

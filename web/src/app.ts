@@ -60,6 +60,26 @@ import {
   normalizePracticeSelection,
   togglePracticeRegion
 } from "../../src/practice";
+import {
+  DEFAULT_COUNT_IN_CADENCE,
+  MAX_REPETITION_GOAL_PASSES,
+  MIN_REPETITION_GOAL_PASSES,
+  createDefaultRepetitionGoalConfig,
+  createPracticeClock,
+  createPracticeRunMetrics,
+  createPracticeRunSummary,
+  createTapTempoState,
+  formatActiveSessionTime,
+  formatPracticeSummaryMarkdown,
+  formatPracticeTarget,
+  normalizeExactTempoBpm,
+  normalizeRepetitionGoalConfig,
+  normalizeRepetitionGoalProgress,
+  recordPracticePass,
+  recordTapTempo,
+  resumePracticeRunMetrics,
+  settlePracticeRunMetrics
+} from "../../src/practice-session";
 import { getMeasureRepeatProgress } from "../../src/repeat-progress";
 import {
   createScreenWakeLockTarget,
@@ -90,6 +110,7 @@ import {
 } from "../../src/tempo-ramp";
 import {
   ClickSubdivision,
+  CountInCadence,
   CursorPosition,
   CountInMode,
   DrumBlock,
@@ -103,7 +124,13 @@ import {
   MetronomeMode,
   ParseWarning,
   PlaybackBarState,
+  PlaybackPassState,
+  PracticeRunMetrics,
+  PracticeRunSummary,
+  PracticeTarget,
   PracticeSelection,
+  RepetitionGoalConfig,
+  RepetitionGoalProgress,
   ScoreBarRegion,
   TempoRampConfig,
   TempoRampPassState,
@@ -267,6 +294,8 @@ let transportMode: DrumTransportMode = "idle";
 let playbackSpeedPercent = DEFAULT_PLAYBACK_SPEED_PERCENT;
 let metronomeMode: MetronomeMode = DEFAULT_METRONOME_MODE;
 let countInMode: CountInMode = DEFAULT_COUNT_IN_MODE;
+let countInCadence: CountInCadence = DEFAULT_COUNT_IN_CADENCE;
+let exactTempoBpm: number | null = null;
 let clickSubdivision: ClickSubdivision = DEFAULT_CLICK_SUBDIVISION;
 let gapClickMode: GapClickMode = DEFAULT_GAP_CLICK_MODE;
 let tempoRamp: TempoRampSessionState = {
@@ -275,6 +304,21 @@ let tempoRamp: TempoRampSessionState = {
   armed: false
 };
 let activeTempoRampPass: TempoRampPassState | null = null;
+let tempoRampRunMetrics: PracticeRunMetrics | null = null;
+let repetitionGoal: {
+  config: RepetitionGoalConfig | null;
+  progress: RepetitionGoalProgress;
+  armed: boolean;
+  runMetrics: PracticeRunMetrics | null;
+} = {
+  config: null,
+  progress: { completedPasses: 0, completed: false },
+  armed: false,
+  runMetrics: null
+};
+let completedSummary: PracticeRunSummary | null = null;
+let completedSummaryHandled = false;
+const practiceClock = createPracticeClock();
 let activePlaybackBarIndex: number | null = null;
 let activePlaybackBarState: PlaybackBarState | null = null;
 let keepScreenAwakeDuringPlayback = true;
@@ -441,6 +485,21 @@ function renderPreview(): void {
       activeTempoRampPass = null;
     }
   }
+  if (repetitionGoal.config) {
+    const validGoal = normalizeRepetitionGoalConfig(repetitionGoal.config, block.bars.length);
+    repetitionGoal = validGoal
+      ? {
+          ...repetitionGoal,
+          config: validGoal,
+          progress: normalizeRepetitionGoalProgress(validGoal, repetitionGoal.progress)
+        }
+      : {
+          config: null,
+          progress: { completedPasses: 0, completed: false },
+          armed: false,
+          runMetrics: null
+        };
+  }
   if (currentBlock && !hasCompatiblePracticeStructure(currentBlock, block)) {
     if (practiceSelection.barIndexes.length > 0) {
       stopPlayback();
@@ -479,7 +538,9 @@ function renderPreview(): void {
   loopBtn.disabled = !hasRows;
   loopAllBtn.disabled = !hasRows;
   const selectedCount = practiceSelection.barIndexes.length;
-  const playDescription = tempoRamp.armed && tempoRamp.config
+  const playDescription = repetitionGoal.armed && repetitionGoal.config
+    ? `Resume practice goal · ${formatPracticeTarget(repetitionGoal.config.target)}`
+    : tempoRamp.armed && tempoRamp.config
     ? `Play tempo ramp · ${formatTempoRampTarget(tempoRamp.config.target)}`
     : selectedCount > 0
       ? `Play selected bars (${selectedCount})`
@@ -563,6 +624,63 @@ function formatTempoRampTarget(target: TempoRampTarget): string {
   return "Whole notation";
 }
 
+function startOrResumeTrackedRun(kind: PracticeRunSummary["kind"]): void {
+  if (!currentBlock) return;
+  const bpm = getCurrentEffectiveTempo(currentBlock);
+  if (kind === "tempo-ramp") {
+    tempoRampRunMetrics = tempoRampRunMetrics
+      ? resumePracticeRunMetrics(tempoRampRunMetrics, bpm, practiceClock)
+      : createPracticeRunMetrics(bpm, practiceClock);
+  } else {
+    repetitionGoal = {
+      ...repetitionGoal,
+      runMetrics: repetitionGoal.runMetrics
+        ? resumePracticeRunMetrics(repetitionGoal.runMetrics, bpm, practiceClock)
+        : createPracticeRunMetrics(bpm, practiceClock)
+    };
+  }
+}
+
+function settleTrackedRun(status: PracticeRunMetrics["status"] = "paused"): void {
+  if (tempoRamp.armed && tempoRampRunMetrics?.status === "running") {
+    tempoRampRunMetrics = settlePracticeRunMetrics(tempoRampRunMetrics, practiceClock, status);
+  }
+  if (repetitionGoal.armed && repetitionGoal.runMetrics?.status === "running") {
+    repetitionGoal = {
+      ...repetitionGoal,
+      runMetrics: settlePracticeRunMetrics(repetitionGoal.runMetrics, practiceClock, status)
+    };
+  }
+}
+
+function finishTrackedSummary(
+  kind: PracticeRunSummary["kind"],
+  target: PracticeTarget,
+  requestedPasses: number | null,
+  completed: boolean
+): void {
+  const metrics = kind === "tempo-ramp" ? tempoRampRunMetrics : repetitionGoal.runMetrics;
+  if (!metrics) return;
+  completedSummary = createPracticeRunSummary(
+    kind,
+    target,
+    metrics,
+    requestedPasses,
+    completed,
+    practiceClock
+  );
+  completedSummaryHandled = false;
+  if (kind === "tempo-ramp") {
+    tempoRampRunMetrics = settlePracticeRunMetrics(metrics, practiceClock, "complete");
+  } else {
+    repetitionGoal = {
+      ...repetitionGoal,
+      armed: false,
+      runMetrics: settlePracticeRunMetrics(metrics, practiceClock, "complete")
+    };
+  }
+}
+
 function getTempoRampStatus(): string | null {
   const config = tempoRamp.config;
   if (!config) return null;
@@ -572,19 +690,38 @@ function getTempoRampStatus(): string | null {
   const completedPasses = activeTempoRampPass?.completedPasses ?? tempoRamp.progress.completedPasses;
   const tempoBpm = activeTempoRampPass?.tempoBpm ?? getTempoRampTempoBpm(config, completedPasses);
   const target = formatTempoRampTarget(config.target);
+  const performed = tempoRampRunMetrics?.performedPasses ?? 0;
+  const performedLabel = performed > 0 ? ` · ${performed} performed` : "";
   if (tempoBpm >= config.ceilingBpm) {
-    return `Tempo ramp · ${target} · Ceiling · ${tempoBpm} BPM`;
+    return `Tempo ramp · ${target} · Ceiling · ${tempoBpm} BPM${performedLabel}`;
   }
   const passInStep = activeTempoRampPass?.passInStep ?? getTempoRampPassInStep(config, completedPasses);
   const nextTempo = getTempoRampTempoBpm(config, completedPasses + (config.passesPerStep - passInStep + 1));
-  return `Tempo ramp · ${target} · ${tempoBpm} BPM · pass ${passInStep}/${config.passesPerStep} · next ${nextTempo} BPM`;
+  return `Tempo ramp · ${target} · ${tempoBpm} BPM · pass ${passInStep}/${config.passesPerStep} · next ${nextTempo} BPM${performedLabel}`;
+}
+
+function getRepetitionGoalStatus(): string | null {
+  const config = repetitionGoal.config;
+  if (!config || !currentBlock) return null;
+  if (repetitionGoal.progress.completed) {
+    return `Practice complete · ${repetitionGoal.progress.completedPasses}/${config.totalPasses} · View summary`;
+  }
+  if (!repetitionGoal.armed && repetitionGoal.runMetrics?.status !== "paused") return null;
+  const prefix = repetitionGoal.runMetrics?.status === "paused" ? "Practice paused" : "Practice goal";
+  return `${prefix} · ${formatPracticeTarget(config.target)} · ${repetitionGoal.progress.completedPasses}/${config.totalPasses} · ${formatTempo(getCurrentEffectiveTempo(currentBlock))} BPM`;
 }
 
 function renderFirstRunTip(): void {
   const selectedCount = practiceSelection.barIndexes.length;
   const advancedClickStatus = getAdvancedClickStatus();
   const tempoRampStatus = getTempoRampStatus();
-  const showPracticeStatus = selectionModeOpen || selectedCount > 0 || advancedClickStatus !== null || tempoRampStatus !== null;
+  const goalStatus = getRepetitionGoalStatus();
+  const summaryStatus = completedSummary && !goalStatus
+    ? `Practice ${completedSummary.completed ? "complete" : "finished"} · ${completedSummary.requestedPasses === null
+      ? `${completedSummary.performedPasses} passes`
+      : `${completedSummary.performedPasses}/${completedSummary.requestedPasses}`} · View summary`
+    : null;
+  const showPracticeStatus = selectionModeOpen || selectedCount > 0 || advancedClickStatus !== null || tempoRampStatus !== null || goalStatus !== null || summaryStatus !== null;
   if (!showPracticeStatus && isFirstRunTipDismissed()) {
     return;
   }
@@ -601,8 +738,16 @@ function renderFirstRunTip(): void {
         : null;
     tip.createSpan({
       cls: "drum-notation__practice-label",
-      text: [selectionStatus, tempoRampStatus, advancedClickStatus].filter(Boolean).join(" · ")
+      text: [goalStatus ?? summaryStatus, selectionStatus, tempoRampStatus, advancedClickStatus].filter(Boolean).join(" · ")
     });
+    if ((goalStatus?.includes("View summary") || summaryStatus) && completedSummary) {
+      const summaryButton = tip.createEl("button", {
+        cls: "drum-notation__tip-dismiss drum-notation__practice-action",
+        text: "Summary",
+        attr: { type: "button", "aria-label": "View practice summary" }
+      });
+      summaryButton.addEventListener("click", openPracticeSummaryDialog);
+    }
     if (!selectionStatus) {
       return;
     }
@@ -1053,6 +1198,14 @@ function clearPracticeSelection(): void {
     };
     activeTempoRampPass = null;
   }
+  if (repetitionGoal.config?.target.kind === "selected-bars") {
+    repetitionGoal = {
+      config: { ...repetitionGoal.config, target: { kind: "selected-bars", barIndexes: [] } },
+      progress: { completedPasses: 0, completed: false },
+      armed: false,
+      runMetrics: null
+    };
+  }
   selectionModeOpen = false;
   renderPreview();
 }
@@ -1086,6 +1239,17 @@ function togglePracticeBarRegion(region: ScoreBarRegion): void {
       armed: practiceSelection.barIndexes.length > 0 && tempoRamp.armed
     };
     activeTempoRampPass = null;
+  }
+  if (repetitionGoal.config?.target.kind === "selected-bars") {
+    repetitionGoal = {
+      config: {
+        ...repetitionGoal.config,
+        target: { kind: "selected-bars", barIndexes: [...practiceSelection.barIndexes] }
+      },
+      progress: { completedPasses: 0, completed: false },
+      armed: practiceSelection.barIndexes.length > 0 && repetitionGoal.armed,
+      runMetrics: null
+    };
   }
   selectedBarIndex = clampBarIndex(currentBlock, region.barIndex);
   currentSlotIndex = currentBlock.bars[selectedBarIndex]?.startSlot ?? currentSlotIndex;
@@ -1136,7 +1300,14 @@ function setPlaying(button: HTMLButtonElement, on: boolean): void {
   button.classList.toggle("is-playing", on);
 }
 
-function stopPlayback(): void {
+function finalizeCompletedTempoRamp(): void {
+  if (tempoRamp.armed && tempoRamp.config && tempoRamp.progress.completed) {
+    finishTrackedSummary("tempo-ramp", tempoRamp.config.target, null, true);
+  }
+}
+
+function stopPlayback(settleSession = true): void {
+  if (settleSession) settleTrackedRun();
   player?.stop();
   player = null;
   void screenWakeLock.stop();
@@ -1154,7 +1325,7 @@ function stopPlayback(): void {
 }
 
 async function preparePlaybackStart(recoverBeforeStart: boolean): Promise<boolean> {
-  stopPlayback();
+  stopPlayback(false);
 
   if (!recoverBeforeStart) {
     return true;
@@ -1198,7 +1369,12 @@ function getTempoRampPlaybackOptions() {
       progress: { ...tempoRamp.progress }
     },
     onTempoRampPassStart: handleTempoRampPassStart,
-    onTempoRampPassComplete: handleTempoRampPassComplete
+    onTempoRampPassComplete: handleTempoRampPassComplete,
+    onPassComplete: (state: PlaybackPassState) => {
+      if (tempoRampRunMetrics) {
+        tempoRampRunMetrics = recordPracticePass(tempoRampRunMetrics, state.tempoBpm);
+      }
+    }
   };
 }
 
@@ -1234,6 +1410,7 @@ async function play(
       player = null;
       clearGapOverlays();
       refreshPracticeStatus();
+      finalizeCompletedTempoRamp();
       void screenWakeLock.stop();
     },
     (slotIndex) => {
@@ -1248,9 +1425,11 @@ async function play(
       repeatCount: useSelection ? 1 : block.repeatCount,
       ...(useSelection ? { selectedBarIndexes: practiceSelection.barIndexes } : {}),
       speedPercent: playbackSpeedPercent,
+      ...(exactTempoBpm !== null ? { exactTempoBpm } : {}),
       mutedInstrumentIds,
       metronomeMode,
       countInMode: useCountIn ? countInMode : "off",
+      countInCadence: "transport-start",
       clickSubdivision,
       gapClickMode,
       onBarChange: (barIndex, state) => handlePlaybackBarChange(block, barIndex, state),
@@ -1267,11 +1446,16 @@ async function play(
 }
 
 function loopBar(): void {
-  if (transportMode === "loop-bar" || (tempoRamp.armed && player)) {
+  if (transportMode === "loop-bar" || ((repetitionGoal.armed || tempoRamp.armed) && player)) {
     stopPlayback();
     return;
   }
   if (!currentBlock || currentBlock.rows.length === 0) {
+    return;
+  }
+
+  if (repetitionGoal.armed) {
+    void startRepetitionGoal(true, true);
     return;
   }
 
@@ -1318,6 +1502,7 @@ async function startLoopBar(
       player = null;
       clearGapOverlays();
       refreshPracticeStatus();
+      finalizeCompletedTempoRamp();
       void screenWakeLock.stop();
     },
     (slotIndex) => {
@@ -1331,9 +1516,11 @@ async function startLoopBar(
       ...(initialPosition ? { initialPosition } : {}),
       loop: true,
       speedPercent: playbackSpeedPercent,
+      ...(exactTempoBpm !== null ? { exactTempoBpm } : {}),
       mutedInstrumentIds,
       metronomeMode,
       countInMode: useCountIn ? countInMode : "off",
+      countInCadence,
       clickSubdivision,
       gapClickMode,
       onBarChange: (nextBarIndex, state) => handlePlaybackBarChange(block, nextBarIndex, state),
@@ -1377,6 +1564,7 @@ async function startLoopAll(
       player = null;
       clearGapOverlays();
       refreshPracticeStatus();
+      finalizeCompletedTempoRamp();
       void screenWakeLock.stop();
     },
     (slotIndex) => {
@@ -1390,9 +1578,11 @@ async function startLoopAll(
       ...(initialPosition ? { initialPosition } : {}),
       loop: true,
       speedPercent: playbackSpeedPercent,
+      ...(exactTempoBpm !== null ? { exactTempoBpm } : {}),
       mutedInstrumentIds,
       metronomeMode,
       countInMode: useCountIn ? countInMode : "off",
+      countInCadence,
       clickSubdivision,
       gapClickMode,
       onBarChange: (barIndex, state) => handlePlaybackBarChange(block, barIndex, state),
@@ -1441,6 +1631,7 @@ async function startLoopSelection(
       player = null;
       clearGapOverlays();
       refreshPracticeStatus();
+      finalizeCompletedTempoRamp();
       void screenWakeLock.stop();
     },
     (slotIndex) => {
@@ -1453,9 +1644,11 @@ async function startLoopSelection(
       selectedBarIndexes,
       loop: true,
       speedPercent: playbackSpeedPercent,
+      ...(exactTempoBpm !== null ? { exactTempoBpm } : {}),
       mutedInstrumentIds,
       metronomeMode,
       countInMode: useCountIn ? countInMode : "off",
+      countInCadence,
       clickSubdivision,
       gapClickMode,
       onBarChange: (barIndex, state) => handlePlaybackBarChange(block, barIndex, state),
@@ -1479,18 +1672,331 @@ async function startArmedTempoRamp(recoverBeforeStart: boolean, useCountIn = tru
   if (!currentBlock) return false;
 
   if (tempoRamp.progress.completed) {
+    if (completedSummary && !completedSummaryHandled) {
+      const replace = await confirmPlaygroundAction(
+        "This practice summary has not been copied. Start the tempo ramp again and replace it?"
+      );
+      if (!replace) return false;
+    }
     tempoRamp = { ...tempoRamp, progress: { completedPasses: 0, completed: false } };
+    tempoRampRunMetrics = null;
+    completedSummary = null;
+    completedSummaryHandled = false;
   }
   activeTempoRampPass = null;
+  startOrResumeTrackedRun("tempo-ramp");
 
+  let started: boolean;
   if (config.target.kind === "current-bar") {
-    return startLoopBar(config.target.barIndex, undefined, recoverBeforeStart, useCountIn);
-  }
-  if (config.target.kind === "selected-bars") {
+    started = await startLoopBar(config.target.barIndex, undefined, recoverBeforeStart, useCountIn);
+  } else if (config.target.kind === "selected-bars") {
     const firstSlot = currentBlock.bars[config.target.barIndexes[0]]?.startSlot ?? 0;
-    return startLoopSelection(firstSlot, recoverBeforeStart, useCountIn, undefined, config.target.barIndexes);
+    started = await startLoopSelection(firstSlot, recoverBeforeStart, useCountIn, undefined, config.target.barIndexes);
+  } else {
+    started = await startLoopAll(0, recoverBeforeStart, useCountIn);
   }
-  return startLoopAll(0, recoverBeforeStart, useCountIn);
+  if (!started) settleTrackedRun();
+  return started;
+}
+
+async function startRepetitionGoal(
+  recoverBeforeStart: boolean,
+  useCountIn = true,
+  initialPosition?: DrumPlaybackPosition
+): Promise<boolean> {
+  if (!currentBlock) return false;
+  const block = currentBlock;
+  const config = normalizeRepetitionGoalConfig(repetitionGoal.config, block.bars.length);
+  if (!repetitionGoal.armed || !config) return false;
+  let progress = normalizeRepetitionGoalProgress(config, repetitionGoal.progress);
+  if (
+    completedSummary &&
+    !completedSummaryHandled &&
+    (progress.completed || repetitionGoal.runMetrics === null)
+  ) {
+    const replace = await confirmPlaygroundAction(
+      "This practice summary has not been copied. Start the repetition goal and replace it?"
+    );
+    if (!replace) return false;
+  }
+  if (progress.completed) {
+    progress = { completedPasses: 0, completed: false };
+    repetitionGoal = { ...repetitionGoal, progress, runMetrics: null };
+    completedSummary = null;
+    completedSummaryHandled = false;
+  }
+  const remainingPasses = config.totalPasses - progress.completedPasses;
+  if (remainingPasses <= 0 || !(await preparePlaybackStart(recoverBeforeStart))) return false;
+  startOrResumeTrackedRun("repetition-goal");
+  const completedBeforeTransport = progress.completedPasses;
+  let startSlot = 0;
+  let endSlot = block.slots.length;
+  let selectedBarIndexes: readonly number[] | undefined;
+  if (config.target.kind === "current-bar") {
+    const bar = block.bars[config.target.barIndex];
+    if (!bar) return false;
+    startSlot = bar.startSlot;
+    endSlot = bar.startSlot + bar.slots.length;
+    transportMode = "loop-bar";
+    setPlaying(loopBtn, true);
+  } else if (config.target.kind === "selected-bars") {
+    selectedBarIndexes = config.target.barIndexes;
+    startSlot = block.bars[selectedBarIndexes[0]]?.startSlot ?? 0;
+    transportMode = "loop-selection";
+    setPlaying(loopAllBtn, true);
+  } else {
+    transportMode = "loop-all";
+    setPlaying(loopAllBtn, true);
+  }
+  currentSlotIndex = initialPosition?.slotIndex ?? startSlot;
+  player = new DrumPlayer(
+    getAudioContext(),
+    block,
+    () => {
+      setPlaying(loopBtn, false);
+      setPlaying(loopAllBtn, false);
+      clearVisuals();
+      clearRepeatProgress();
+      transportMode = "idle";
+      activePlaybackBarIndex = null;
+      activePlaybackBarState = null;
+      player = null;
+      clearGapOverlays();
+      repetitionGoal = {
+        ...repetitionGoal,
+        progress: { completedPasses: config.totalPasses, completed: true }
+      };
+      finishTrackedSummary("repetition-goal", config.target, config.totalPasses, true);
+      refreshPracticeStatus();
+      void screenWakeLock.stop();
+    },
+    (slotIndex) => {
+      currentSlotIndex = slotIndex;
+      moveCursor(slotIndex);
+    },
+    {
+      startSlot,
+      endSlot,
+      initialSlot: currentSlotIndex,
+      ...(initialPosition ? { initialPosition: { ...initialPosition, blockPassIndex: 0 } } : {}),
+      ...(selectedBarIndexes ? { selectedBarIndexes } : {}),
+      passLimit: remainingPasses,
+      speedPercent: playbackSpeedPercent,
+      ...(exactTempoBpm !== null ? { exactTempoBpm } : {}),
+      mutedInstrumentIds,
+      metronomeMode,
+      countInMode: useCountIn ? countInMode : "off",
+      countInCadence,
+      clickSubdivision,
+      gapClickMode,
+      onBarChange: (barIndex, state) => handlePlaybackBarChange(block, barIndex, state),
+      onPassComplete: (state: PlaybackPassState) => {
+        const completedPasses = Math.min(config.totalPasses, completedBeforeTransport + state.completedPasses);
+        repetitionGoal = {
+          ...repetitionGoal,
+          progress: { completedPasses, completed: completedPasses >= config.totalPasses },
+          runMetrics: repetitionGoal.runMetrics
+            ? recordPracticePass(repetitionGoal.runMetrics, state.tempoBpm)
+            : null
+        };
+        refreshPracticeStatus();
+      }
+    },
+    createPlaybackBackend
+  );
+  refreshPracticeStatus();
+  void screenWakeLock.start(createScreenWakeLockTarget(scoreEl?.ownerDocument ?? activeDocument));
+  void player.play();
+  return true;
+}
+
+function openRepetitionGoalDialog(): void {
+  if (!currentBlock) return;
+  dismissPlaygroundConfirm();
+  const block = currentBlock;
+  const initial = normalizeRepetitionGoalConfig(repetitionGoal.config, block.bars.length) ??
+    createDefaultRepetitionGoalConfig(block.bars.length, practiceSelection.barIndexes, selectedBarIndex);
+  const panel = activeDocument.body.createDiv({
+    cls: "pg-confirm pg-tempo-ramp-dialog",
+    attr: { role: "dialog", "aria-modal": "true", "aria-label": "Practice repetitions" }
+  });
+  panel.createEl("h2", { cls: "pg-tempo-ramp-dialog__title", text: "Practice repetitions" });
+  const target = panel.createEl("select", { cls: "pg-confirm__number pg-tempo-ramp-dialog__select" });
+  target.createEl("option", { value: "current-bar", text: `Current bar (${selectedBarIndex + 1})` });
+  const selected = target.createEl("option", {
+    value: "selected-bars",
+    text: practiceSelection.barIndexes.length > 0 ? `Selected bars (${practiceSelection.barIndexes.length})` : "Selected bars (none)"
+  });
+  selected.disabled = practiceSelection.barIndexes.length === 0;
+  target.createEl("option", { value: "whole-notation", text: "Whole notation" });
+  target.value = initial.target.kind;
+  const targetLabel = panel.createEl("label", { cls: "pg-confirm__field" });
+  targetLabel.createSpan({ text: "Target" });
+  targetLabel.append(target);
+  const passes = panel.createEl("input", { cls: "pg-confirm__number" });
+  passes.type = "number";
+  passes.min = String(MIN_REPETITION_GOAL_PASSES);
+  passes.max = String(MAX_REPETITION_GOAL_PASSES);
+  passes.step = "1";
+  passes.value = String(initial.totalPasses);
+  const passesLabel = panel.createEl("label", { cls: "pg-confirm__field" });
+  passesLabel.createSpan({ text: "Passes" });
+  passesLabel.append(passes);
+  const quick = panel.createDiv({ cls: "pg-confirm__actions" });
+  [4, 8, 16, 32].forEach((value) => {
+    const button = quick.createEl("button", { cls: "pg-btn pg-btn--small", text: String(value), attr: { type: "button" } });
+    button.addEventListener("click", () => {
+      passes.value = String(value);
+      update();
+    });
+  });
+  const summary = panel.createEl("p", { cls: "pg-tempo-ramp-dialog__summary", attr: { "aria-live": "polite" } });
+  const actions = panel.createDiv({ cls: "pg-confirm__actions" });
+  const cancel = actions.createEl("button", { cls: "pg-btn pg-btn--small", text: "Cancel", attr: { type: "button" } });
+  const submit = actions.createEl("button", { cls: "pg-btn pg-btn--small pg-confirm__confirm", text: "Start goal", attr: { type: "button" } });
+  const read = (): RepetitionGoalConfig => ({
+    target: target.value === "whole-notation"
+      ? { kind: "whole-notation" }
+      : target.value === "selected-bars"
+        ? { kind: "selected-bars", barIndexes: [...practiceSelection.barIndexes] }
+        : { kind: "current-bar", barIndex: selectedBarIndex },
+    totalPasses: Number(passes.value)
+  });
+  function update() {
+    const config = normalizeRepetitionGoalConfig(read(), block.bars.length);
+    submit.disabled = config === null;
+    summary.setText(config ? `${config.totalPasses} complete pass${config.totalPasses === 1 ? "" : "es"}` : "Enter a valid repetition goal.");
+  }
+  const close = () => panel.remove();
+  target.addEventListener("change", update);
+  passes.addEventListener("input", update);
+  cancel.addEventListener("click", close);
+  submit.addEventListener("click", async () => {
+    const config = normalizeRepetitionGoalConfig(read(), block.bars.length);
+    if (!config) return;
+    if (completedSummary && !completedSummaryHandled) {
+      const replace = await confirmPlaygroundAction(
+        "This practice summary has not been copied. Start a new repetition goal and replace it?"
+      );
+      if (!replace) return;
+    }
+    stopPlayback();
+    tempoRamp = { ...tempoRamp, armed: false };
+    repetitionGoal = {
+      config,
+      progress: { completedPasses: 0, completed: false },
+      armed: true,
+      runMetrics: null
+    };
+    completedSummary = null;
+    completedSummaryHandled = false;
+    close();
+    refreshPracticeStatus();
+    void startRepetitionGoal(true, true);
+  });
+  panel.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.stopPropagation();
+      close();
+    }
+  });
+  update();
+  window.requestAnimationFrame(() => {
+    passes.focus();
+    passes.select();
+  });
+}
+
+function finishRepetitionGoalEarly(): void {
+  const config = repetitionGoal.config;
+  if (!config || !repetitionGoal.runMetrics) return;
+  stopPlayback();
+  finishTrackedSummary("repetition-goal", config.target, config.totalPasses, false);
+  refreshPracticeStatus();
+}
+
+function finishTempoRampSessionEarly(): void {
+  if (!tempoRamp.config || !tempoRampRunMetrics) return;
+  stopPlayback();
+  const target = tempoRamp.config.target;
+  tempoRamp = { ...tempoRamp, armed: false };
+  finishTrackedSummary("tempo-ramp", target, null, false);
+  refreshPracticeStatus();
+}
+
+async function resetRepetitionGoal(): Promise<void> {
+  if (!repetitionGoal.config) return;
+  if (completedSummary && !completedSummaryHandled) {
+    const replace = await confirmPlaygroundAction(
+      "This practice summary has not been copied. Reset the repetition goal and replace it?"
+    );
+    if (!replace) return;
+  }
+  stopPlayback();
+  repetitionGoal = {
+    ...repetitionGoal,
+    armed: true,
+    progress: { completedPasses: 0, completed: false },
+    runMetrics: null
+  };
+  completedSummary = null;
+  completedSummaryHandled = false;
+  refreshPracticeStatus();
+}
+
+function openPracticeSummaryDialog(): void {
+  if (!completedSummary || !currentBlock) return;
+  dismissPlaygroundConfirm();
+  const summary = completedSummary;
+  const panel = activeDocument.body.createDiv({
+    cls: "pg-confirm pg-tempo-ramp-dialog",
+    attr: { role: "dialog", "aria-modal": "true", "aria-label": "Practice summary" }
+  });
+  panel.createEl("h2", { cls: "pg-tempo-ramp-dialog__title", text: "Practice summary" });
+  [
+    ["Notation", getTitle(currentBlock)],
+    ["Target", formatPracticeTarget(summary.target)],
+    ["Passes", summary.requestedPasses === null ? String(summary.performedPasses) : `${summary.performedPasses}/${summary.requestedPasses}`],
+    ["Tempo", summary.startBpm === summary.endBpm ? `${summary.startBpm} BPM` : `${summary.startBpm} → ${summary.endBpm} BPM`],
+    ["Active session time", formatActiveSessionTime(summary.elapsedActiveMs)],
+    ["Result", summary.completed ? "Completed" : "Finished early"]
+  ].forEach(([label, value]) => panel.createEl("p", { text: `${label}: ${value}` }));
+  const note = panel.createEl("textarea", { cls: "pg-confirm__number", attr: { placeholder: "Optional note" } });
+  const actions = panel.createDiv({ cls: "pg-confirm__actions" });
+  const copy = actions.createEl("button", { cls: "pg-btn pg-btn--small pg-confirm__confirm", text: "Copy Markdown", attr: { type: "button" } });
+  copy.disabled = completedSummaryHandled;
+  const close = actions.createEl("button", { cls: "pg-btn pg-btn--small", text: "Close", attr: { type: "button" } });
+  const discard = actions.createEl("button", { cls: "pg-btn pg-btn--small", text: "Discard summary", attr: { type: "button" } });
+  const remove = () => panel.remove();
+  copy.addEventListener("click", () => {
+    const formatted = formatPracticeSummaryMarkdown(summary, {
+      sourcePath: "Playground",
+      blockTitle: getTitle(currentBlock!),
+      note: note.value
+    });
+    void writeClipboardText(formatted.markdown)
+      .then(() => {
+        completedSummaryHandled = true;
+        remove();
+        refreshPracticeStatus();
+      })
+      .catch(() => {
+        showManualCopyText(formatted.markdown);
+      });
+  });
+  close.addEventListener("click", remove);
+  discard.addEventListener("click", () => {
+    completedSummary = null;
+    completedSummaryHandled = false;
+    remove();
+    refreshPracticeStatus();
+  });
+  panel.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.stopPropagation();
+      remove();
+    }
+  });
 }
 
 function restartPlaybackAfterEdit(
@@ -1501,6 +2007,11 @@ function restartPlaybackAfterEdit(
   restartPosition?: DrumPlaybackPosition
 ): void {
   if (!wasPlaying || lastRenderError || !currentBlock || currentBlock.rows.length === 0) {
+    return;
+  }
+
+  if (repetitionGoal.armed) {
+    void startRepetitionGoal(false, false, restartPosition);
     return;
   }
 
@@ -1545,6 +2056,11 @@ async function restartPlaybackForControlChange(): Promise<void> {
   }
 
   const currentPosition = player.getCurrentPlaybackPosition();
+  if (repetitionGoal.armed) {
+    stopPlayback(false);
+    await startRepetitionGoal(true, false, { ...currentPosition, blockPassIndex: 0 });
+    return;
+  }
   const restartPosition = tempoRamp.armed
     ? { ...currentPosition, blockPassIndex: 0 }
     : currentPosition;
@@ -1552,7 +2068,7 @@ async function restartPlaybackForControlChange(): Promise<void> {
   const previousTransportMode = transportMode;
   const restartBarIndex = barIndexForSlot(currentBlock, restartSlotIndex);
 
-  stopPlayback();
+  stopPlayback(false);
   if (previousTransportMode === "loop-selection") {
     const selected = tempoRamp.armed && tempoRamp.config?.target.kind === "selected-bars"
       ? tempoRamp.config.target.barIndexes
@@ -1606,7 +2122,7 @@ function getPlaybackSpeedOptionValues(): number[] {
 function getCurrentEffectiveTempo(block: DrumBlock): number {
   return tempoRamp.armed && tempoRamp.config
     ? activeTempoRampPass?.tempoBpm ?? getTempoRampTempoBpm(tempoRamp.config, tempoRamp.progress.completedPasses)
-    : getEffectivePlaybackTempo(block.tempo, playbackSpeedPercent);
+    : exactTempoBpm ?? getEffectivePlaybackTempo(block.tempo, playbackSpeedPercent);
 }
 
 function normalizeClickSubdivisionForCurrentSpeed(
@@ -1614,7 +2130,7 @@ function normalizeClickSubdivisionForCurrentSpeed(
   notifyUser: boolean
 ): boolean {
   const effectiveTempo = getCurrentEffectiveTempo(block);
-  const safeSubdivision = tempoRamp.armed
+  const safeSubdivision = tempoRamp.armed || exactTempoBpm !== null
     ? getSafeClickSubdivisionAtTempo(block, effectiveTempo, clickSubdivision)
     : getSafeClickSubdivision(block, playbackSpeedPercent, clickSubdivision);
   if (safeSubdivision === clickSubdivision) {
@@ -1635,13 +2151,21 @@ function syncPlaybackControls(block: DrumBlock): void {
   const effectiveTempo = getCurrentEffectiveTempo(block);
   const speedDescription = tempoRamp.armed
     ? `Tempo ramp · ${formatTempo(effectiveTempo)} BPM`
-    : `Playback speed ${playbackSpeedPercent}% · ${formatTempo(effectiveTempo)} BPM`;
+    : exactTempoBpm !== null
+      ? `Exact playback tempo · ${formatTempo(effectiveTempo)} BPM`
+      : `Playback speed ${playbackSpeedPercent}% · ${formatTempo(effectiveTempo)} BPM`;
 
-  speedBtn.textContent = tempoRamp.armed ? `${formatTempo(effectiveTempo)} BPM ▲` : `${playbackSpeedPercent}%`;
+  speedBtn.textContent = tempoRamp.armed
+    ? `${formatTempo(effectiveTempo)} BPM ▲`
+    : exactTempoBpm !== null
+      ? `${formatTempo(effectiveTempo)} BPM`
+      : `${playbackSpeedPercent}%`;
   speedBtn.title = speedDescription;
   speedBtn.setAttribute("aria-label", speedDescription);
   const selectedCount = practiceSelection.barIndexes.length;
-  const playDescription = tempoRamp.armed && tempoRamp.config
+  const playDescription = repetitionGoal.armed && repetitionGoal.config
+    ? `Resume practice goal · ${formatPracticeTarget(repetitionGoal.config.target)}`
+    : tempoRamp.armed && tempoRamp.config
     ? `Play tempo ramp · ${formatTempoRampTarget(tempoRamp.config.target)}`
     : selectedCount > 0
       ? `Play selected bars (${selectedCount})`
@@ -1668,7 +2192,9 @@ function syncPlaybackControls(block: DrumBlock): void {
 }
 
 function setFixedPlaybackSpeed(speedPercent: number): void {
+  if (tempoRamp.armed) settleTrackedRun();
   playbackSpeedPercent = normalizePlaybackSpeedPercent(speedPercent);
+  exactTempoBpm = null;
   tempoRamp = { ...tempoRamp, armed: false };
   activeTempoRampPass = null;
   if (currentBlock) {
@@ -1679,8 +2205,85 @@ function setFixedPlaybackSpeed(speedPercent: number): void {
   void restartPlaybackForControlChange();
 }
 
-function resetTempoRamp(): void {
+function setExactPlaybackTempo(bpm: number): void {
+  const normalized = normalizeExactTempoBpm(bpm);
+  if (normalized === null) return;
+  if (tempoRamp.armed) settleTrackedRun();
+  exactTempoBpm = normalized;
+  tempoRamp = { ...tempoRamp, armed: false };
+  activeTempoRampPass = null;
+  if (currentBlock) {
+    normalizeClickSubdivisionForCurrentSpeed(currentBlock, true);
+    syncPlaybackControls(currentBlock);
+  }
+  advancedClickWarning = `Tapped tempo: ${normalized} BPM`;
+  refreshPracticeStatus();
+  void restartPlaybackForControlChange();
+}
+
+function openTapTempoDialog(): void {
+  if (player) return;
+  dismissPlaygroundConfirm();
+  let state = createTapTempoState();
+  const panel = activeDocument.body.createDiv({
+    cls: "pg-confirm pg-tempo-ramp-dialog",
+    attr: { role: "dialog", "aria-modal": "true", "aria-label": "Tap tempo" }
+  });
+  panel.createEl("h2", { cls: "pg-tempo-ramp-dialog__title", text: "Tap tempo" });
+  const measured = panel.createEl("p", {
+    cls: "pg-confirm__message",
+    text: "Tap at least twice",
+    attr: { "aria-live": "polite" }
+  });
+  const tap = panel.createEl("button", {
+    cls: "pg-btn pg-tap-tempo-button",
+    text: "Tap",
+    attr: { type: "button" }
+  });
+  const actions = panel.createDiv({ cls: "pg-confirm__actions" });
+  const reset = actions.createEl("button", { cls: "pg-btn pg-btn--small", text: "Reset", attr: { type: "button" } });
+  const cancel = actions.createEl("button", { cls: "pg-btn pg-btn--small", text: "Cancel", attr: { type: "button" } });
+  const use = actions.createEl("button", { cls: "pg-btn pg-btn--small pg-confirm__confirm", text: "Use BPM", attr: { type: "button" } });
+  use.disabled = true;
+  const record = () => {
+    state = recordTapTempo(state, practiceClock.monotonicNowMs());
+    measured.setText(state.bpm === null ? "Keep tapping…" : `${state.bpm} BPM`);
+    use.disabled = state.bpm === null;
+  };
+  tap.addEventListener("click", record);
+  reset.addEventListener("click", () => {
+    state = createTapTempoState();
+    measured.setText("Tap at least twice");
+    use.disabled = true;
+    tap.focus();
+  });
+  const close = () => panel.remove();
+  cancel.addEventListener("click", close);
+  use.addEventListener("click", () => {
+    if (state.bpm === null) return;
+    setExactPlaybackTempo(state.bpm);
+    close();
+  });
+  panel.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.stopPropagation();
+      close();
+    } else if ((event.key === " " || event.key === "Enter") && event.target === tap && !event.repeat) {
+      event.preventDefault();
+      record();
+    }
+  });
+  window.requestAnimationFrame(() => tap.focus());
+}
+
+async function resetTempoRamp(): Promise<void> {
   if (!tempoRamp.config) return;
+  if (completedSummary && !completedSummaryHandled) {
+    const replace = await confirmPlaygroundAction(
+      "This practice summary has not been copied. Reset the tempo ramp and replace it?"
+    );
+    if (!replace) return;
+  }
   const wasPlaying = player !== null;
   stopPlayback();
   tempoRamp = {
@@ -1688,6 +2291,9 @@ function resetTempoRamp(): void {
     armed: true,
     progress: { completedPasses: 0, completed: false }
   };
+  tempoRampRunMetrics = null;
+  completedSummary = null;
+  completedSummaryHandled = false;
   activeTempoRampPass = null;
   if (currentBlock) {
     normalizeClickSubdivisionForCurrentSpeed(currentBlock, true);
@@ -1741,12 +2347,13 @@ function renderSpeedMenu(): void {
   for (const speed of getPlaybackSpeedOptionValues()) {
     addItem(
       `${speed}% · ${formatTempo(getEffectivePlaybackTempo(block.tempo, speed))} BPM`,
-      !tempoRamp.armed && playbackSpeedPercent === speed,
+      !tempoRamp.armed && exactTempoBpm === null && playbackSpeedPercent === speed,
       () => setFixedPlaybackSpeed(speed)
     );
   }
 
   speedMenu.createDiv({ cls: "pg-metronome-menu__label", text: "Trainer" });
+  addItem(player ? "Tap tempo… · Stop playback first" : "Tap tempo…", null, openTapTempoDialog, player !== null);
   addItem("Tempo ramp…", null, openTempoRampDialog);
   if (tempoRamp.config && (!tempoRamp.armed || !player)) {
     addItem(tempoRamp.progress.completed ? "Run tempo ramp again" : "Resume tempo ramp", null, () => {
@@ -1764,7 +2371,9 @@ function renderSpeedMenu(): void {
       void startArmedTempoRamp(true, true);
     });
   }
-  if (tempoRamp.config) addItem("Reset ramp", null, resetTempoRamp);
+  if (tempoRamp.config) addItem("Reset ramp", null, () => {
+    void resetTempoRamp();
+  });
   if (tempoRamp.armed) addItem("Turn off trainer", null, turnOffTempoRamp);
 }
 
@@ -1909,11 +2518,21 @@ function openTempoRampDialog(): void {
     control.addEventListener("change", update);
   });
   cancel.addEventListener("click", close);
-  submit.addEventListener("click", () => {
+  submit.addEventListener("click", async () => {
     const config = normalizeTempoRampConfig(readConfig(), block);
     if (!config) return;
+    if (completedSummary && !completedSummaryHandled) {
+      const replace = await confirmPlaygroundAction(
+        "This practice summary has not been copied. Start a new tempo ramp and replace it?"
+      );
+      if (!replace) return;
+    }
     stopPlayback();
+    repetitionGoal = { ...repetitionGoal, armed: false };
     tempoRamp = { config, progress: { completedPasses: 0, completed: false }, armed: true };
+    tempoRampRunMetrics = null;
+    completedSummary = null;
+    completedSummaryHandled = false;
     activeTempoRampPass = null;
     normalizeClickSubdivisionForCurrentSpeed(block, true);
     syncPlaybackControls(block);
@@ -1969,7 +2588,16 @@ function renderLoopMenu(): void {
     });
   };
 
-  if (tempoRamp.armed && tempoRamp.config) {
+  if (repetitionGoal.armed && repetitionGoal.config) {
+    addItem(
+      `Practice goal · ${formatPracticeTarget(repetitionGoal.config.target)} · ${repetitionGoal.progress.completedPasses}/${repetitionGoal.config.totalPasses}`,
+      player !== null,
+      () => {
+        if (player) stopPlayback();
+        else void startRepetitionGoal(true, true);
+      }
+    );
+  } else if (tempoRamp.armed && tempoRamp.config) {
     addItem(`Tempo ramp · ${formatTempoRampTarget(tempoRamp.config.target)}`, player !== null, () => {
       if (player) stopPlayback();
       else void startArmedTempoRamp(true, true);
@@ -1986,6 +2614,19 @@ function renderLoopMenu(): void {
       });
     }
   }
+
+  loopMenu.createDiv({ cls: "pg-metronome-menu__label", text: "Practice session" });
+  addItem("Practice repetitions…", null, openRepetitionGoalDialog);
+  if (repetitionGoal.config) addItem("Reset practice goal", null, () => {
+    void resetRepetitionGoal();
+  });
+  if (repetitionGoal.runMetrics && !repetitionGoal.progress.completed) {
+    addItem("Finish session", null, finishRepetitionGoalEarly);
+  }
+  if (tempoRampRunMetrics && tempoRamp.armed && !tempoRamp.progress.completed) {
+    addItem("Finish tempo-ramp session", null, finishTempoRampSessionEarly);
+  }
+  if (completedSummary) addItem("View practice summary", null, openPracticeSummaryDialog);
 
   loopMenu.createDiv({ cls: "pg-metronome-menu__label", text: "Practice selection" });
   addItem(selectionModeOpen ? "Done selecting" : "Select bars", selectionModeOpen, () => {
@@ -2036,7 +2677,8 @@ function syncMetronomeButton(): void {
     `Metronome: ${getMetronomeModeLabel(metronomeMode)}`,
     `Subdivision: ${getClickSubdivisionLabel(clickSubdivision)}`,
     `Gap click: ${getGapClickModeLabel(gapClickMode)}`,
-    `Count-in: ${getCountInModeLabel(countInMode)}`
+    `Count-in: ${getCountInModeLabel(countInMode)}`,
+    `Count-in timing: ${countInCadence === "every-pass" ? "Before every pass" : "Once at start"}`
   ].join(" · ");
 
   metronomeBtn.replaceChildren(createIconSvg("timer"));
@@ -2096,7 +2738,7 @@ function renderMetronomeMenu(): void {
     const block = currentBlock;
     const effectiveTempo = block ? getCurrentEffectiveTempo(block) : 0;
     const safe = block
-      ? tempoRamp.armed
+      ? tempoRamp.armed || exactTempoBpm !== null
         ? isClickSubdivisionSafeAtTempo(block, effectiveTempo, option.value)
         : isClickSubdivisionSafe(block, playbackSpeedPercent, option.value)
       : option.value === "beat";
@@ -2181,6 +2823,32 @@ function renderMetronomeMenu(): void {
 
       countInMode = option.value;
       syncPlaybackControls(block);
+      setMetronomeMenuOpen(false);
+      void restartPlaybackForControlChange();
+    });
+  });
+
+  metronomeMenu.createDiv({ cls: "pg-metronome-menu__label", text: "Count-in timing" });
+  ([
+    ["transport-start", "Once at start"],
+    ["every-pass", "Before every pass"]
+  ] as const).forEach(([value, label]) => {
+    const item = metronomeMenu.createEl("button", {
+      cls: "pg-metronome-menu__item",
+      attr: {
+        type: "button",
+        role: "menuitemradio",
+        "aria-checked": countInCadence === value ? "true" : "false"
+      }
+    });
+    item.createSpan({
+      cls: "pg-metronome-menu__check",
+      text: countInCadence === value ? "✓" : ""
+    });
+    item.createSpan({ text: label });
+    item.addEventListener("click", () => {
+      countInCadence = value;
+      if (currentBlock) syncPlaybackControls(currentBlock);
       setMetronomeMenuOpen(false);
       void restartPlaybackForControlChange();
     });
@@ -3666,9 +4334,13 @@ function init(): void {
   syncMuteButton();
 
   playBtn.addEventListener("click", () => {
-    void (tempoRamp.armed ? startArmedTempoRamp(true, true) : play(0, true));
+    void (repetitionGoal.armed
+      ? startRepetitionGoal(true, true)
+      : tempoRamp.armed
+        ? startArmedTempoRamp(true, true)
+        : play(0, true));
   });
-  stopBtn.addEventListener("click", stopPlayback);
+  stopBtn.addEventListener("click", () => stopPlayback());
   loopBtn.addEventListener("click", loopBar);
   loopAllBtn.addEventListener("click", (event) => {
     event.stopPropagation();
@@ -3882,6 +4554,8 @@ function init(): void {
     }
   });
   const handlePageUnload = () => {
+    settleTrackedRun();
+    stopPlayback(false);
     clearSourceImage();
     void screenWakeLock.destroy();
   };

@@ -175,7 +175,7 @@ test("practice selection supports pointer, keyboard, responsive, and print workf
   await loopOptions.click();
   const loopWholeMenuItem = page.getByRole("menuitemcheckbox", { name: "Loop whole notation" });
   await expect(loopWholeMenuItem).toBeFocused();
-  await loopWholeMenuItem.press("ArrowDown");
+  await loopWholeMenuItem.press("End");
   const selectBarsMenuItem = page.getByRole("menuitemcheckbox", { name: "Select bars" });
   await expect(selectBarsMenuItem).toBeFocused();
   await selectBarsMenuItem.press("Enter");
@@ -360,6 +360,56 @@ test("tempo ramp setup runs exact BPM stages and preserves completed progress", 
   await expect(page.getByRole("menuitem", { name: "Run tempo ramp again" })).toBeVisible();
   await expect(page.getByRole("menuitem", { name: "Reset ramp" })).toBeVisible();
   await expect(page.getByRole("menuitem", { name: "Turn off trainer" })).toBeVisible();
+});
+
+test("tap tempo and finite practice goals produce a page-session summary", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "wakeLock", { configurable: true, value: undefined });
+  });
+  await page.goto("/");
+  await page.locator("#pg-editor").fill([
+    "Title: Session drill",
+    "Tempo: 260",
+    "Time: 1/4",
+    "Grid: 16",
+    "HH | x---"
+  ].join("\n"));
+  await expect(page.locator("#pg-title")).toHaveValue("Session drill");
+
+  await page.locator("#pg-metronome").click();
+  await page.getByRole("menuitemradio", { name: "Before every pass" }).click();
+  await expect(page.locator("#pg-metronome")).toHaveAttribute("aria-label", /Count-in timing: Before every pass/);
+
+  await page.locator("#pg-speed").click();
+  await page.getByRole("menuitem", { name: "Tap tempo…" }).click();
+  const tapDialog = page.getByRole("dialog", { name: "Tap tempo" });
+  const tapButton = tapDialog.getByRole("button", { name: "Tap" });
+  await tapButton.click();
+  await page.waitForTimeout(500);
+  await tapButton.click();
+  const measuredTempo = tapDialog.locator(".pg-confirm__message");
+  await expect(measuredTempo).toHaveText(/^\d+ BPM$/);
+  const measuredBpm = Number((await measuredTempo.textContent())?.replace(" BPM", ""));
+  expect(measuredBpm).toBeGreaterThanOrEqual(30);
+  expect(measuredBpm).toBeLessThanOrEqual(260);
+  await tapDialog.getByRole("button", { name: "Use BPM" }).click();
+  await expect(page.locator("#pg-speed")).toHaveText(`${measuredBpm} BPM`);
+
+  await page.getByRole("button", { name: "Loop options" }).click();
+  await page.getByRole("menuitem", { name: "Practice repetitions…" }).click();
+  const goalDialog = page.getByRole("dialog", { name: "Practice repetitions" });
+  await goalDialog.getByRole("spinbutton", { name: "Passes" }).fill("1");
+  await goalDialog.getByRole("button", { name: "Start goal" }).click();
+
+  await expect.poll(async () => page.locator("#pg-preview .drum-notation__practice-label").textContent(), {
+    timeout: 5_000
+  }).toContain("Practice complete · 1/1");
+  await page.getByRole("button", { name: "View practice summary" }).click();
+  const summary = page.getByRole("dialog", { name: "Practice summary" });
+  await expect(summary).toContainText("Passes: 1/1");
+  await expect(summary).toContainText(`Tempo: ${measuredBpm} BPM`);
+  await expect(summary).toContainText("Active session time:");
+  await expect(summary.getByRole("button", { name: "Copy Markdown" })).toBeEnabled();
 });
 
 test("wake lock control is disabled when the API is unavailable", async ({ page }) => {

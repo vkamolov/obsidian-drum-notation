@@ -97,6 +97,32 @@ import {
   resolvePracticeControllerTarget,
   togglePracticeRegion
 } from "./src/practice";
+import {
+  DEFAULT_COUNT_IN_CADENCE,
+  MAX_REPETITION_GOAL_PASSES,
+  MIN_REPETITION_GOAL_PASSES,
+  clonePracticeTarget,
+  createDefaultRepetitionGoalConfig,
+  createPracticeClock,
+  createPracticeRunMetrics,
+  createPracticeRunSummary,
+  createTapTempoState,
+  formatActiveSessionTime,
+  formatPracticeSummaryMarkdown,
+  formatPracticeTarget,
+  insertPracticeLogEntry,
+  normalizeCountInCadence,
+  normalizeExactTempoBpm,
+  normalizePracticeLogPath,
+  normalizeRepetitionGoalConfig,
+  normalizeRepetitionGoalProgress,
+  recordPracticePass,
+  recordTapTempo,
+  practiceTargetsEqual,
+  resumePracticeRunMetrics,
+  settlePracticeRunMetrics,
+  type PracticeClock
+} from "./src/practice-session";
 import { getMeasureRepeatProgress } from "./src/repeat-progress";
 import {
   createScreenWakeLockTarget,
@@ -136,6 +162,7 @@ import {
 } from "./src/tempo-ramp";
 import {
   ClickSubdivision,
+  CountInCadence,
   CursorPosition,
   CountInMode,
   DrumBlock,
@@ -147,7 +174,13 @@ import {
   MetronomeMode,
   ParseWarning,
   PlaybackBarState,
+  PlaybackPassState,
+  PracticeTarget,
   PracticeSelection,
+  PracticeRunMetrics,
+  PracticeRunSummary,
+  RepetitionGoalConfig,
+  RepetitionGoalProgress,
   ScoreBarRegion,
   TempoRampConfig,
   TempoRampPassState,
@@ -169,6 +202,7 @@ const SCREEN_WAKE_LOCK_UNAVAILABLE_DESCRIPTION =
 interface DrumNotationSettings {
   enableVisualEditMode: boolean;
   keepScreenAwakeDuringPlayback: boolean;
+  practiceLogPath: string;
   dismissedFirstRunTip: boolean;
   authoringDefaults: DrumAuthoringDefaults;
 }
@@ -176,6 +210,7 @@ interface DrumNotationSettings {
 const DEFAULT_SETTINGS: DrumNotationSettings = {
   enableVisualEditMode: false,
   keepScreenAwakeDuringPlayback: true,
+  practiceLogPath: "Drum Practice Log.md",
   dismissedFirstRunTip: false,
   authoringDefaults: DEFAULT_DRUM_AUTHORING_DEFAULTS
 };
@@ -183,6 +218,7 @@ const DEFAULT_SETTINGS: DrumNotationSettings = {
 type DrumSettingsControlKey =
   | "enableVisualEditMode"
   | "keepScreenAwakeDuringPlayback"
+  | "practiceLogPath"
   | "authoringTitle"
   | "authoringTempo"
   | "authoringTimeNumerator"
@@ -223,6 +259,9 @@ function loadSavedSettings(value: unknown): Partial<DrumNotationSettings> {
     ...(typeof value.enableVisualEditMode === "boolean" ? { enableVisualEditMode: value.enableVisualEditMode } : {}),
     ...(typeof value.keepScreenAwakeDuringPlayback === "boolean"
       ? { keepScreenAwakeDuringPlayback: value.keepScreenAwakeDuringPlayback }
+      : {}),
+    ...(typeof value.practiceLogPath === "string" && normalizePracticeLogPath(value.practiceLogPath).ok
+      ? { practiceLogPath: value.practiceLogPath }
       : {}),
     ...(typeof value.dismissedFirstRunTip === "boolean" ? { dismissedFirstRunTip: value.dismissedFirstRunTip } : {}),
     authoringDefaults: normalizeDrumAuthoringDefaults(value.authoringDefaults)
@@ -286,6 +325,7 @@ export default class DrumNotationPlugin extends Plugin {
   private activePlayer: DrumPlayer | null = null;
   private activePlaybackReset: (() => void) | null = null;
   private activePlaybackOwner: symbol | null = null;
+  private activePracticeSessionKey: string | null = null;
   private activePreview: DrumPlaybackBackend | null = null;
   private activePreviewTimer: number | null = null;
   private activePreviewOwner: symbol | null = null;
@@ -298,6 +338,7 @@ export default class DrumNotationPlugin extends Plugin {
   private readonly screenWakeLock = new ScreenWakeLockController(() => {
     new Notice("Could not keep the screen awake. Playback will continue normally.");
   });
+  private readonly practiceClock = createPracticeClock();
   private lastInteractedControllerOwner: symbol | null = null;
 
   async onload(): Promise<void> {
@@ -391,6 +432,61 @@ export default class DrumNotationPlugin extends Plugin {
     await this.screenWakeLock.setEnabled(enabled);
   }
 
+  async savePracticeSummary(
+    summary: PracticeRunSummary,
+    sourcePath: string,
+    blockTitle: string,
+    note: string
+  ): Promise<void> {
+    const pathResult = normalizePracticeLogPath(this.settings.practiceLogPath);
+    if (!pathResult.ok) {
+      throw new Error(pathResult.message);
+    }
+    const formatted = formatPracticeSummaryMarkdown(summary, {
+      sourcePath,
+      blockTitle,
+      note
+    });
+    const path = pathResult.path;
+    const slashIndex = path.lastIndexOf("/");
+    if (slashIndex >= 0) {
+      await this.ensureVaultFolder(path.slice(0, slashIndex));
+    }
+
+    const appendToFile = async (file: TFile) => {
+      await this.app.vault.process(file, (current) =>
+        insertPracticeLogEntry(current, formatted.date, formatted.markdown)
+      );
+    };
+    const existing = this.getSourceFile(path);
+    if (existing) {
+      await appendToFile(existing);
+      return;
+    }
+
+    try {
+      await this.app.vault.create(path, `## ${formatted.date}\n\n${formatted.markdown}\n`);
+    } catch (error) {
+      const racedFile = this.getSourceFile(path);
+      if (!racedFile) throw error;
+      await appendToFile(racedFile);
+    }
+  }
+
+  private async ensureVaultFolder(folderPath: string): Promise<void> {
+    const segments = folderPath.split("/");
+    let current = "";
+    for (const segment of segments) {
+      current = current ? `${current}/${segment}` : segment;
+      if (this.app.vault.getAbstractFileByPath(current)) continue;
+      try {
+        await this.app.vault.createFolder(current);
+      } catch (error) {
+        if (!this.app.vault.getAbstractFileByPath(current)) throw error;
+      }
+    }
+  }
+
 	private async renderDrumNotation(source: string, el: HTMLElement, ctx: MarkdownPostProcessorContext): Promise<void> {
 		const parsed = parseDrumBlockWithWarnings(source);
 		let block = parsed.block;
@@ -398,6 +494,9 @@ export default class DrumNotationPlugin extends Plugin {
     let sourceBody = source;
     const initialSection = ctx.getSectionInfo(el);
     const practiceSessionKey = await this.resolvePracticeSessionKey(source, el, ctx, initialSection);
+    const practiceSourcePath = practiceSessionKey
+      ? practiceSessionKey.slice(0, practiceSessionKey.lastIndexOf(":"))
+      : null;
     const restoredPracticeSession = practiceSessionKey
       ? this.transportSessions.get(practiceSessionKey, source)
       : null;
@@ -473,6 +572,10 @@ export default class DrumNotationPlugin extends Plugin {
     let transportMode: DrumTransportMode = "idle";
     let metronomeMode: MetronomeMode = restoredPracticeSession?.metronomeMode ?? DEFAULT_METRONOME_MODE;
     let countInMode: CountInMode = restoredPracticeSession?.countInMode ?? DEFAULT_COUNT_IN_MODE;
+    let countInCadence: CountInCadence = normalizeCountInCadence(
+      restoredPracticeSession?.countInCadence ?? DEFAULT_COUNT_IN_CADENCE
+    );
+    let exactTempoBpm = normalizeExactTempoBpm(restoredPracticeSession?.exactTempoBpm);
     let clickSubdivision: ClickSubdivision = getSafeClickSubdivision(
       block,
       playbackSpeedPercent,
@@ -494,6 +597,33 @@ export default class DrumNotationPlugin extends Plugin {
       armed: Boolean(restoredPracticeSession?.tempoRamp.armed && restoredTempoRampConfig)
     };
     let activeTempoRampPass: TempoRampPassState | null = null;
+    let tempoRampRunMetrics: PracticeRunMetrics | null = restoredPracticeSession?.tempoRampRunMetrics ?? null;
+    let repetitionGoal: {
+      config: RepetitionGoalConfig | null;
+      progress: RepetitionGoalProgress;
+      armed: boolean;
+      runMetrics: PracticeRunMetrics | null;
+    } = restoredPracticeSession?.repetitionGoal ?? {
+      config: null,
+      progress: { completedPasses: 0, completed: false },
+      armed: false,
+      runMetrics: null
+    };
+    let completedSummary: PracticeRunSummary | null = restoredPracticeSession?.completedSummary ?? null;
+    let completedSummaryHandled = restoredPracticeSession?.completedSummaryHandled ?? false;
+    const hasMatchingActivePlayer = this.activePlayer !== null &&
+      this.activePracticeSessionKey === practiceSessionKey;
+    if (!hasMatchingActivePlayer) {
+      if (tempoRampRunMetrics?.status === "running") {
+        tempoRampRunMetrics = settlePracticeRunMetrics(tempoRampRunMetrics, this.practiceClock);
+      }
+      if (repetitionGoal.runMetrics?.status === "running") {
+        repetitionGoal = {
+          ...repetitionGoal,
+          runMetrics: settlePracticeRunMetrics(repetitionGoal.runMetrics, this.practiceClock)
+        };
+      }
+    }
     let activePlaybackBarIndex: number | null = null;
     let activePlaybackBarState: PlaybackBarState | null = null;
     const mutedInstrumentIds = new Set<string>(restoredPracticeSession?.mutedInstrumentIds ?? []);
@@ -517,15 +647,21 @@ export default class DrumNotationPlugin extends Plugin {
     const makePracticeSession = (): DrumTransportSession => ({
       body: sourceBody,
       speedPercent: playbackSpeedPercent,
+      exactTempoBpm,
       metronomeMode,
       countInMode,
+      countInCadence,
       clickSubdivision,
       gapClickMode,
       mutedInstrumentIds: [...mutedInstrumentIds],
       selection: practiceSelection,
       selectionModeOpen,
       currentBarIndex: selectedBarIndex,
-      tempoRamp
+      tempoRamp,
+      tempoRampRunMetrics,
+      repetitionGoal,
+      completedSummary,
+      completedSummaryHandled
     });
 
     const publishPracticeSession = () => {
@@ -582,13 +718,26 @@ export default class DrumNotationPlugin extends Plugin {
       const completedPasses = activeTempoRampPass?.completedPasses ?? tempoRamp.progress.completedPasses;
       const tempoBpm = activeTempoRampPass?.tempoBpm ?? getTempoRampTempoBpm(config, completedPasses);
       const target = formatTempoRampTarget(config.target);
+      const performed = tempoRampRunMetrics?.performedPasses ?? 0;
+      const performedLabel = performed > 0 ? ` · ${performed} performed` : "";
       if (tempoBpm >= config.ceilingBpm) {
-        return `Tempo ramp · ${target} · Ceiling · ${tempoBpm} BPM`;
+        return `Tempo ramp · ${target} · Ceiling · ${tempoBpm} BPM${performedLabel}`;
       }
 
       const passInStep = activeTempoRampPass?.passInStep ?? getTempoRampPassInStep(config, completedPasses);
       const nextTempo = getTempoRampTempoBpm(config, completedPasses + (config.passesPerStep - passInStep + 1));
-      return `Tempo ramp · ${target} · ${tempoBpm} BPM · pass ${passInStep}/${config.passesPerStep} · next ${nextTempo} BPM`;
+      return `Tempo ramp · ${target} · ${tempoBpm} BPM · pass ${passInStep}/${config.passesPerStep} · next ${nextTempo} BPM${performedLabel}`;
+    };
+
+    const getRepetitionGoalStatus = (): string | null => {
+      const config = repetitionGoal.config;
+      if (!config) return null;
+      if (repetitionGoal.progress.completed) {
+        return `Practice complete · ${repetitionGoal.progress.completedPasses}/${config.totalPasses} · View summary`;
+      }
+      if (!repetitionGoal.armed && repetitionGoal.runMetrics?.status !== "paused") return null;
+      const prefix = repetitionGoal.runMetrics?.status === "paused" ? "Practice paused" : "Practice goal";
+      return `${prefix} · ${formatPracticeTarget(config.target)} · ${repetitionGoal.progress.completedPasses}/${config.totalPasses} · ${formatTempo(getCurrentEffectiveTempo())} BPM`;
     };
 
     const renderFirstRunTip = () => {
@@ -596,7 +745,13 @@ export default class DrumNotationPlugin extends Plugin {
       const selectedCount = practiceSelection.barIndexes.length;
       const advancedClickStatus = getAdvancedClickStatus();
       const tempoRampStatus = getTempoRampStatus();
-      const showPracticeStatus = selectionModeOpen || selectedCount > 0 || advancedClickStatus !== null || tempoRampStatus !== null;
+      const goalStatus = getRepetitionGoalStatus();
+      const summaryStatus = completedSummary && !goalStatus
+        ? `Practice ${completedSummary.completed ? "complete" : "finished"} · ${completedSummary.requestedPasses === null
+          ? `${completedSummary.performedPasses} passes`
+          : `${completedSummary.performedPasses}/${completedSummary.requestedPasses}`} · View summary`
+        : null;
+      const showPracticeStatus = selectionModeOpen || selectedCount > 0 || advancedClickStatus !== null || tempoRampStatus !== null || goalStatus !== null || summaryStatus !== null;
       tipEl.toggleClass("drum-notation__tip--practice", showPracticeStatus);
       tipEl.hidden = !showPracticeStatus && this.settings.dismissedFirstRunTip;
 
@@ -608,8 +763,16 @@ export default class DrumNotationPlugin extends Plugin {
             : null;
         tipEl.createSpan({
           cls: "drum-notation__practice-label",
-          text: [selectionStatus, tempoRampStatus, advancedClickStatus].filter(Boolean).join(" · ")
+          text: [goalStatus ?? summaryStatus, selectionStatus, tempoRampStatus, advancedClickStatus].filter(Boolean).join(" · ")
         });
+        if ((goalStatus?.includes("View summary") || summaryStatus) && completedSummary) {
+          const summaryButton = tipEl.createEl("button", {
+            cls: "drum-notation__tip-dismiss drum-notation__practice-action",
+            text: "Summary",
+            attr: { type: "button", "aria-label": "View practice summary" }
+          });
+          summaryButton.addEventListener("click", openPracticeSummary);
+        }
         if (!selectionStatus) {
           return;
         }
@@ -682,11 +845,109 @@ export default class DrumNotationPlugin extends Plugin {
     const getCurrentEffectiveTempo = (): number =>
       tempoRamp.armed && tempoRamp.config
         ? activeTempoRampPass?.tempoBpm ?? getTempoRampTempoBpm(tempoRamp.config, tempoRamp.progress.completedPasses)
-        : getEffectivePlaybackTempo(block.tempo, playbackSpeedPercent);
+        : exactTempoBpm ?? getEffectivePlaybackTempo(block.tempo, playbackSpeedPercent);
+
+    const startOrResumeTrackedRun = (kind: PracticeRunSummary["kind"]): void => {
+      const bpm = getCurrentEffectiveTempo();
+      if (kind === "tempo-ramp") {
+        tempoRampRunMetrics = tempoRampRunMetrics
+          ? resumePracticeRunMetrics(tempoRampRunMetrics, bpm, this.practiceClock)
+          : createPracticeRunMetrics(bpm, this.practiceClock);
+      } else {
+        repetitionGoal = {
+          ...repetitionGoal,
+          runMetrics: repetitionGoal.runMetrics
+            ? resumePracticeRunMetrics(repetitionGoal.runMetrics, bpm, this.practiceClock)
+            : createPracticeRunMetrics(bpm, this.practiceClock)
+        };
+      }
+      publishPracticeSession();
+    };
+
+    const settleTrackedRun = (status: PracticeRunMetrics["status"] = "paused"): void => {
+      if (tempoRamp.armed && tempoRampRunMetrics?.status === "running") {
+        tempoRampRunMetrics = settlePracticeRunMetrics(tempoRampRunMetrics, this.practiceClock, status);
+      }
+      if (repetitionGoal.armed && repetitionGoal.runMetrics?.status === "running") {
+        repetitionGoal = {
+          ...repetitionGoal,
+          runMetrics: settlePracticeRunMetrics(repetitionGoal.runMetrics, this.practiceClock, status)
+        };
+      }
+      publishPracticeSession();
+    };
+
+    const finishTrackedSummary = (
+      kind: PracticeRunSummary["kind"],
+      target: PracticeTarget,
+      requestedPasses: number | null,
+      completed: boolean
+    ): void => {
+      const metrics = kind === "tempo-ramp" ? tempoRampRunMetrics : repetitionGoal.runMetrics;
+      if (!metrics) return;
+      completedSummary = createPracticeRunSummary(
+        kind,
+        target,
+        metrics,
+        requestedPasses,
+        completed,
+        this.practiceClock
+      );
+      completedSummaryHandled = false;
+      if (kind === "tempo-ramp") {
+        tempoRampRunMetrics = settlePracticeRunMetrics(metrics, this.practiceClock, "complete");
+      } else {
+        repetitionGoal = {
+          ...repetitionGoal,
+          armed: false,
+          runMetrics: settlePracticeRunMetrics(metrics, this.practiceClock, "complete")
+        };
+      }
+      publishPracticeSession();
+    };
+
+    const openPracticeSummary = () => {
+      if (!completedSummary) return;
+      new PracticeSummaryModal(this.app, {
+        summary: completedSummary,
+        blockTitle: getTitle(block),
+        sourcePath: practiceSourcePath,
+        alreadyHandled: completedSummaryHandled,
+        onCopy: async (note) => {
+          if (!completedSummary) return false;
+          const formatted = formatPracticeSummaryMarkdown(completedSummary, {
+            sourcePath: practiceSourcePath ?? getTitle(block),
+            blockTitle: getTitle(block),
+            note
+          });
+          const clipboard = root.ownerDocument.defaultView?.navigator.clipboard;
+          if (!clipboard) return false;
+          await clipboard.writeText(formatted.markdown);
+          completedSummaryHandled = true;
+          publishPracticeSession();
+          return true;
+        },
+        onSave: practiceSourcePath
+          ? async (note) => {
+              if (!completedSummary) return false;
+              await this.savePracticeSummary(completedSummary, practiceSourcePath, getTitle(block), note);
+              completedSummaryHandled = true;
+              publishPracticeSession();
+              return true;
+            }
+          : null,
+        onDiscard: () => {
+          completedSummary = null;
+          completedSummaryHandled = false;
+          publishPracticeSession();
+          renderFirstRunTip();
+        }
+      }).open();
+    };
 
     const normalizeClickSubdivisionForCurrentSpeed = (notifyUser: boolean): boolean => {
       const effectiveTempo = getCurrentEffectiveTempo();
-      const safeSubdivision = tempoRamp.armed
+      const safeSubdivision = tempoRamp.armed || exactTempoBpm !== null
         ? getSafeClickSubdivisionAtTempo(block, effectiveTempo, clickSubdivision)
         : getSafeClickSubdivision(block, playbackSpeedPercent, clickSubdivision);
       if (safeSubdivision === clickSubdivision) {
@@ -735,7 +996,9 @@ export default class DrumNotationPlugin extends Plugin {
       loopButton.disabled = !hasRows;
       loopAllButton.disabled = !hasRows;
       const selectedCount = practiceSelection.barIndexes.length;
-      const playDescription = tempoRamp.armed && tempoRamp.config
+      const playDescription = repetitionGoal.armed && repetitionGoal.config
+        ? `Resume practice goal · ${formatPracticeTarget(repetitionGoal.config.target)}`
+        : tempoRamp.armed && tempoRamp.config
         ? `Play tempo ramp · ${formatTempoRampTarget(tempoRamp.config.target)}`
         : selectedCount > 0
           ? `Play selected bars (${selectedCount})`
@@ -750,11 +1013,17 @@ export default class DrumNotationPlugin extends Plugin {
       speedButton.disabled = !hasRows;
       const effectiveTempo = tempoRamp.armed && tempoRamp.config
         ? activeTempoRampPass?.tempoBpm ?? getTempoRampTempoBpm(tempoRamp.config, tempoRamp.progress.completedPasses)
-        : getEffectivePlaybackTempo(block.tempo, playbackSpeedPercent);
+        : exactTempoBpm ?? getEffectivePlaybackTempo(block.tempo, playbackSpeedPercent);
       const speedDescription = tempoRamp.armed
         ? `Tempo ramp · ${formatTempo(effectiveTempo)} BPM`
-        : `Playback speed ${playbackSpeedPercent}% · ${formatTempo(effectiveTempo)} BPM`;
-      speedButton.setText(tempoRamp.armed ? `${formatTempo(effectiveTempo)} BPM ▲` : `${playbackSpeedPercent}%`);
+        : exactTempoBpm !== null
+          ? `Exact playback tempo · ${formatTempo(effectiveTempo)} BPM`
+          : `Playback speed ${playbackSpeedPercent}% · ${formatTempo(effectiveTempo)} BPM`;
+      speedButton.setText(tempoRamp.armed
+        ? `${formatTempo(effectiveTempo)} BPM ▲`
+        : exactTempoBpm !== null
+          ? `${formatTempo(effectiveTempo)} BPM`
+          : `${playbackSpeedPercent}%`);
       speedButton.title = speedDescription;
       speedButton.setAttribute("aria-label", speedDescription);
       metronomeButton.disabled = block.slots.length === 0;
@@ -773,7 +1042,8 @@ export default class DrumNotationPlugin extends Plugin {
         `Metronome: ${getMetronomeModeLabel(metronomeMode)}`,
         `Subdivision: ${getClickSubdivisionLabel(clickSubdivision)}`,
         `Gap click: ${getGapClickModeLabel(gapClickMode)}`,
-        `Count-in: ${getCountInModeLabel(countInMode)}`
+        `Count-in: ${getCountInModeLabel(countInMode)}`,
+        `Count-in timing: ${countInCadence === "every-pass" ? "Before every pass" : "Once at start"}`
       ].join(" · ");
       metronomeButton.title = metronomeDescription;
       metronomeButton.setAttribute("aria-label", metronomeDescription);
@@ -1082,6 +1352,17 @@ export default class DrumNotationPlugin extends Plugin {
         };
         activeTempoRampPass = null;
       }
+      if (repetitionGoal.config?.target.kind === "selected-bars") {
+        repetitionGoal = {
+          config: {
+            ...repetitionGoal.config,
+            target: { kind: "selected-bars", barIndexes: [] }
+          },
+          progress: { completedPasses: 0, completed: false },
+          armed: false,
+          runMetrics: null
+        };
+      }
       selectionModeOpen = false;
       renderFirstRunTip();
       renderBarSelectors();
@@ -1130,6 +1411,20 @@ export default class DrumNotationPlugin extends Plugin {
           armed: practiceSelection.barIndexes.length > 0 && tempoRamp.armed
         };
         activeTempoRampPass = null;
+      }
+      if (repetitionGoal.config?.target.kind === "selected-bars") {
+        repetitionGoal = {
+          config: {
+            ...repetitionGoal.config,
+            target: {
+              kind: "selected-bars",
+              barIndexes: [...practiceSelection.barIndexes]
+            }
+          },
+          progress: { completedPasses: 0, completed: false },
+          armed: practiceSelection.barIndexes.length > 0 && repetitionGoal.armed,
+          runMetrics: null
+        };
       }
       selectedBarIndex = clampBarIndex(block, region.barIndex);
       currentSlotIndex = block.bars[selectedBarIndex]?.startSlot ?? currentSlotIndex;
@@ -1361,7 +1656,13 @@ export default class DrumNotationPlugin extends Plugin {
           progress: { ...tempoRamp.progress }
         },
         onTempoRampPassStart: handleTempoRampPassStart,
-        onTempoRampPassComplete: handleTempoRampPassComplete
+        onTempoRampPassComplete: handleTempoRampPassComplete,
+        onPassComplete: (state: PlaybackPassState) => {
+          if (tempoRampRunMetrics) {
+            tempoRampRunMetrics = recordPracticePass(tempoRampRunMetrics, state.tempoBpm);
+            publishPracticeSession();
+          }
+        }
       };
     };
 
@@ -1371,7 +1672,14 @@ export default class DrumNotationPlugin extends Plugin {
       loopAllButton.removeClass("is-playing");
     };
 
+    const finalizeCompletedTempoRamp = () => {
+      if (tempoRamp.armed && tempoRamp.config && tempoRamp.progress.completed) {
+        finishTrackedSummary("tempo-ramp", tempoRamp.config.target, null, true);
+      }
+    };
+
     const stopLocalPlayback = () => {
+      settleTrackedRun();
       this.stopActivePlayer(renderOwner);
       clearTransportHighlights();
       transportMode = "idle";
@@ -1422,6 +1730,7 @@ export default class DrumNotationPlugin extends Plugin {
       transportMode = useSelection ? "play-selection" : "play-all";
       currentSlotIndex = clampSlotIndex(block, initialSlot);
       this.activePlaybackOwner = renderOwner;
+      this.activePracticeSessionKey = practiceSessionKey;
       this.activePlayer = new DrumPlayer(
         this.getAudioContext(),
         block,
@@ -1436,11 +1745,13 @@ export default class DrumNotationPlugin extends Plugin {
           this.activePlayer = null;
           this.activePlaybackReset = null;
           this.activePlaybackOwner = null;
+          this.activePracticeSessionKey = null;
           transportMode = "idle";
           activePlaybackBarIndex = null;
           activePlaybackBarState = null;
           clearGapOverlays();
           renderFirstRunTip();
+          finalizeCompletedTempoRamp();
           void this.screenWakeLock.stop();
         },
         handleSlotChange,
@@ -1452,9 +1763,11 @@ export default class DrumNotationPlugin extends Plugin {
           repeatCount: useSelection ? 1 : block.repeatCount,
           ...(useSelection ? { selectedBarIndexes: practiceSelection.barIndexes } : {}),
           speedPercent: playbackSpeedPercent,
+          ...(exactTempoBpm !== null ? { exactTempoBpm } : {}),
           mutedInstrumentIds,
           metronomeMode,
           countInMode: useCountIn ? countInMode : "off",
+          countInCadence: "transport-start",
           clickSubdivision,
           gapClickMode,
           onBarChange: handleBarChange,
@@ -1503,6 +1816,7 @@ export default class DrumNotationPlugin extends Plugin {
       clearTransportHighlights();
       loopButton.addClass("is-playing");
       this.activePlaybackOwner = renderOwner;
+      this.activePracticeSessionKey = practiceSessionKey;
       this.activePlayer = new DrumPlayer(
         this.getAudioContext(),
         block,
@@ -1522,6 +1836,8 @@ export default class DrumNotationPlugin extends Plugin {
           this.activePlayer = null;
           this.activePlaybackReset = null;
           this.activePlaybackOwner = null;
+          this.activePracticeSessionKey = null;
+          finalizeCompletedTempoRamp();
           void this.screenWakeLock.stop();
         },
         handleSlotChange,
@@ -1532,9 +1848,11 @@ export default class DrumNotationPlugin extends Plugin {
           ...(initialPosition ? { initialPosition } : {}),
           loop: true,
           speedPercent: playbackSpeedPercent,
+          ...(exactTempoBpm !== null ? { exactTempoBpm } : {}),
           mutedInstrumentIds,
           metronomeMode,
           countInMode: useCountIn ? countInMode : "off",
+          countInCadence,
           clickSubdivision,
           gapClickMode,
           onBarChange: handleBarChange,
@@ -1572,6 +1890,7 @@ export default class DrumNotationPlugin extends Plugin {
       clearTransportHighlights();
       loopAllButton.addClass("is-playing");
       this.activePlaybackOwner = renderOwner;
+      this.activePracticeSessionKey = practiceSessionKey;
       this.activePlayer = new DrumPlayer(
         this.getAudioContext(),
         block,
@@ -1591,6 +1910,8 @@ export default class DrumNotationPlugin extends Plugin {
           this.activePlayer = null;
           this.activePlaybackReset = null;
           this.activePlaybackOwner = null;
+          this.activePracticeSessionKey = null;
+          finalizeCompletedTempoRamp();
           void this.screenWakeLock.stop();
         },
         handleSlotChange,
@@ -1601,9 +1922,11 @@ export default class DrumNotationPlugin extends Plugin {
           ...(initialPosition ? { initialPosition } : {}),
           loop: true,
           speedPercent: playbackSpeedPercent,
+          ...(exactTempoBpm !== null ? { exactTempoBpm } : {}),
           mutedInstrumentIds,
           metronomeMode,
           countInMode: useCountIn ? countInMode : "off",
+          countInCadence,
           clickSubdivision,
           gapClickMode,
           onBarChange: handleBarChange,
@@ -1650,6 +1973,7 @@ export default class DrumNotationPlugin extends Plugin {
       clearTransportHighlights();
       loopAllButton.addClass("is-playing");
       this.activePlaybackOwner = renderOwner;
+      this.activePracticeSessionKey = practiceSessionKey;
       this.activePlayer = new DrumPlayer(
         this.getAudioContext(),
         block,
@@ -1669,6 +1993,8 @@ export default class DrumNotationPlugin extends Plugin {
           this.activePlayer = null;
           this.activePlaybackReset = null;
           this.activePlaybackOwner = null;
+          this.activePracticeSessionKey = null;
+          finalizeCompletedTempoRamp();
           void this.screenWakeLock.stop();
         },
         handleSlotChange,
@@ -1678,9 +2004,11 @@ export default class DrumNotationPlugin extends Plugin {
           selectedBarIndexes,
           loop: true,
           speedPercent: playbackSpeedPercent,
+          ...(exactTempoBpm !== null ? { exactTempoBpm } : {}),
           mutedInstrumentIds,
           metronomeMode,
           countInMode: useCountIn ? countInMode : "off",
+          countInCadence,
           clickSubdivision,
           gapClickMode,
           onBarChange: handleBarChange,
@@ -1716,28 +2044,249 @@ export default class DrumNotationPlugin extends Plugin {
       }
 
       if (tempoRamp.progress.completed) {
+        if (completedSummary && !completedSummaryHandled) {
+          const replace = await confirmWithModal(
+            this.app,
+            "This practice summary has not been saved or copied. Run the tempo ramp again and replace it?"
+          );
+          if (!replace) return false;
+        }
         tempoRamp = {
           ...tempoRamp,
           progress: { completedPasses: 0, completed: false }
         };
+        tempoRampRunMetrics = null;
+        completedSummary = null;
+        completedSummaryHandled = false;
         publishPracticeSession();
       }
       activeTempoRampPass = null;
+      startOrResumeTrackedRun("tempo-ramp");
 
+      let started: boolean;
       if (config.target.kind === "current-bar") {
-        return startLoopBar(config.target.barIndex, undefined, recoverBeforeStart, useCountIn);
-      }
-      if (config.target.kind === "selected-bars") {
+        started = await startLoopBar(config.target.barIndex, undefined, recoverBeforeStart, useCountIn);
+      } else if (config.target.kind === "selected-bars") {
         const firstSlot = block.bars[config.target.barIndexes[0]]?.startSlot ?? 0;
-        return startLoopSelection(
+        started = await startLoopSelection(
           firstSlot,
           recoverBeforeStart,
           useCountIn,
           undefined,
           config.target.barIndexes
         );
+      } else {
+        started = await startLoopAll(0, recoverBeforeStart, useCountIn);
       }
-      return startLoopAll(0, recoverBeforeStart, useCountIn);
+      if (!started) settleTrackedRun();
+      return started;
+    };
+
+    const startRepetitionGoal = async (
+      recoverBeforeStart: boolean,
+      useCountIn = true,
+      initialPosition?: DrumPlaybackPosition
+    ): Promise<boolean> => {
+      const config = normalizeRepetitionGoalConfig(repetitionGoal.config, block.bars.length);
+      if (!repetitionGoal.armed || !config) return false;
+      let progress = normalizeRepetitionGoalProgress(config, repetitionGoal.progress);
+      if (
+        completedSummary &&
+        !completedSummaryHandled &&
+        (progress.completed || repetitionGoal.runMetrics === null)
+      ) {
+        const replace = await confirmWithModal(
+          this.app,
+          "This practice summary has not been saved or copied. Start the repetition goal and replace it?"
+        );
+        if (!replace) return false;
+      }
+      if (progress.completed) {
+        progress = { completedPasses: 0, completed: false };
+        repetitionGoal = { ...repetitionGoal, progress, runMetrics: null };
+        completedSummary = null;
+        completedSummaryHandled = false;
+      }
+      const remainingPasses = config.totalPasses - progress.completedPasses;
+      if (remainingPasses <= 0 || !(await prepareTransportStart(recoverBeforeStart))) return false;
+
+      startOrResumeTrackedRun("repetition-goal");
+      const completedBeforeTransport = progress.completedPasses;
+      let startSlot = 0;
+      let endSlot = block.slots.length;
+      let selectedBarIndexes: readonly number[] | undefined;
+      if (config.target.kind === "current-bar") {
+        const bar = block.bars[config.target.barIndex];
+        if (!bar) return false;
+        startSlot = bar.startSlot;
+        endSlot = bar.startSlot + bar.slots.length;
+        transportMode = "loop-bar";
+        loopButton.addClass("is-playing");
+      } else if (config.target.kind === "selected-bars") {
+        selectedBarIndexes = config.target.barIndexes;
+        startSlot = block.bars[selectedBarIndexes[0]]?.startSlot ?? 0;
+        transportMode = "loop-selection";
+        loopAllButton.addClass("is-playing");
+      } else {
+        transportMode = "loop-all";
+        loopAllButton.addClass("is-playing");
+      }
+      currentSlotIndex = initialPosition?.slotIndex ?? startSlot;
+      this.activePlaybackOwner = renderOwner;
+      this.activePracticeSessionKey = practiceSessionKey;
+      this.activePlayer = new DrumPlayer(
+        this.getAudioContext(),
+        block,
+        () => {
+          if (this.activePlaybackOwner !== renderOwner) return;
+          clearTransportHighlights();
+          visuals.clearCursor();
+          clearRepeatProgress();
+          transportMode = "idle";
+          activePlaybackBarIndex = null;
+          activePlaybackBarState = null;
+          clearGapOverlays();
+          this.activePlayer = null;
+          this.activePlaybackReset = null;
+          this.activePlaybackOwner = null;
+          this.activePracticeSessionKey = null;
+          repetitionGoal = {
+            ...repetitionGoal,
+            progress: { completedPasses: config.totalPasses, completed: true }
+          };
+          finishTrackedSummary("repetition-goal", config.target, config.totalPasses, true);
+          renderFirstRunTip();
+          void this.screenWakeLock.stop();
+        },
+        handleSlotChange,
+        {
+          startSlot,
+          endSlot,
+          initialSlot: currentSlotIndex,
+          ...(initialPosition ? { initialPosition: { ...initialPosition, blockPassIndex: 0 } } : {}),
+          ...(selectedBarIndexes ? { selectedBarIndexes } : {}),
+          passLimit: remainingPasses,
+          speedPercent: playbackSpeedPercent,
+          ...(exactTempoBpm !== null ? { exactTempoBpm } : {}),
+          mutedInstrumentIds,
+          metronomeMode,
+          countInMode: useCountIn ? countInMode : "off",
+          countInCadence,
+          clickSubdivision,
+          gapClickMode,
+          onBarChange: handleBarChange,
+          onPassComplete: (state) => {
+            const completedPasses = Math.min(
+              config.totalPasses,
+              completedBeforeTransport + state.completedPasses
+            );
+            if (repetitionGoal.runMetrics) {
+              repetitionGoal = {
+                ...repetitionGoal,
+                progress: {
+                  completedPasses,
+                  completed: completedPasses >= config.totalPasses
+                },
+                runMetrics: recordPracticePass(repetitionGoal.runMetrics, state.tempoBpm)
+              };
+            }
+            renderFirstRunTip();
+            publishPracticeSession();
+          }
+        },
+        playbackBackendFactory
+      );
+      this.activePlaybackReset = () => {
+        clearTransportHighlights();
+        visuals.clearCursor();
+        clearRepeatProgress();
+        transportMode = "idle";
+        activePlaybackBarIndex = null;
+        activePlaybackBarState = null;
+        clearGapOverlays();
+        renderFirstRunTip();
+      };
+      renderFirstRunTip();
+      void this.screenWakeLock.start(createScreenWakeLockTarget(root.ownerDocument));
+      void this.activePlayer.play();
+      return true;
+    };
+
+    const openRepetitionGoalSetup = async () => {
+      if (completedSummary && !completedSummaryHandled) {
+        const replace = await confirmWithModal(
+          this.app,
+          "This practice summary has not been saved or copied. Start a new session anyway?"
+        );
+        if (!replace) return;
+      }
+      const defaultConfig = createDefaultRepetitionGoalConfig(
+        block.bars.length,
+        practiceSelection.barIndexes,
+        selectedBarIndex
+      );
+      new RepetitionGoalSetupModal(this.app, {
+        initialConfig: normalizeRepetitionGoalConfig(repetitionGoal.config, block.bars.length) ?? defaultConfig,
+        currentBarIndex: selectedBarIndex,
+        selectedBarIndexes: practiceSelection.barIndexes,
+        onSubmit: (config) => {
+          const normalized = normalizeRepetitionGoalConfig(config, block.bars.length);
+          if (!normalized) return;
+          stopLocalPlayback();
+          tempoRamp = { ...tempoRamp, armed: false };
+          repetitionGoal = {
+            config: normalized,
+            progress: { completedPasses: 0, completed: false },
+            armed: true,
+            runMetrics: null
+          };
+          completedSummary = null;
+          completedSummaryHandled = false;
+          publishPracticeSession();
+          updateHeader();
+          renderFirstRunTip();
+          void startRepetitionGoal(true, true);
+        }
+      }).open();
+    };
+
+    const finishRepetitionGoalEarly = () => {
+      const config = repetitionGoal.config;
+      if (!config || !repetitionGoal.runMetrics) return;
+      stopLocalPlayback();
+      finishTrackedSummary("repetition-goal", config.target, config.totalPasses, false);
+      renderFirstRunTip();
+    };
+
+    const resetRepetitionGoal = async () => {
+      if (!repetitionGoal.config) return;
+      if (completedSummary && !completedSummaryHandled) {
+        const replace = await confirmWithModal(
+          this.app,
+          "This practice summary has not been saved or copied. Reset the practice goal anyway?"
+        );
+        if (!replace) return;
+      }
+      stopLocalPlayback();
+      repetitionGoal = {
+        ...repetitionGoal,
+        armed: true,
+        progress: { completedPasses: 0, completed: false },
+        runMetrics: null
+      };
+      completedSummary = null;
+      completedSummaryHandled = false;
+      publishPracticeSession();
+      renderFirstRunTip();
+    };
+
+    const finishTempoRampSessionEarly = () => {
+      if (!tempoRamp.config || !tempoRampRunMetrics) return;
+      stopLocalPlayback();
+      const target = tempoRamp.config.target;
+      tempoRamp = { ...tempoRamp, armed: false };
+      finishTrackedSummary("tempo-ramp", target, null, false);
+      renderFirstRunTip();
     };
 
     const restartActivePlaybackForControls = async () => {
@@ -1746,6 +2295,11 @@ export default class DrumNotationPlugin extends Plugin {
       }
 
       const currentPosition = this.activePlayer.getCurrentPlaybackPosition();
+      if (repetitionGoal.armed) {
+        this.stopActivePlayer(renderOwner);
+        await startRepetitionGoal(true, false, { ...currentPosition, blockPassIndex: 0 });
+        return;
+      }
       const restartPosition = tempoRamp.armed
         ? { ...currentPosition, blockPassIndex: 0 }
         : currentPosition;
@@ -1809,7 +2363,9 @@ export default class DrumNotationPlugin extends Plugin {
     };
 
     const setFixedPlaybackSpeed = (speedPercent: number) => {
+      if (tempoRamp.armed) settleTrackedRun();
       playbackSpeedPercent = normalizePlaybackSpeedPercent(speedPercent);
+      exactTempoBpm = null;
       tempoRamp = { ...tempoRamp, armed: false };
       activeTempoRampPass = null;
       normalizeClickSubdivisionForCurrentSpeed(true);
@@ -1819,7 +2375,40 @@ export default class DrumNotationPlugin extends Plugin {
       void restartActivePlaybackForControls();
     };
 
-    const openTempoRampSetup = () => {
+    const setExactPlaybackTempo = (bpm: number, notifyUser = false) => {
+      const normalized = normalizeExactTempoBpm(bpm);
+      if (normalized === null) return;
+      const rampWasArmed = tempoRamp.armed;
+      if (rampWasArmed) settleTrackedRun();
+      exactTempoBpm = normalized;
+      tempoRamp = { ...tempoRamp, armed: false };
+      activeTempoRampPass = null;
+      normalizeClickSubdivisionForCurrentSpeed(true);
+      updateHeader();
+      renderFirstRunTip();
+      publishPracticeSession();
+      void restartActivePlaybackForControls();
+      if (notifyUser) {
+        new Notice(`${rampWasArmed ? "Tempo ramp off · " : ""}Tapped tempo: ${normalized} BPM`);
+      }
+    };
+
+    const openTapTempo = () => {
+      if (this.activePlaybackOwner === renderOwner && this.activePlayer) {
+        new Notice("Stop playback before using Tap tempo.");
+        return;
+      }
+      new TapTempoModal(this.app, this.practiceClock, (bpm) => setExactPlaybackTempo(bpm, true)).open();
+    };
+
+    const openTempoRampSetup = async () => {
+      if (completedSummary && !completedSummaryHandled) {
+        const replace = await confirmWithModal(
+          this.app,
+          "This practice summary has not been saved or copied. Start a new tempo ramp anyway?"
+        );
+        if (!replace) return;
+      }
       const defaultConfig = createDefaultTempoRampConfig(
         block,
         getCurrentEffectiveTempo(),
@@ -1843,6 +2432,10 @@ export default class DrumNotationPlugin extends Plugin {
             progress: { completedPasses: 0, completed: false },
             armed: true
           };
+          tempoRampRunMetrics = null;
+          repetitionGoal = { ...repetitionGoal, armed: false };
+          completedSummary = null;
+          completedSummaryHandled = false;
           activeTempoRampPass = null;
           normalizeClickSubdivisionForCurrentSpeed(true);
           updateHeader();
@@ -1853,8 +2446,15 @@ export default class DrumNotationPlugin extends Plugin {
       }).open();
     };
 
-    const resetTempoRamp = () => {
+    const resetTempoRamp = async () => {
       if (!tempoRamp.config) return;
+      if (completedSummary && !completedSummaryHandled) {
+        const replace = await confirmWithModal(
+          this.app,
+          "This practice summary has not been saved or copied. Reset the tempo ramp anyway?"
+        );
+        if (!replace) return;
+      }
       const wasPlaying = this.activePlaybackOwner === renderOwner && this.activePlayer !== null;
       stopLocalPlayback();
       tempoRamp = {
@@ -1862,6 +2462,9 @@ export default class DrumNotationPlugin extends Plugin {
         armed: true,
         progress: { completedPasses: 0, completed: false }
       };
+      tempoRampRunMetrics = null;
+      completedSummary = null;
+      completedSummaryHandled = false;
       activeTempoRampPass = null;
       normalizeClickSubdivisionForCurrentSpeed(true);
       updateHeader();
@@ -1893,7 +2496,7 @@ export default class DrumNotationPlugin extends Plugin {
         menu.addItem((item) => {
           item
             .setTitle(`${speed}% · ${formatTempo(getEffectivePlaybackTempo(block.tempo, speed))} BPM`)
-            .setChecked(!tempoRamp.armed && playbackSpeedPercent === speed)
+            .setChecked(!tempoRamp.armed && exactTempoBpm === null && playbackSpeedPercent === speed)
             .onClick(() => setFixedPlaybackSpeed(speed));
         });
       }
@@ -1901,9 +2504,18 @@ export default class DrumNotationPlugin extends Plugin {
       menu.addSeparator();
       menu.addItem((item) => {
         item
+          .setTitle(this.activePlaybackOwner === renderOwner && this.activePlayer
+            ? "Tap tempo… · Stop playback first"
+            : "Tap tempo…")
+          .setIcon("hand")
+          .setDisabled(this.activePlaybackOwner === renderOwner && this.activePlayer !== null)
+          .onClick(openTapTempo);
+      });
+      menu.addItem((item) => {
+        item
           .setTitle("Tempo ramp…")
           .setIcon("trending-up")
-          .onClick(openTempoRampSetup);
+          .onClick(() => void openTempoRampSetup());
       });
       if (
         tempoRamp.config &&
@@ -1916,10 +2528,7 @@ export default class DrumNotationPlugin extends Plugin {
             .onClick(() => {
               tempoRamp = {
                 ...tempoRamp,
-                armed: true,
-                progress: tempoRamp.progress.completed
-                  ? { completedPasses: 0, completed: false }
-                  : tempoRamp.progress
+                armed: true
               };
               activeTempoRampPass = null;
               normalizeClickSubdivisionForCurrentSpeed(true);
@@ -1935,7 +2544,7 @@ export default class DrumNotationPlugin extends Plugin {
           item
             .setTitle("Reset ramp")
             .setIcon("rotate-ccw")
-            .onClick(resetTempoRamp);
+            .onClick(() => void resetTempoRamp());
         });
       }
       if (tempoRamp.armed) {
@@ -2022,6 +2631,24 @@ export default class DrumNotationPlugin extends Plugin {
         });
       });
 
+      menu.addSeparator();
+      ([
+        ["transport-start", "Once at start"],
+        ["every-pass", "Before every pass"]
+      ] as const).forEach(([value, label]) => {
+        menu.addItem((item) => {
+          item
+            .setTitle(`Count-in timing: ${label}`)
+            .setChecked(countInCadence === value)
+            .onClick(() => {
+              countInCadence = value;
+              updateHeader();
+              publishPracticeSession();
+              void restartActivePlaybackForControls();
+            });
+        });
+      });
+
       menu.showAtMouseEvent(event);
     };
 
@@ -2029,7 +2656,18 @@ export default class DrumNotationPlugin extends Plugin {
       const menu = new Menu();
       const selectedCount = practiceSelection.barIndexes.length;
 
-      if (tempoRamp.armed && tempoRamp.config) {
+      if (repetitionGoal.armed && repetitionGoal.config) {
+        menu.addItem((item) => {
+          item
+            .setTitle(`Practice goal · ${formatPracticeTarget(repetitionGoal.config!.target)} · ${repetitionGoal.progress.completedPasses}/${repetitionGoal.config!.totalPasses}`)
+            .setIcon("target")
+            .setChecked(this.activePlaybackOwner === renderOwner && this.activePlayer !== null)
+            .onClick(() => {
+              if (this.activePlaybackOwner === renderOwner && this.activePlayer) stopLocalPlayback();
+              else void startRepetitionGoal(true, true);
+            });
+        });
+      } else if (tempoRamp.armed && tempoRamp.config) {
         const rampTargetLabel = formatTempoRampTarget(tempoRamp.config.target);
         menu.addItem((item) => {
           item
@@ -2068,6 +2706,46 @@ export default class DrumNotationPlugin extends Plugin {
               });
           });
         }
+      }
+
+      menu.addSeparator();
+      menu.addItem((item) => {
+        item
+          .setTitle("Practice repetitions…")
+          .setIcon("target")
+          .onClick(() => void openRepetitionGoalSetup());
+      });
+      if (repetitionGoal.config) {
+        menu.addItem((item) => {
+          item
+            .setTitle("Reset practice goal")
+            .setIcon("rotate-ccw")
+            .onClick(() => void resetRepetitionGoal());
+        });
+      }
+      if (repetitionGoal.runMetrics && !repetitionGoal.progress.completed) {
+        menu.addItem((item) => {
+          item
+            .setTitle("Finish session")
+            .setIcon("flag")
+            .onClick(finishRepetitionGoalEarly);
+        });
+      }
+      if (tempoRampRunMetrics && tempoRamp.armed && !tempoRamp.progress.completed) {
+        menu.addItem((item) => {
+          item
+            .setTitle("Finish tempo-ramp session")
+            .setIcon("flag")
+            .onClick(finishTempoRampSessionEarly);
+        });
+      }
+      if (completedSummary) {
+        menu.addItem((item) => {
+          item
+            .setTitle("View practice summary")
+            .setIcon("clipboard-list")
+            .onClick(openPracticeSummary);
+        });
       }
 
       menu.addSeparator();
@@ -2273,6 +2951,21 @@ export default class DrumNotationPlugin extends Plugin {
           activeTempoRampPass = null;
         }
       }
+      if (repetitionGoal.config) {
+        const validGoal = normalizeRepetitionGoalConfig(repetitionGoal.config, block.bars.length);
+        repetitionGoal = validGoal
+          ? {
+              ...repetitionGoal,
+              config: validGoal,
+              progress: normalizeRepetitionGoalProgress(validGoal, repetitionGoal.progress)
+            }
+          : {
+              config: null,
+              progress: { completedPasses: 0, completed: false },
+              armed: false,
+              runMetrics: null
+            };
+      }
       normalizeClickSubdivisionForCurrentSpeed(false);
       practiceSelection = keepSelection
         ? normalizePracticeSelection(practiceSelection, block.bars.length)
@@ -2468,16 +3161,22 @@ export default class DrumNotationPlugin extends Plugin {
         if (this.activePlaybackOwner === renderOwner && this.activePlayer) {
           stopLocalPlayback();
         } else {
-          void (tempoRamp.armed ? startArmedTempoRamp(true, true) : startPlayback(0, true));
+          void (repetitionGoal.armed
+            ? startRepetitionGoal(true, true)
+            : tempoRamp.armed
+              ? startArmedTempoRamp(true, true)
+              : startPlayback(0, true));
         }
       },
       loopActive: () => {
         this.lastInteractedControllerOwner = renderOwner;
         if (
           this.activePlaybackOwner === renderOwner &&
-          (tempoRamp.armed || transportMode === "loop-bar" || transportMode === "loop-selection")
+          (repetitionGoal.armed || tempoRamp.armed || transportMode === "loop-bar" || transportMode === "loop-selection")
         ) {
           stopLocalPlayback();
+        } else if (repetitionGoal.armed) {
+          void startRepetitionGoal(true, true);
         } else if (tempoRamp.armed) {
           void startArmedTempoRamp(true, true);
         } else if (practiceSelection.barIndexes.length > 0) {
@@ -2488,11 +3187,24 @@ export default class DrumNotationPlugin extends Plugin {
       },
       adjustSpeed: (deltaPercent) => {
         this.lastInteractedControllerOwner = renderOwner;
+        if (exactTempoBpm !== null && !tempoRamp.armed) {
+          const nextBpm = normalizeExactTempoBpm(exactTempoBpm + Math.sign(deltaPercent) * 5);
+          if (nextBpm === null || nextBpm === exactTempoBpm) return;
+          exactTempoBpm = nextBpm;
+          normalizeClickSubdivisionForCurrentSpeed(true);
+          updateHeader();
+          publishPracticeSession();
+          void restartActivePlaybackForControls();
+          new Notice(`Tapped tempo: ${nextBpm} BPM`);
+          return;
+        }
+        const rampWasArmed = tempoRamp.armed;
         const nextSpeed = normalizePlaybackSpeedPercent(playbackSpeedPercent + deltaPercent);
-        if (nextSpeed === playbackSpeedPercent && !tempoRamp.armed) {
+        if (nextSpeed === playbackSpeedPercent && !rampWasArmed) {
           return;
         }
         setFixedPlaybackSpeed(nextSpeed);
+        new Notice(`${rampWasArmed ? "Tempo ramp off · " : ""}Playback speed: ${nextSpeed}% · ${formatTempo(getEffectivePlaybackTempo(block.tempo, nextSpeed))} BPM`);
       }
     };
     this.notationControllers.set(renderOwner, controller);
@@ -2523,8 +3235,24 @@ export default class DrumNotationPlugin extends Plugin {
             armed: Boolean(session.tempoRamp.armed && validTempoRampConfig)
           };
           const materialRampChange = isMaterialTempoRampSessionChange(tempoRamp, nextTempoRamp);
+          const nextGoalConfig = normalizeRepetitionGoalConfig(
+            session.repetitionGoal.config,
+            block.bars.length
+          );
+          const nextGoal = {
+            config: nextGoalConfig,
+            progress: normalizeRepetitionGoalProgress(nextGoalConfig, session.repetitionGoal.progress),
+            armed: Boolean(session.repetitionGoal.armed && nextGoalConfig),
+            runMetrics: session.repetitionGoal.runMetrics
+          };
+          const materialGoalChange = repetitionGoal.armed !== nextGoal.armed ||
+            (repetitionGoal.config === null || nextGoal.config === null
+              ? repetitionGoal.config !== nextGoal.config
+              : repetitionGoal.config.totalPasses !== nextGoal.config.totalPasses ||
+                !practiceTargetsEqual(repetitionGoal.config.target, nextGoal.config.target)) ||
+            nextGoal.progress.completedPasses < repetitionGoal.progress.completedPasses;
           if (
-            (selectionChanged || materialRampChange) &&
+            (selectionChanged || materialRampChange || materialGoalChange) &&
             this.activePlaybackOwner === renderOwner &&
             this.activePlayer
           ) {
@@ -2532,15 +3260,19 @@ export default class DrumNotationPlugin extends Plugin {
           }
 
           playbackSpeedPercent = normalizePlaybackSpeedPercent(session.speedPercent);
+          exactTempoBpm = normalizeExactTempoBpm(session.exactTempoBpm);
           metronomeMode = session.metronomeMode;
           countInMode = session.countInMode;
-          clickSubdivision = getSafeClickSubdivision(
-            block,
-            playbackSpeedPercent,
-            session.clickSubdivision
-          );
+          countInCadence = normalizeCountInCadence(session.countInCadence);
+          clickSubdivision = exactTempoBpm !== null
+            ? getSafeClickSubdivisionAtTempo(block, exactTempoBpm, session.clickSubdivision)
+            : getSafeClickSubdivision(block, playbackSpeedPercent, session.clickSubdivision);
           gapClickMode = session.gapClickMode;
           tempoRamp = nextTempoRamp;
+          tempoRampRunMetrics = session.tempoRampRunMetrics;
+          repetitionGoal = nextGoal;
+          completedSummary = session.completedSummary;
+          completedSummaryHandled = session.completedSummaryHandled;
           if (materialRampChange) {
             activeTempoRampPass = null;
           }
@@ -2627,12 +3359,17 @@ export default class DrumNotationPlugin extends Plugin {
       if (this.lastInteractedControllerOwner === renderOwner) {
         this.lastInteractedControllerOwner = null;
       }
+      settleTrackedRun();
       this.stopActivePlayer(renderOwner);
       this.stopActivePreview(renderOwner);
     });
 
     playButton.addEventListener("click", () => {
-      void (tempoRamp.armed ? startArmedTempoRamp(true, true) : startPlayback(0, true));
+      void (repetitionGoal.armed
+        ? startRepetitionGoal(true, true)
+        : tempoRamp.armed
+          ? startArmedTempoRamp(true, true)
+          : startPlayback(0, true));
     });
 
     stopButton.addEventListener("click", () => {
@@ -2642,14 +3379,16 @@ export default class DrumNotationPlugin extends Plugin {
     loopButton.addEventListener("click", () => {
       if (
         transportMode === "loop-bar" ||
-        (tempoRamp.armed && this.activePlaybackOwner === renderOwner && this.activePlayer)
+        ((repetitionGoal.armed || tempoRamp.armed) && this.activePlaybackOwner === renderOwner && this.activePlayer)
       ) {
         stopLocalPlayback();
         return;
       }
 
-      void (tempoRamp.armed
-        ? startArmedTempoRamp(true, true)
+      void (repetitionGoal.armed
+        ? startRepetitionGoal(true, true)
+        : tempoRamp.armed
+          ? startArmedTempoRamp(true, true)
         : startLoopBar(barIndexForSlot(block, currentSlotIndex), undefined, true));
     });
 
@@ -2908,6 +3647,7 @@ export default class DrumNotationPlugin extends Plugin {
     this.activePlayer = null;
     this.activePlaybackReset = null;
     this.activePlaybackOwner = null;
+    this.activePracticeSessionKey = null;
     void this.screenWakeLock.stop();
     reset?.();
   }
@@ -3211,6 +3951,271 @@ interface TempoRampSetupModalOptions {
   currentBarIndex: number;
   selectedBarIndexes: readonly number[];
   onSubmit: (config: TempoRampConfig) => void;
+}
+
+interface RepetitionGoalSetupModalOptions {
+  initialConfig: RepetitionGoalConfig;
+  currentBarIndex: number;
+  selectedBarIndexes: readonly number[];
+  onSubmit: (config: RepetitionGoalConfig) => void;
+}
+
+class RepetitionGoalSetupModal extends Modal {
+  constructor(app: App, private readonly options: RepetitionGoalSetupModalOptions) {
+    super(app);
+  }
+
+  onOpen(): void {
+    this.titleEl.setText("Practice repetitions");
+    this.contentEl.empty();
+    this.contentEl.addClass("drum-notation__setup-modal");
+    let targetSelect!: HTMLSelectElement;
+    let passesInput!: HTMLInputElement;
+
+    new Setting(this.contentEl)
+      .setName("Target")
+      .setDesc("Capture the bar or phrase that each pass repeats.")
+      .addDropdown((dropdown) => {
+        targetSelect = dropdown.selectEl;
+        dropdown
+          .addOption("current-bar", `Current bar (${this.options.currentBarIndex + 1})`)
+          .addOption(
+            "selected-bars",
+            this.options.selectedBarIndexes.length > 0
+              ? `Selected bars (${this.options.selectedBarIndexes.length})`
+              : "Selected bars (none)"
+          )
+          .addOption("whole-notation", "Whole notation")
+          .setValue(this.options.initialConfig.target.kind);
+        const selected = targetSelect.querySelector<HTMLOptionElement>('option[value="selected-bars"]');
+        if (selected) selected.disabled = this.options.selectedBarIndexes.length === 0;
+      });
+
+    const quick = new Setting(this.contentEl)
+      .setName("Passes")
+      .setDesc(`Choose 1–${MAX_REPETITION_GOAL_PASSES} complete target traversals.`);
+    passesInput = quick.controlEl.createEl("input");
+    passesInput.type = "number";
+    passesInput.min = String(MIN_REPETITION_GOAL_PASSES);
+    passesInput.max = String(MAX_REPETITION_GOAL_PASSES);
+    passesInput.step = "1";
+    passesInput.inputMode = "numeric";
+    passesInput.value = String(this.options.initialConfig.totalPasses);
+    passesInput.addClass("drum-notation__setup-number");
+    [4, 8, 16, 32].forEach((passes) => {
+      const button = quick.controlEl.createEl("button", {
+        text: String(passes),
+        attr: { type: "button", "aria-label": `Set ${passes} passes` }
+      });
+      button.addEventListener("click", () => {
+        passesInput.value = String(passes);
+        updateState();
+      });
+    });
+
+    const summary = this.contentEl.createDiv({
+      cls: "drum-notation__setup-summary",
+      attr: { "aria-live": "polite" }
+    });
+    const buttons = this.contentEl.createDiv({ cls: "drum-notation__confirm-buttons" });
+    const cancel = buttons.createEl("button", { text: "Cancel", attr: { type: "button" } });
+    const start = buttons.createEl("button", { cls: "mod-cta", text: "Start goal", attr: { type: "button" } });
+
+    const readConfig = (): RepetitionGoalConfig => ({
+      target: targetSelect.value === "whole-notation"
+        ? { kind: "whole-notation" }
+        : targetSelect.value === "selected-bars"
+          ? { kind: "selected-bars", barIndexes: [...this.options.selectedBarIndexes] }
+          : { kind: "current-bar", barIndex: this.options.currentBarIndex },
+      totalPasses: Number(passesInput.value)
+    });
+    const updateState = () => {
+      const value = Number(passesInput.value);
+      const valid = Number.isInteger(value) &&
+        value >= MIN_REPETITION_GOAL_PASSES &&
+        value <= MAX_REPETITION_GOAL_PASSES &&
+        !(targetSelect.value === "selected-bars" && this.options.selectedBarIndexes.length === 0);
+      start.disabled = !valid;
+      summary.setText(valid ? `${value} complete pass${value === 1 ? "" : "es"}` : "Enter a valid repetition goal.");
+    };
+    targetSelect.addEventListener("change", updateState);
+    passesInput.addEventListener("input", updateState);
+    cancel.addEventListener("click", () => this.close());
+    start.addEventListener("click", () => {
+      if (start.disabled) return;
+      this.options.onSubmit(readConfig());
+      this.close();
+    });
+    updateState();
+    this.contentEl.ownerDocument.defaultView?.requestAnimationFrame(() => {
+      passesInput.focus();
+      passesInput.select();
+    });
+  }
+
+  onClose(): void {
+    this.contentEl.empty();
+  }
+}
+
+class TapTempoModal extends Modal {
+  private state = createTapTempoState();
+
+  constructor(
+    app: App,
+    private readonly clock: PracticeClock,
+    private readonly onUse: (bpm: number) => void
+  ) {
+    super(app);
+  }
+
+  onOpen(): void {
+    this.titleEl.setText("Tap tempo");
+    this.contentEl.empty();
+    const measured = this.contentEl.createEl("p", {
+      text: "Tap at least twice",
+      attr: { "aria-live": "polite" }
+    });
+    const tap = this.contentEl.createEl("button", {
+      cls: "drum-notation__tap-tempo-button mod-cta",
+      text: "Tap",
+      attr: { type: "button", "aria-label": "Tap tempo" }
+    });
+    const buttons = this.contentEl.createDiv({ cls: "drum-notation__confirm-buttons" });
+    const reset = buttons.createEl("button", { text: "Reset", attr: { type: "button" } });
+    const cancel = buttons.createEl("button", { text: "Cancel", attr: { type: "button" } });
+    const use = buttons.createEl("button", { cls: "mod-cta", text: "Use BPM", attr: { type: "button" } });
+    use.disabled = true;
+
+    const record = () => {
+      this.state = recordTapTempo(this.state, this.clock.monotonicNowMs());
+      measured.setText(this.state.bpm === null ? "Keep tapping…" : `${this.state.bpm} BPM`);
+      use.disabled = this.state.bpm === null;
+    };
+    tap.addEventListener("click", record);
+    reset.addEventListener("click", () => {
+      this.state = createTapTempoState();
+      measured.setText("Tap at least twice");
+      use.disabled = true;
+      tap.focus();
+    });
+    cancel.addEventListener("click", () => this.close());
+    use.addEventListener("click", () => {
+      if (this.state.bpm === null) return;
+      this.onUse(this.state.bpm);
+      this.close();
+    });
+    this.modalEl.addEventListener("keydown", (event) => {
+      if ((event.key === " " || event.key === "Enter") && !event.repeat && event.target === tap) {
+        event.preventDefault();
+        record();
+      }
+    });
+    this.contentEl.ownerDocument.defaultView?.requestAnimationFrame(() => tap.focus());
+  }
+
+  onClose(): void {
+    this.contentEl.empty();
+  }
+}
+
+interface PracticeSummaryModalOptions {
+  summary: PracticeRunSummary;
+  blockTitle: string;
+  sourcePath: string | null;
+  alreadyHandled: boolean;
+  onCopy: (note: string) => Promise<boolean>;
+  onSave: ((note: string) => Promise<boolean>) | null;
+  onDiscard: () => void;
+}
+
+class PracticeSummaryModal extends Modal {
+  constructor(app: App, private readonly options: PracticeSummaryModalOptions) {
+    super(app);
+  }
+
+  onOpen(): void {
+    const { summary } = this.options;
+    this.titleEl.setText("Practice summary");
+    this.contentEl.empty();
+    const details = this.contentEl.createEl("dl", { cls: "drum-notation__practice-summary" });
+    const addDetail = (label: string, value: string) => {
+      details.createEl("dt", { text: label });
+      details.createEl("dd", { text: value });
+    };
+    addDetail("Notation", this.options.blockTitle);
+    addDetail("Target", formatPracticeTarget(summary.target));
+    addDetail(
+      "Passes",
+      summary.requestedPasses === null
+        ? String(summary.performedPasses)
+        : `${summary.performedPasses}/${summary.requestedPasses}`
+    );
+    addDetail("Tempo", summary.startBpm === summary.endBpm
+      ? `${summary.startBpm} BPM`
+      : `${summary.startBpm} → ${summary.endBpm} BPM`);
+    addDetail("Active session time", formatActiveSessionTime(summary.elapsedActiveMs));
+    addDetail("Result", summary.completed ? "Completed" : "Finished early");
+
+    let note = "";
+    new Setting(this.contentEl).setName("Optional note").addTextArea((text) => {
+      text.setPlaceholder("How did the session feel?").onChange((value) => {
+        note = value;
+      });
+    });
+    if (!this.options.sourcePath) {
+      this.contentEl.createEl("p", {
+        cls: "setting-item-description",
+        text: "Saving is unavailable because the source note could not be identified. Copy Markdown remains available."
+      });
+    }
+    if (this.options.alreadyHandled) {
+      this.contentEl.createEl("p", { text: "This summary has already been saved or copied." });
+    }
+
+    const buttons = this.contentEl.createDiv({ cls: "drum-notation__confirm-buttons" });
+    const save = buttons.createEl("button", { cls: "mod-cta", text: "Save to log", attr: { type: "button" } });
+    save.disabled = this.options.onSave === null || this.options.alreadyHandled;
+    const copy = buttons.createEl("button", { text: "Copy Markdown", attr: { type: "button" } });
+    copy.disabled = this.options.alreadyHandled;
+    const close = buttons.createEl("button", { text: "Close", attr: { type: "button" } });
+    const discard = buttons.createEl("button", { text: "Discard summary", attr: { type: "button" } });
+
+    save.addEventListener("click", () => {
+      if (!this.options.onSave) return;
+      save.disabled = true;
+      void this.options.onSave(note).then((saved) => {
+        if (saved) {
+          new Notice("Practice summary saved");
+          this.close();
+        } else save.disabled = false;
+      }).catch((error) => {
+        save.disabled = false;
+        new Notice(`Could not save practice summary: ${error instanceof Error ? error.message : String(error)}`);
+      });
+    });
+    copy.addEventListener("click", () => {
+      copy.disabled = true;
+      void this.options.onCopy(note).then((copied) => {
+        if (copied) {
+          new Notice("Practice summary copied");
+          this.close();
+        } else copy.disabled = false;
+      }).catch((error) => {
+        copy.disabled = false;
+        new Notice(`Could not copy practice summary: ${error instanceof Error ? error.message : String(error)}`);
+      });
+    });
+    close.addEventListener("click", () => this.close());
+    discard.addEventListener("click", () => {
+      this.options.onDiscard();
+      this.close();
+    });
+  }
+
+  onClose(): void {
+    this.contentEl.empty();
+  }
 }
 
 class TempoRampSetupModal extends Modal {
@@ -3768,6 +4773,26 @@ class DrumNotationSettingTab extends PluginSettingTab {
       },
       {
         type: "group",
+        heading: "Practice",
+        items: [
+          {
+            name: "Practice log note",
+            desc: "Vault-relative note used only when you explicitly save a completed practice summary.",
+            aliases: ["practice", "log", "journal", "history"],
+            control: {
+              type: "text",
+              key: "practiceLogPath",
+              defaultValue: "Drum Practice Log.md",
+              validate: (value) => {
+                const result = normalizePracticeLogPath(value);
+                return result.ok ? undefined : result.message;
+              }
+            }
+          }
+        ]
+      },
+      {
+        type: "group",
         heading: "New notation: Rhythm",
         items: [
           {
@@ -3944,6 +4969,7 @@ class DrumNotationSettingTab extends PluginSettingTab {
     switch (key) {
       case "enableVisualEditMode": return this.drumPlugin.settings.enableVisualEditMode;
       case "keepScreenAwakeDuringPlayback": return this.drumPlugin.settings.keepScreenAwakeDuringPlayback;
+      case "practiceLogPath": return this.drumPlugin.settings.practiceLogPath;
       case "authoringTitle": return defaults.title;
       case "authoringTempo": return defaults.tempo;
       case "authoringTimeNumerator": return time.numerator;
@@ -3972,6 +4998,15 @@ class DrumNotationSettingTab extends PluginSettingTab {
       if (typeof value === "boolean") {
         await this.drumPlugin.setKeepScreenAwakeDuringPlayback(value);
       }
+      return;
+    }
+
+    if (key === "practiceLogPath") {
+      if (typeof value !== "string") return;
+      const result = normalizePracticeLogPath(value);
+      if (!result.ok) return;
+      this.drumPlugin.settings.practiceLogPath = result.path;
+      await this.drumPlugin.saveSettings();
       return;
     }
 
@@ -4089,6 +5124,18 @@ class DrumNotationSettingTab extends PluginSettingTab {
       "keepScreenAwakeDuringPlayback",
       !this.supportsScreenWakeLock()
     );
+
+    new Setting(containerEl).setName("Practice").setHeading();
+    new Setting(containerEl)
+      .setName("Practice log note")
+      .setDesc("Vault-relative note used only when you explicitly save a completed practice summary.")
+      .addText((text) => {
+        text.setValue(this.drumPlugin.settings.practiceLogPath).onChange(async (value) => {
+          const result = normalizePracticeLogPath(value);
+          if (!result.ok) return;
+          await this.setControlValue("practiceLogPath", result.path);
+        });
+      });
 
     new Setting(containerEl).setName("New notation: Rhythm").setHeading();
     this.addLegacyText("Title", "Default title for newly inserted or scaffolded notation.", "authoringTitle");

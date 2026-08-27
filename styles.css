@@ -1461,6 +1461,31 @@ body.is-mobile .drum-notation__speed {
   text-align: center;
 }
 
+.drum-notation__tap-tempo-button {
+  display: block;
+  min-width: 9rem;
+  min-height: 4.5rem;
+  margin: 1rem auto;
+  font-size: 1.25rem;
+}
+
+.drum-notation__practice-summary {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 0.35rem 0.8rem;
+  margin: 0 0 1rem;
+}
+
+.drum-notation__practice-summary dt {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.drum-notation__practice-summary dd {
+  min-width: 0;
+  margin: 0;
+}
+
 .drum-notation__confirm-buttons {
   display: flex;
   flex-wrap: wrap;
@@ -1477,6 +1502,15 @@ body.is-mobile .drum-notation__speed {
 }
 
 @media (max-width: 560px) {
+  .drum-notation__practice-summary {
+    grid-template-columns: 1fr;
+    gap: 0.1rem;
+  }
+
+  .drum-notation__practice-summary dd {
+    margin-bottom: 0.5rem;
+  }
+
   .drum-notation__toolbar {
     align-items: flex-start;
     flex-direction: column;

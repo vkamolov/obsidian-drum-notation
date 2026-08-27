@@ -4,7 +4,12 @@ import {
   DrumBlock,
   GapClickMode,
   MetronomeMode,
+  CountInCadence,
+  PracticeRunMetrics,
+  PracticeRunSummary,
   PracticeSelection,
+  RepetitionGoalConfig,
+  RepetitionGoalProgress,
   ScoreBarRegion
 } from "./types";
 import {
@@ -20,12 +25,31 @@ import {
   normalizeTempoRampProgress,
   tempoRampConfigsEqual
 } from "./tempo-ramp";
+import {
+  DEFAULT_COUNT_IN_CADENCE,
+  clonePracticeTarget,
+  normalizeCountInCadence,
+  normalizeExactTempoBpm,
+  normalizePracticeRunMetrics,
+  normalizeRepetitionGoalConfig,
+  normalizeRepetitionGoalProgress,
+  practiceTargetsEqual
+} from "./practice-session";
+
+export interface RepetitionGoalSessionState {
+  config: RepetitionGoalConfig | null;
+  progress: RepetitionGoalProgress;
+  armed: boolean;
+  runMetrics: PracticeRunMetrics | null;
+}
 
 export interface DrumTransportSession {
   body: string;
   speedPercent: number;
+  exactTempoBpm: number | null;
   metronomeMode: MetronomeMode;
   countInMode: CountInMode;
+  countInCadence: CountInCadence;
   clickSubdivision: ClickSubdivision;
   gapClickMode: GapClickMode;
   mutedInstrumentIds: string[];
@@ -33,6 +57,10 @@ export interface DrumTransportSession {
   selectionModeOpen: boolean;
   currentBarIndex: number;
   tempoRamp: TempoRampSessionState;
+  tempoRampRunMetrics: PracticeRunMetrics | null;
+  repetitionGoal: RepetitionGoalSessionState;
+  completedSummary: PracticeRunSummary | null;
+  completedSummaryHandled: boolean;
 }
 
 export type DrumTransportSessionListener = (session: DrumTransportSession) => void;
@@ -242,8 +270,11 @@ export class DrumTransportSessionStore {
 
 function normalizeSession(session: DrumTransportSession): DrumTransportSession {
   const tempoRampConfig = normalizeTempoRampConfigValues(session.tempoRamp?.config);
+  const repetitionGoalConfig = normalizeRepetitionGoalConfig(session.repetitionGoal?.config);
   return {
     ...session,
+    exactTempoBpm: normalizeExactTempoBpm(session.exactTempoBpm),
+    countInCadence: normalizeCountInCadence(session.countInCadence ?? DEFAULT_COUNT_IN_CADENCE),
     clickSubdivision: normalizeClickSubdivision(session.clickSubdivision ?? DEFAULT_CLICK_SUBDIVISION),
     gapClickMode: normalizeGapClickMode(session.gapClickMode ?? DEFAULT_GAP_CLICK_MODE),
     mutedInstrumentIds: [...new Set(session.mutedInstrumentIds)].sort(),
@@ -255,7 +286,19 @@ function normalizeSession(session: DrumTransportSession): DrumTransportSession {
       config: tempoRampConfig,
       progress: normalizeTempoRampProgress(tempoRampConfig, session.tempoRamp?.progress),
       armed: Boolean(session.tempoRamp?.armed && tempoRampConfig)
-    }
+    },
+    tempoRampRunMetrics: normalizePracticeRunMetrics(session.tempoRampRunMetrics),
+    repetitionGoal: {
+      config: repetitionGoalConfig,
+      progress: normalizeRepetitionGoalProgress(
+        repetitionGoalConfig,
+        session.repetitionGoal?.progress
+      ),
+      armed: Boolean(session.repetitionGoal?.armed && repetitionGoalConfig),
+      runMetrics: normalizePracticeRunMetrics(session.repetitionGoal?.runMetrics)
+    },
+    completedSummary: normalizePracticeRunSummary(session.completedSummary),
+    completedSummaryHandled: Boolean(session.completedSummaryHandled)
   };
 }
 
@@ -268,7 +311,25 @@ function cloneSession(session: DrumTransportSession): DrumTransportSession {
       config: cloneTempoRampConfig(session.tempoRamp.config),
       progress: { ...session.tempoRamp.progress },
       armed: session.tempoRamp.armed
-    }
+    },
+    tempoRampRunMetrics: clonePracticeRunMetrics(session.tempoRampRunMetrics),
+    repetitionGoal: {
+      config: session.repetitionGoal.config
+        ? {
+            ...session.repetitionGoal.config,
+            target: clonePracticeTarget(session.repetitionGoal.config.target)
+          }
+        : null,
+      progress: { ...session.repetitionGoal.progress },
+      armed: session.repetitionGoal.armed,
+      runMetrics: clonePracticeRunMetrics(session.repetitionGoal.runMetrics)
+    },
+    completedSummary: session.completedSummary
+      ? {
+          ...session.completedSummary,
+          target: clonePracticeTarget(session.completedSummary.target)
+        }
+      : null
   };
 }
 
@@ -276,8 +337,10 @@ function sessionsEqual(left: DrumTransportSession, right: DrumTransportSession):
   return (
     left.body === right.body &&
     left.speedPercent === right.speedPercent &&
+    left.exactTempoBpm === right.exactTempoBpm &&
     left.metronomeMode === right.metronomeMode &&
     left.countInMode === right.countInMode &&
+    left.countInCadence === right.countInCadence &&
     left.clickSubdivision === right.clickSubdivision &&
     left.gapClickMode === right.gapClickMode &&
     left.selectionModeOpen === right.selectionModeOpen &&
@@ -286,9 +349,73 @@ function sessionsEqual(left: DrumTransportSession, right: DrumTransportSession):
     left.tempoRamp.progress.completedPasses === right.tempoRamp.progress.completedPasses &&
     left.tempoRamp.progress.completed === right.tempoRamp.progress.completed &&
     tempoRampConfigsEqual(left.tempoRamp.config, right.tempoRamp.config) &&
+    practiceRunMetricsEqual(left.tempoRampRunMetrics, right.tempoRampRunMetrics) &&
+    repetitionGoalStatesEqual(left.repetitionGoal, right.repetitionGoal) &&
+    practiceRunSummariesEqual(left.completedSummary, right.completedSummary) &&
+    left.completedSummaryHandled === right.completedSummaryHandled &&
     arraysEqual(left.mutedInstrumentIds, right.mutedInstrumentIds) &&
     arraysEqual(left.selection.barIndexes, right.selection.barIndexes)
   );
+}
+
+function normalizePracticeRunSummary(summary: PracticeRunSummary | null | undefined): PracticeRunSummary | null {
+  if (!summary) return null;
+  const startBpm = normalizeExactTempoBpm(summary.startBpm);
+  const endBpm = normalizeExactTempoBpm(summary.endBpm);
+  if (startBpm === null || endBpm === null) return null;
+  return {
+    kind: summary.kind === "tempo-ramp" ? "tempo-ramp" : "repetition-goal",
+    target: clonePracticeTarget(summary.target),
+    startedAtEpochMs: Math.max(0, Number.isFinite(summary.startedAtEpochMs) ? summary.startedAtEpochMs : 0),
+    elapsedActiveMs: Math.max(0, Number.isFinite(summary.elapsedActiveMs) ? summary.elapsedActiveMs : 0),
+    startBpm,
+    endBpm,
+    performedPasses: Math.max(0, Math.round(Number.isFinite(summary.performedPasses) ? summary.performedPasses : 0)),
+    requestedPasses: summary.requestedPasses === null
+      ? null
+      : Math.max(1, Math.round(Number.isFinite(summary.requestedPasses) ? summary.requestedPasses : 1)),
+    completed: Boolean(summary.completed)
+  };
+}
+
+function clonePracticeRunMetrics(metrics: PracticeRunMetrics | null): PracticeRunMetrics | null {
+  return metrics ? { ...metrics } : null;
+}
+
+function practiceRunMetricsEqual(left: PracticeRunMetrics | null, right: PracticeRunMetrics | null): boolean {
+  if (left === null || right === null) return left === right;
+  return left.startedAtEpochMs === right.startedAtEpochMs &&
+    left.elapsedActiveMs === right.elapsedActiveMs &&
+    left.activeSinceClockMs === right.activeSinceClockMs &&
+    left.startBpm === right.startBpm &&
+    left.endBpm === right.endBpm &&
+    left.performedPasses === right.performedPasses &&
+    left.status === right.status;
+}
+
+function repetitionGoalStatesEqual(left: RepetitionGoalSessionState, right: RepetitionGoalSessionState): boolean {
+  const configsEqual = left.config === null || right.config === null
+    ? left.config === right.config
+    : left.config.totalPasses === right.config.totalPasses &&
+      practiceTargetsEqual(left.config.target, right.config.target);
+  return configsEqual &&
+    left.progress.completedPasses === right.progress.completedPasses &&
+    left.progress.completed === right.progress.completed &&
+    left.armed === right.armed &&
+    practiceRunMetricsEqual(left.runMetrics, right.runMetrics);
+}
+
+function practiceRunSummariesEqual(left: PracticeRunSummary | null, right: PracticeRunSummary | null): boolean {
+  if (left === null || right === null) return left === right;
+  return left.kind === right.kind &&
+    practiceTargetsEqual(left.target, right.target) &&
+    left.startedAtEpochMs === right.startedAtEpochMs &&
+    left.elapsedActiveMs === right.elapsedActiveMs &&
+    left.startBpm === right.startBpm &&
+    left.endBpm === right.endBpm &&
+    left.performedPasses === right.performedPasses &&
+    left.requestedPasses === right.requestedPasses &&
+    left.completed === right.completed;
 }
 
 function arraysEqual<T>(left: readonly T[], right: readonly T[]): boolean {

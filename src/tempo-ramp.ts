@@ -1,9 +1,9 @@
 import {
   DrumBlock,
+  PracticeTarget,
   PracticeSelection,
   TempoRampConfig,
-  TempoRampProgress,
-  TempoRampTarget
+  TempoRampProgress
 } from "./types";
 
 export const MIN_TEMPO_RAMP_BPM = 30;
@@ -36,7 +36,7 @@ export function createDefaultTempoRampConfig(
   }
 
   const selectedBars = normalizeBarIndexes(selection.barIndexes, block.bars.length);
-  const target: TempoRampTarget = selectedBars.length > 0
+  const target: PracticeTarget = selectedBars.length > 0
     ? { kind: "selected-bars", barIndexes: selectedBars }
     : {
         kind: "current-bar",
@@ -225,7 +225,7 @@ export function isMaterialTempoRampSessionChange(
     (previous.progress.completed && !next.progress.completed);
 }
 
-function normalizeTempoRampTarget(target: TempoRampTarget, barCount: number): TempoRampTarget | null {
+function normalizeTempoRampTarget(target: PracticeTarget, barCount: number): PracticeTarget | null {
   if (target.kind === "whole-notation") {
     return { kind: "whole-notation" };
   }
@@ -240,14 +240,14 @@ function normalizeTempoRampTarget(target: TempoRampTarget, barCount: number): Te
   return barIndexes.length > 0 ? { kind: "selected-bars", barIndexes } : null;
 }
 
-function cloneTempoRampTarget(target: TempoRampTarget): TempoRampTarget {
+function cloneTempoRampTarget(target: PracticeTarget): PracticeTarget {
   if (target.kind === "selected-bars") {
     return { kind: "selected-bars", barIndexes: [...target.barIndexes] };
   }
   return { ...target };
 }
 
-function normalizeTempoRampTargetValues(target: TempoRampTarget): TempoRampTarget {
+function normalizeTempoRampTargetValues(target: PracticeTarget): PracticeTarget {
   if (target.kind === "selected-bars") {
     return {
       kind: "selected-bars",

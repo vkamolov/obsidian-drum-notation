@@ -141,14 +141,19 @@ export interface PlaybackOptions {
   loop?: boolean;
   repeatCount?: number;
   speedPercent?: number;
+  exactTempoBpm?: number;
   mutedInstrumentIds?: ReadonlySet<string>;
   metronomeMode?: MetronomeMode;
   countInMode?: CountInMode;
+  countInCadence?: CountInCadence;
   clickSubdivision?: ClickSubdivision;
   gapClickMode?: GapClickMode;
   tempoRamp?: TempoRampPlaybackState;
   selectedBarIndexes?: readonly number[];
+  passLimit?: number;
   onBarChange?: (barIndex: number, state: PlaybackBarState) => void;
+  onPassStart?: (state: PlaybackPassState) => void;
+  onPassComplete?: (state: PlaybackPassState) => void;
   onTempoRampPassStart?: (state: TempoRampPassState) => void;
   onTempoRampPassComplete?: (state: TempoRampPassState) => void;
 }
@@ -179,10 +184,54 @@ export interface PlaybackBarState {
   isNextGapBar: boolean;
 }
 
-export type TempoRampTarget =
+export interface PlaybackPassState {
+  passIndex: number;
+  completedPasses: number;
+  tempoBpm: number;
+}
+
+export type PracticeTarget =
   | { kind: "current-bar"; barIndex: number }
   | { kind: "selected-bars"; barIndexes: number[] }
   | { kind: "whole-notation" };
+
+// Preserve the 1.10.x public name and stored object shape while allowing other
+// practice modes to share the same captured-target semantics.
+export type TempoRampTarget = PracticeTarget;
+
+export type CountInCadence = "transport-start" | "every-pass";
+
+export interface RepetitionGoalConfig {
+  target: PracticeTarget;
+  totalPasses: number;
+}
+
+export interface RepetitionGoalProgress {
+  completedPasses: number;
+  completed: boolean;
+}
+
+export interface PracticeRunMetrics {
+  startedAtEpochMs: number;
+  elapsedActiveMs: number;
+  activeSinceClockMs: number | null;
+  startBpm: number;
+  endBpm: number;
+  performedPasses: number;
+  status: "running" | "paused" | "complete";
+}
+
+export interface PracticeRunSummary {
+  kind: "repetition-goal" | "tempo-ramp";
+  target: PracticeTarget;
+  startedAtEpochMs: number;
+  elapsedActiveMs: number;
+  startBpm: number;
+  endBpm: number;
+  performedPasses: number;
+  requestedPasses: number | null;
+  completed: boolean;
+}
 
 export type TempoRampEndBehavior = "hold" | "stop";
 

@@ -91,7 +91,7 @@ BD | o-------o-o-----
 ```
 ````
 
-In reading view, the plugin renders the block as page-width percussion staff notation and adds **Play**, **Stop**, **Loop Bar**, phrase/whole-notation loop options, playback-speed, metronome/count-in, instrument-mute, and **Edit** controls. For training, playback speed supports 25–150% of the written tempo; the toolbar offers compact 10% steps, including above-100% tempos for push-tempo practice. The metronome menu offers **Off**, **With drums**, and **Metronome only**, plus optional **1 bar** and **2 bars** count-ins before playback starts. Count-in sounds even when the metronome is Off, runs only at the initial transport start, and does not repeat between loop passes. The first metronome/count-in pulse of each bar is accented. Compound meters use grouped pulses, such as two clicks per bar in 6/8 and four in 12/8. The mute menu lists only instruments used in the current notation and mutes each canonical voice independently.
+In reading view, the plugin renders the block as page-width percussion staff notation and adds **Play**, **Stop**, **Loop Bar**, phrase/whole-notation loop options, playback-speed, metronome/count-in, instrument-mute, and **Edit** controls. For training, playback speed supports 25–150% of the written tempo; the toolbar offers compact 10% steps, including above-100% tempos for push-tempo practice. The metronome menu offers **Off**, **With drums**, and **Metronome only**, plus optional **1 bar** and **2 bars** count-ins. Count-in sounds even when the metronome is Off. It normally runs once at transport start; **Before every pass** is available for repetition goals, tempo ramps, and loop modes. The first metronome/count-in pulse of each bar is accented. Compound meters use grouped pulses, such as two clicks per bar in 6/8 and four in 12/8. The mute menu lists only instruments used in the current notation and mutes each canonical voice independently.
 
 For timing practice, **Click subdivision** can add 2, 3, or 4 clicks inside each existing metronome pulse. The menu describes the resulting note value when it is unambiguous: three per beat means eighth-note triplets in 4/4, but regular eighths in 6/8. Downbeats, main beats, and subdivisions use progressively lighter click strengths. At extreme tempo/speed combinations, unsafe subdivisions above 16 clicks per second are disabled and an active choice automatically steps down to the fastest safe option.
 
@@ -112,6 +112,12 @@ changes. If a higher ramp tempo makes the chosen click subdivision unsafe, the
 plugin keeps the fastest safe choice and reports the change. Choosing a fixed
 speed disarms the trainer but retains its setup and progress; fixed-speed menu
 items show both percentage and effective BPM.
+
+Choose **Tap tempo…** while playback is stopped to set an exact 30–260 BPM
+tempo by tapping the button, Space, or Enter. The plugin averages the latest
+valid taps and shows exact mode as a BPM value rather than converting it to a
+percentage. Choosing a percentage exits exact mode. Applying tap tempo to a
+configured tempo ramp turns the ramp off but preserves its setup and progress.
 
 Speed, tempo-ramp state, metronome, click subdivision, gap click, count-in, mute, practice-selection, and current-bar choices are playback-only: they do not change the fenced notation text. Obsidian restores them when the same source block is rendered again during the current plugin session; the playground keeps them for the current page session. They are not written to plugin data or browser storage. Changing speed, metronome, subdivision, gap mode, count-in, or mute during playback restarts from the same musical occurrence and gap-cycle position without replaying the count-in. Instrument mutes do not silence the metronome or count-in. Muting affects transport playback only, so clicking a rendered note or previewing an editor cell remains audible.
 
@@ -147,6 +153,28 @@ it. Changing the selected bars stops playback because it changes the practice
 roadmap; changing speed, mute, metronome, or count-in instead restarts in place.
 Stopping playback never clears the selection.
 
+## Practice Sessions And Logs
+
+Choose **Practice repetitions…** from the Loop menu to drill the captured
+current bar, selected phrase, or complete notation for a finite goal of 1–999
+passes. Quick choices cover 4, 8, 16, and 32 passes. **Stop** pauses without
+counting an incomplete pass; Play resumes from the beginning of the target.
+**Finish session** records an early result, while Reset keeps the target and
+starts its counters again. A tempo ramp is also a tracked practice session;
+ordinary Play and Loop remain lightweight and do not create summaries.
+
+The practice status shows completed passes, current tempo, and whether a session
+is running, paused, or complete. **Active session time** includes count-in and
+playback but excludes time spent stopped, unloaded, or waiting through an
+Obsidian rerender. Audio never resumes automatically after a rerender.
+
+Completed and early-finished sessions open a summary with target, passes, BPM
+range, active session time, and an optional note. In Obsidian, **Save to log**
+explicitly appends Markdown under a local-date heading in the note configured at
+**Drum Notation → Practice → Practice log note** (default:
+`Drum Practice Log.md`). The plugin never writes a log automatically. The
+playground offers the same summary with **Copy Markdown** and no vault write.
+
 Practice controls survive ordinary Obsidian rerenders for the current session.
 Multiple mounted copies share them only when the plugin can uniquely identify
 the same source `drums` block. Ambiguous duplicate source blocks keep independent
@@ -161,7 +189,9 @@ foot-pedal action to these Obsidian commands:
 - **Drum Notation: Increase playback speed**
 - **Drum Notation: Decrease playback speed**
 
-The speed commands move in 5% steps between 25% and 150%. Commands prefer the
+The speed commands move in 5% steps between 25% and 150%, or 5 BPM steps in
+exact-BPM mode. Their Notice reports the resulting percentage/BPM and explicitly
+states when an active tempo ramp was turned off. Commands prefer the
 notation that is playing or was last used in the active Markdown view, so a
 pedal controls the score you are currently practising. No default hotkeys are
 assigned.
