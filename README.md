@@ -869,6 +869,8 @@ Use **Loop Bar** in the rendered view to loop the bar containing the current cur
 
 ## Recent Changes
 
+- `1.11.0` adds finite repetition goals, count-in cadence, exact-BPM tap tempo,
+  resumable practice summaries, and explicit Obsidian practice-log saving.
 - `1.10.1` corrects dotted-note alignment in split-voice engraving and adds an
   explicitly confirmed recovery path for valid unfenced notation imports.
 - `1.10.0` adds an exact-BPM Tempo Ramp Trainer for guided practice ladders

@@ -12,7 +12,7 @@ feedback. Completeness is not a reason.
 | | |
 |---|---|
 | **Published** | `1.10.1` |
-| **In development** | `1.11.0` — Practice Sessions and Logs; implementation complete locally, manual QA and draft checks pending |
+| **In development** | `1.11.0` — Practice Sessions and Logs; release candidate awaiting manual QA, draft checks and the publication gate |
 | **Blocked on evidence** | `1.12.0` — scope undecidable until the chart pilot runs |
 | **Chart pilot** | `agent-plugin/drum-notation-importer/pilot/` — `status: not-started`, `completed: 0` |
 
@@ -59,6 +59,12 @@ visual editing — a difference of several releases.
 Rules are in `agent-plugin/drum-notation-importer/pilot/protocol.md`. Do not amend the mix or
 threshold after seeing results.
 
+Use the repository-local `pilot:record`, `pilot:aggregate`, `pilot:status` and `pilot:check`
+commands to collect and verify anonymous data. They enforce the protocol mechanically but never
+select charts, classify outcomes or replace the human Track A/Track B decision. The
+[helper guide](../agent-plugin/drum-notation-importer/pilot/README.md) provides the operational
+walkthrough and examples.
+
 > The gate has now been skipped through 1.8.0, 1.8.1, 1.9.0, 1.10.0 and 1.10.1 — the same
 > release-order inertia it was written to prevent. 1.11.0 is already being written, and nothing in
 > it depends on the pilot, so it should not be paused. Gate the **1.11.0 publish step** instead:
@@ -95,10 +101,9 @@ Builds on the pass-tracking introduced by the tempo ramp trainer. The core lives
 
 Out of scope here: accuracy assessment, descending ramps, durable toolbar-state persistence.
 
-Implementation checkpoint as of 2026-08-27: the local code and documentation are complete at
-version 1.10.1, with unit, plugin/web build, typecheck, Chromium/WebKit, security, third-party and
-audit checks passing. Remaining work is manual Obsidian QA, version/release preparation, the draft
-source check and the publication-only pilot gate above.
+Implementation checkpoint as of 2026-08-27: the code and documentation are complete and the
+release candidate is versioned as 1.11.0. Remaining work is full release verification, manual
+Obsidian QA, draft source checks and the publication-only pilot gate above.
 
 ## Reusable foundations already earned
 

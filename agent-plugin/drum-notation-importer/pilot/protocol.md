@@ -12,6 +12,20 @@ Correction effort is ordinal: `none`, `quick` (up to 5 minutes), `moderate` (6â€
 
 Default to navigation semantics before MIDI/audio when the evidence is materially above 25%, or when full-song/gig charts become the majority intended use. Retain importer-first sequencing when it is materially below 25%. The default roadmap is image import, paste-back verification, deterministic MIDI import, local worker-based audio transcription, then hosted inference only if evidence justifies its security and operating costs.
 
+## Local helper workflow
+
+The repository helper applies this protocol; it does not choose charts, classify outcomes, or make the final Track A/Track B decision.
+See the [Importer Pilot Helper Guide](README.md) for a complete walkthrough and examples.
+
+1. Preselect the complete 14-practice/6-full-song sample outside the repository, randomize its processing order, and assign anonymous IDs in that order. Do this before importing the first chart.
+2. After reviewing each chart, run `npm run pilot:record`. The interactive prompts calculate `ambiguityRate`, validate the completed record against `pilot-record.schema.json`, and write it under the gitignored `records/` directory. Use `-- --stratum practice` or `-- --stratum full-song-gig` to prefill the stratum.
+3. Run `npm run pilot:aggregate` to validate every record and recalculate `aggregate.json`. The command refuses duplicate IDs, filename/ID mismatches, invalid rates, out-of-plan IDs, and excess stratum counts.
+4. Run `npm run pilot:status` at any time for progress, mix, rates, correction effort, outcomes, and the next gate action. `npm run pilot:check` verifies that the committed aggregate matches local records.
+5. If the 20-chart result is within one chart of the 25% boundary, preselect and randomize seven additional practice charts and three additional full-song/gig charts before processing any of them. Then run `npm run pilot:aggregate -- --preselect-extension` once to change the declared sample to 30.
+6. When the final sample is complete, write the human decision record described above. Attach it with `npm run pilot:aggregate -- --decision <repo-relative-path>`; the helper verifies that the file exists and that no required extension remains.
+
+Raw records and any private chart-to-ID mapping remain local. Review the aggregate diff before committing it. The helper's threshold result is a default recommendation only; severity, intended-use mix, recognition quality, and correction cost remain part of the documented human decision.
+
 ## Focused crop recognition gate
 
 Evaluate the focused-crop workflow with 12 blind temporary examples before deciding whether it needs more recognition support: crash, hi-hat, ride, splash, China, and stack, each at two source scales. Preselect the examples and expected readings before running them. Record each outcome as `correct`, `unresolved`, or `confident-wrong`; do not commit source images or expected answers. The successful real crash test is supporting evidence, not one of the blind 12 cases.
