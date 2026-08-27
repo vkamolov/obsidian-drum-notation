@@ -4,6 +4,7 @@ import {
   createPracticeRunMetrics,
   createPracticeRunSummary,
   createTapTempoState,
+  formatActiveSessionTime,
   formatPracticeSummaryMarkdown,
   formatPracticeTarget,
   insertPracticeLogEntry,
@@ -116,6 +117,12 @@ describe("practice log helpers", () => {
     performedPasses: 8,
     status: "complete" as const
   };
+
+  it("formats active session time with stable two-digit seconds", () => {
+    expect(formatActiveSessionTime(0)).toBe("0m 00s");
+    expect(formatActiveSessionTime(4 * 60_000 + 2_000)).toBe("4m 02s");
+    expect(formatActiveSessionTime(12 * 60_000 + 34_000)).toBe("12m 34s");
+  });
 
   it("formats goal and ramp entries without null denominators", () => {
     const goal = createPracticeRunSummary(

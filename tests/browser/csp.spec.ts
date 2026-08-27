@@ -360,6 +360,18 @@ test("tempo ramp setup runs exact BPM stages and preserves completed progress", 
   await expect(page.getByRole("menuitem", { name: "Run tempo ramp again" })).toBeVisible();
   await expect(page.getByRole("menuitem", { name: "Reset ramp" })).toBeVisible();
   await expect(page.getByRole("menuitem", { name: "Turn off trainer" })).toBeVisible();
+
+  await page.getByRole("menuitem", { name: "Tempo ramp…" }).click();
+  await dialog.getByRole("button", { name: "Start ramp" }).click();
+  const replaceRamp = page.getByRole("dialog", { name: "Confirm action" });
+  await expect(replaceRamp).toBeVisible();
+  await replaceRamp.getByRole("button", { name: "Cancel" }).click();
+  await expect(dialog).toBeHidden();
+  await speed.click();
+  await page.getByRole("menuitem", { name: "Tempo ramp…" }).click();
+  await dialog.getByRole("button", { name: "Start ramp" }).click();
+  await page.getByRole("dialog", { name: "Confirm action" }).getByRole("button", { name: "Confirm" }).click();
+  await expect(dialog).toBeHidden();
 });
 
 test("tap tempo and finite practice goals produce a page-session summary", async ({ page }) => {
@@ -410,6 +422,20 @@ test("tap tempo and finite practice goals produce a page-session summary", async
   await expect(summary).toContainText(`Tempo: ${measuredBpm} BPM`);
   await expect(summary).toContainText("Active session time:");
   await expect(summary.getByRole("button", { name: "Copy Markdown" })).toBeEnabled();
+  await summary.getByRole("button", { name: "Close" }).click();
+
+  await page.getByRole("button", { name: "Loop options" }).click();
+  await page.getByRole("menuitem", { name: "Practice repetitions…" }).click();
+  await goalDialog.getByRole("button", { name: "Start goal" }).click();
+  const replaceGoal = page.getByRole("dialog", { name: "Confirm action" });
+  await expect(replaceGoal).toBeVisible();
+  await replaceGoal.getByRole("button", { name: "Cancel" }).click();
+  await expect(goalDialog).toBeHidden();
+  await page.getByRole("button", { name: "Loop options" }).click();
+  await page.getByRole("menuitem", { name: "Practice repetitions…" }).click();
+  await goalDialog.getByRole("button", { name: "Start goal" }).click();
+  await page.getByRole("dialog", { name: "Confirm action" }).getByRole("button", { name: "Confirm" }).click();
+  await expect(goalDialog).toBeHidden();
 });
 
 test("wake lock control is disabled when the API is unavailable", async ({ page }) => {

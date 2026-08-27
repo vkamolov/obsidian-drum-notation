@@ -101,7 +101,6 @@ import {
   DEFAULT_COUNT_IN_CADENCE,
   MAX_REPETITION_GOAL_PASSES,
   MIN_REPETITION_GOAL_PASSES,
-  clonePracticeTarget,
   createDefaultRepetitionGoalConfig,
   createPracticeClock,
   createPracticeRunMetrics,

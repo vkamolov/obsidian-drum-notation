@@ -1871,7 +1871,7 @@ function openRepetitionGoalDialog(): void {
   target.addEventListener("change", update);
   passes.addEventListener("input", update);
   cancel.addEventListener("click", close);
-  submit.addEventListener("click", async () => {
+  const submitRepetitionGoal = async (): Promise<void> => {
     const config = normalizeRepetitionGoalConfig(read(), block.bars.length);
     if (!config) return;
     if (completedSummary && !completedSummaryHandled) {
@@ -1893,6 +1893,9 @@ function openRepetitionGoalDialog(): void {
     close();
     refreshPracticeStatus();
     void startRepetitionGoal(true, true);
+  };
+  submit.addEventListener("click", () => {
+    void submitRepetitionGoal();
   });
   panel.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
@@ -2518,7 +2521,7 @@ function openTempoRampDialog(): void {
     control.addEventListener("change", update);
   });
   cancel.addEventListener("click", close);
-  submit.addEventListener("click", async () => {
+  const submitTempoRamp = async (): Promise<void> => {
     const config = normalizeTempoRampConfig(readConfig(), block);
     if (!config) return;
     if (completedSummary && !completedSummaryHandled) {
@@ -2539,6 +2542,9 @@ function openTempoRampDialog(): void {
     refreshPracticeStatus();
     close();
     void startArmedTempoRamp(true, true);
+  };
+  submit.addEventListener("click", () => {
+    void submitTempoRamp();
   });
   panel.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {

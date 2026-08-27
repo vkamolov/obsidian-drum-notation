@@ -297,7 +297,7 @@ export function formatActiveSessionTime(milliseconds: number): string {
   const totalSeconds = Math.max(0, Math.round(milliseconds / 1000));
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
-  return `${minutes}m ${seconds.toString().padStart(2, "0")}s`;
+  return `${minutes}m ${twoDigits(seconds)}s`;
 }
 
 export function formatPracticeSummaryMarkdown(
@@ -377,7 +377,7 @@ function formatLocalDate(date: Date): string {
 }
 
 function twoDigits(value: number): string {
-  return value.toString().padStart(2, "0");
+  return value >= 0 && value < 10 ? `0${value}` : `${value}`;
 }
 
 function collapseInlineText(value: string): string {
@@ -385,11 +385,11 @@ function collapseInlineText(value: string): string {
 }
 
 function escapeMarkdownInline(value: string): string {
-  return value.replace(/([\\`*_{}\[\]<>#])/g, "\\$1");
+  return value.replace(/([\\`*_{}[\]<>#])/g, "\\$1");
 }
 
 function escapeWikiLink(value: string): string {
-  return value.replace(/([\\\[\]|])/g, "\\$1");
+  return value.replace(/([\\[\]|])/g, "\\$1");
 }
 
 function finiteNumber(value: number): number {
