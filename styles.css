@@ -208,9 +208,9 @@
   opacity: 0.55;
 }
 
-.drum-notation .drum-notation__speed {
+.drum-notation .drum-notation__button.drum-notation__speed {
   width: auto;
-  min-width: 4.1rem;
+  min-width: 0;
   max-width: none;
   padding-inline: 0.45rem;
   white-space: nowrap;

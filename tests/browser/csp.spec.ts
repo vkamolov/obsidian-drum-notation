@@ -157,6 +157,42 @@ test("production CSP keeps score rendering self-contained", async ({ page }) => 
   expect(await page.evaluate(() => window.__cspViolations.filter((entry) => !entry.startsWith("connect-src:")))).toEqual([]);
 });
 
+test("Obsidian speed-button labels fit inside their interactive background", async ({ page }) => {
+  await page.goto("/");
+
+  const measurements = await page.evaluate(() => {
+    const root = document.createElement("div");
+    root.className = "drum-notation";
+    const toolbar = document.createElement("div");
+    toolbar.className = "drum-notation__toolbar";
+    const controls = document.createElement("div");
+    controls.className = "drum-notation__controls";
+    const button = document.createElement("button");
+    button.className = "drum-notation__button drum-notation__speed";
+    controls.append(button);
+    toolbar.append(controls);
+    root.append(toolbar);
+    document.body.append(root);
+
+    const result = ["70%", "100%", "130%", "124 BPM", "260 BPM ▲"].map((label) => {
+      button.textContent = label;
+      return {
+        label,
+        clientWidth: button.clientWidth,
+        scrollWidth: button.scrollWidth
+      };
+    });
+    root.remove();
+    return result;
+  });
+
+  for (const measurement of measurements) {
+    expect(measurement.clientWidth, measurement.label).toBeGreaterThanOrEqual(measurement.scrollWidth);
+  }
+  expect(measurements[0].clientWidth).toBeLessThan(measurements[2].clientWidth);
+  expect(measurements[2].clientWidth).toBeLessThan(measurements[4].clientWidth);
+});
+
 test("practice selection supports pointer, keyboard, responsive, and print workflows", async ({ page }) => {
   await page.setViewportSize({ width: 1200, height: 900 });
   await page.goto("/");

@@ -537,6 +537,11 @@ export default class DrumNotationPlugin extends Plugin {
     });
     const metronomeButton = makeIconButton("timer", "Metronome: Off");
     metronomeButton.setAttribute("aria-haspopup", "menu");
+    const metronomeBadge = metronomeButton.createSpan({
+      cls: "drum-notation__click-badge",
+      attr: { "aria-hidden": "true" }
+    });
+    metronomeBadge.hidden = true;
     const muteButton = makeIconButton("volume-2", "Mute instruments");
     controls.createSpan({ cls: "drum-notation__control-divider" });
     const editButton = makeIconButton("pencil", "Edit notation");
@@ -1028,15 +1033,9 @@ export default class DrumNotationPlugin extends Plugin {
       metronomeButton.disabled = block.slots.length === 0;
       metronomeButton.classList.toggle("is-active", metronomeMode !== "off" || countInMode !== "off");
       metronomeButton.classList.toggle("is-metronome-off", metronomeMode === "off");
-      setIcon(metronomeButton, "timer");
       const badgeText = `${clickSubdivision === "beat" ? "" : getClickSubdivisionFactor(clickSubdivision)}${gapClickMode === "off" ? "" : "G"}`;
-      if (badgeText) {
-        metronomeButton.createSpan({
-          cls: "drum-notation__click-badge",
-          text: badgeText,
-          attr: { "aria-hidden": "true" }
-        });
-      }
+      metronomeBadge.setText(badgeText);
+      metronomeBadge.hidden = badgeText.length === 0;
       const metronomeDescription = [
         `Metronome: ${getMetronomeModeLabel(metronomeMode)}`,
         `Subdivision: ${getClickSubdivisionLabel(clickSubdivision)}`,
