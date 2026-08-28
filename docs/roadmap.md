@@ -11,8 +11,8 @@ feedback. Completeness is not a reason.
 
 | | |
 |---|---|
-| **Published** | `1.10.1` |
-| **In development** | `1.11.0` — Practice Sessions and Logs; release candidate awaiting manual QA, draft checks and the publication gate |
+| **Published** | `1.11.0` — Practice Sessions and Logs |
+| **In development** | `1.11.1` — newest-first logs and focused practice-toolbar corrections |
 | **Blocked on evidence** | `1.12.0` — scope undecidable until the chart pilot runs |
 | **Chart pilot** | `agent-plugin/drum-notation-importer/pilot/` — `status: not-started`, `completed: 0` |
 
@@ -65,16 +65,14 @@ select charts, classify outcomes or replace the human Track A/Track B decision. 
 [helper guide](../agent-plugin/drum-notation-importer/pilot/README.md) provides the operational
 walkthrough and examples.
 
-> The gate has now been skipped through 1.8.0, 1.8.1, 1.9.0, 1.10.0 and 1.10.1 — the same
-> release-order inertia it was written to prevent. 1.11.0 is already being written, and nothing in
-> it depends on the pilot, so it should not be paused. Gate the **1.11.0 publish step** instead:
-> development, testing, tagging and unpublished draft creation proceed unblocked, but the draft
-> is not published until the decision record exists. That puts the pilot ahead of 1.12.0 scoping,
-> which is the only place it actually decides anything.
+> The intended 1.11.0 publication gate was not completed before 1.11.0 was published. The pilot
+> therefore gates **1.12.0 scoping and implementation** directly. The corrective 1.11.1 patch may
+> proceed because it adds no new roadmap scope, but it must not become another reason to defer the
+> evidence needed to choose Track A or Track B.
 > If twenty charts is the barrier, shrink the sample and amend the protocol *before* sampling —
 > a directional read from eight real charts beats a precise threshold applied to zero.
 
-Before publishing 1.11.0:
+Before scoping or implementing 1.12.0:
 
 1. Complete the predeclared sample, including a precommitted extension when the result is within
    one chart of the threshold.
@@ -82,10 +80,9 @@ Before publishing 1.11.0:
 3. Commit a short decision record and store its repository path in `decisionRecord`.
 4. Record the observed `navigationBlocked` count/rate, the 25% comparison, selected track,
    blocking features and explicitly deferred findings.
-5. Only then publish the already-tested 1.11.0 draft and freeze the smallest coherent 1.12.0
-   scope from the selected track.
+5. Only then freeze the smallest coherent 1.12.0 scope from the selected track.
 
-## 1.11.0 — Practice Sessions and Logs *(in development)*
+## 1.11.x — Practice Sessions and Logs *(1.11.0 published; 1.11.1 patch in development)*
 
 Builds on the pass-tracking introduced by the tempo ramp trainer. The core lives in
 `src/practice-session.ts`.
@@ -101,9 +98,9 @@ Builds on the pass-tracking introduced by the tempo ramp trainer. The core lives
 
 Out of scope here: accuracy assessment, descending ramps, durable toolbar-state persistence.
 
-Implementation checkpoint as of 2026-08-27: the code and documentation are complete and the
-release candidate is versioned as 1.11.0. Remaining work is full release verification, manual
-Obsidian QA, draft source checks and the publication-only pilot gate above.
+Implementation checkpoint as of 2026-08-28: 1.11.0 is published. The 1.11.1 patch keeps practice
+logs newest-first, adds a direct paused-session **Finish & summary** action, and corrects playback
+toolbar refresh and sizing without changing the practice-session model.
 
 ## Reusable foundations already earned
 

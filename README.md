@@ -871,6 +871,8 @@ Use **Loop Bar** in the rendered view to loop the bar containing the current cur
 
 ## Recent Changes
 
+- `1.11.1` keeps practice logs newest-first, adds a direct paused-session
+  **Finish & summary** action, and fixes playback-toolbar refresh and sizing.
 - `1.11.0` adds finite repetition goals, count-in cadence, exact-BPM tap tempo,
   resumable practice summaries, and explicit Obsidian practice-log saving.
 - `1.10.1` corrects dotted-note alignment in split-voice engraving and adds an
