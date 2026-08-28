@@ -170,9 +170,11 @@ Obsidian rerender. Audio never resumes automatically after a rerender.
 
 Completed and early-finished sessions open a summary with target, passes, BPM
 range, active session time, and an optional note. In Obsidian, **Save to log**
-explicitly appends Markdown under a local-date heading in the note configured at
+explicitly inserts Markdown under a local-date heading in the note configured at
 **Drum Notation → Practice → Practice log note** (default:
-`Drum Practice Log.md`). The plugin never writes a log automatically. The
+`Drum Practice Log.md`). Date sections and new entries are kept newest-first,
+while any frontmatter, title, or introduction remains above the dated history.
+The plugin never writes a log automatically. The
 playground offers the same summary with **Copy Markdown** and no vault write.
 
 Practice controls survive ordinary Obsidian rerenders for the current session.

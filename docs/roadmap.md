@@ -95,8 +95,8 @@ Builds on the pass-tracking introduced by the tempo ramp trainer. The core lives
 - Exact-BPM tap tempo (30–260), entering an exact-BPM mode rather than rounding to a percentage.
 - Resumable session progress and an **active session time** clock (includes count-in; excludes
   pauses; must never accrue during rerenders or scroll-away).
-- Practice summary with explicit **Save to log** — never automatic — appending atomically via
-  `vault.process()` under a `## YYYY-MM-DD` heading in a configurable note.
+- Practice summary with explicit **Save to log** — never automatic — inserting atomically via
+  `vault.process()` into reverse-chronological `## YYYY-MM-DD` sections in a configurable note.
 - Playground equivalent with Copy Markdown, no persistence.
 
 Out of scope here: accuracy assessment, descending ramps, durable toolbar-state persistence.

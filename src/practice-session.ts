@@ -36,6 +36,11 @@ export interface FormattedPracticeLogEntry {
   markdown: string;
 }
 
+interface PracticeLogDateSection {
+  date: string;
+  content: string[];
+}
+
 export type PracticeLogPathResult =
   | { ok: true; path: string }
   | { ok: false; message: string };
@@ -329,30 +334,96 @@ export function insertPracticeLogEntry(
 ): string {
   const normalized = current.replace(/\r\n?/g, "\n").replace(/\s+$/, "");
   const lines = normalized ? normalized.split("\n") : [];
-  const heading = `## ${date}`;
-  let headingIndex = -1;
-  lines.forEach((line, index) => {
-    if (line === heading) headingIndex = index;
-  });
+  const entryLines = trimBlankLines(entryMarkdown.replace(/\r\n?/g, "\n").split("\n"));
+  const firstDateHeadingIndex = lines.findIndex((line) => parsePracticeLogDateHeading(line) !== null);
 
-  if (headingIndex < 0) {
-    const prefix = lines.length > 0 ? `${lines.join("\n")}\n\n` : "";
-    return `${prefix}${heading}\n\n${entryMarkdown}\n`;
+  if (firstDateHeadingIndex < 0) {
+    return joinPracticeLogBlocks([
+      trimBlankLines(lines),
+      [`## ${date}`, "", ...entryLines]
+    ]);
   }
 
-  let insertionIndex = lines.length;
-  for (let index = headingIndex + 1; index < lines.length; index++) {
-    if (/^#{1,2}\s/.test(lines[index])) {
-      insertionIndex = index;
+  let datedHistoryEnd = lines.length;
+  for (let index = firstDateHeadingIndex + 1; index < lines.length; index++) {
+    if (/^#{1,2}\s/.test(lines[index]) && parsePracticeLogDateHeading(lines[index]) === null) {
+      datedHistoryEnd = index;
       break;
     }
   }
-  const before = lines.slice(0, insertionIndex);
-  const after = lines.slice(insertionIndex);
-  while (before.length > 0 && before[before.length - 1] === "") before.pop();
-  const inserted = [...before, "", ...entryMarkdown.split("\n")];
-  if (after.length > 0) inserted.push("", ...after);
-  return `${inserted.join("\n").replace(/\n{3,}/g, "\n\n")}\n`;
+
+  const sections: PracticeLogDateSection[] = [];
+  const datedLines = lines.slice(firstDateHeadingIndex, datedHistoryEnd);
+  for (let index = 0; index < datedLines.length;) {
+    const sectionDate = parsePracticeLogDateHeading(datedLines[index]);
+    if (sectionDate === null) {
+      index += 1;
+      continue;
+    }
+    let nextHeadingIndex = index + 1;
+    while (
+      nextHeadingIndex < datedLines.length &&
+      parsePracticeLogDateHeading(datedLines[nextHeadingIndex]) === null
+    ) {
+      nextHeadingIndex += 1;
+    }
+    sections.push({
+      date: sectionDate,
+      content: trimBlankLines(datedLines.slice(index + 1, nextHeadingIndex))
+    });
+    index = nextHeadingIndex;
+  }
+
+  const matchingSections = sections.filter((section) => section.date === date);
+  const retainedSections = sections.filter((section) => section.date !== date);
+  const previousContent: string[] = [];
+  for (const section of matchingSections) {
+    if (previousContent.length > 0 && section.content.length > 0) previousContent.push("");
+    previousContent.push(...section.content);
+  }
+  retainedSections.push({
+    date,
+    content: [
+      ...entryLines,
+      ...(previousContent.length > 0 ? ["", ...previousContent] : [])
+    ]
+  });
+  retainedSections.sort((left, right) => {
+    if (left.date === right.date) return 0;
+    return left.date > right.date ? -1 : 1;
+  });
+
+  const datedBlocks = retainedSections.map((section) => [
+    `## ${section.date}`,
+    "",
+    ...section.content
+  ]);
+  return joinPracticeLogBlocks([
+    trimBlankLines(lines.slice(0, firstDateHeadingIndex)),
+    ...datedBlocks,
+    trimBlankLines(lines.slice(datedHistoryEnd))
+  ]);
+}
+
+function parsePracticeLogDateHeading(line: string): string | null {
+  const match = /^## (\d{4}-\d{2}-\d{2})$/.exec(line);
+  return match?.[1] ?? null;
+}
+
+function trimBlankLines(lines: string[]): string[] {
+  let start = 0;
+  let end = lines.length;
+  while (start < end && lines[start] === "") start += 1;
+  while (end > start && lines[end - 1] === "") end -= 1;
+  return lines.slice(start, end);
+}
+
+function joinPracticeLogBlocks(blocks: string[][]): string {
+  const content = blocks
+    .filter((block) => block.length > 0)
+    .map((block) => block.join("\n"))
+    .join("\n\n");
+  return content ? `${content}\n` : "";
 }
 
 export function normalizePracticeLogPath(value: string): PracticeLogPathResult {

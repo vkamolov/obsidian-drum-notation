@@ -184,11 +184,67 @@ describe("practice log helpers", () => {
     expect(entry.markdown).toContain("Note: Keep | relaxed through the bar");
   });
 
-  it("inserts beneath the last matching date before the next major heading", () => {
-    const current = "# Practice\n\n## 2026-08-27\n\n- old\n\n## Notes\n\nText\n\n## 2026-08-27\n\n- later\n\n# Archive\n";
-    const updated = insertPracticeLogEntry(current, "2026-08-27", "- new");
-    expect(updated.indexOf("- later")).toBeLessThan(updated.indexOf("- new"));
-    expect(updated.indexOf("- new")).toBeLessThan(updated.indexOf("# Archive"));
+  it("keeps date sections and entries in reverse chronological insertion order", () => {
+    const current = [
+      "---",
+      "tags: [practice]",
+      "---",
+      "# Drum Practice Log",
+      "",
+      "Sessions from this vault.",
+      "",
+      "## 2026-08-27",
+      "",
+      "- 21:42 — older",
+      "",
+      "## 2026-08-28",
+      "",
+      "- 10:33 — existing",
+      "  - Note: Keep this entry together.",
+      ""
+    ].join("\n");
+
+    const updated = insertPracticeLogEntry(
+      current,
+      "2026-08-28",
+      "- 10:36 — newest\n  - Note: Insert this first."
+    );
+
+    expect(updated).toBe([
+      "---",
+      "tags: [practice]",
+      "---",
+      "# Drum Practice Log",
+      "",
+      "Sessions from this vault.",
+      "",
+      "## 2026-08-28",
+      "",
+      "- 10:36 — newest",
+      "  - Note: Insert this first.",
+      "",
+      "- 10:33 — existing",
+      "  - Note: Keep this entry together.",
+      "",
+      "## 2026-08-27",
+      "",
+      "- 21:42 — older",
+      ""
+    ].join("\n"));
+  });
+
+  it("creates the newest date before existing dated history", () => {
+    const current = "# Practice\n\nIntro\n\n## 2026-08-27\n\n- old\n\n## Notes\n\nText\n";
+    const updated = insertPracticeLogEntry(current, "2026-08-28", "- new");
+    expect(updated).toBe(
+      "# Practice\n\nIntro\n\n## 2026-08-28\n\n- new\n\n## 2026-08-27\n\n- old\n\n## Notes\n\nText\n"
+    );
+  });
+
+  it("appends the first dated section after an existing preamble", () => {
+    expect(insertPracticeLogEntry("# Practice\n\nIntro\n", "2026-08-28", "- new")).toBe(
+      "# Practice\n\nIntro\n\n## 2026-08-28\n\n- new\n"
+    );
   });
 
   it("validates and normalizes vault-relative log paths", () => {
