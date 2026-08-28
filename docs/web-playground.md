@@ -140,7 +140,8 @@ the **first** import in `app.ts`. `engrave.ts` itself was **not** changed.
 - The Loop menu opens a finite **Practice repetitions** goal for the current
   bar, selected bars, or whole notation. Goals accept 1–999 passes with 4, 8,
   16, and 32 as quick choices. Stop pauses without counting an incomplete pass;
-  Finish session creates an early summary, and Reset starts the counters again.
+  After Stop pauses a tracked session, **Finish & summary** creates an early
+  summary directly from the visible practice-status row. Reset starts the counters again.
 - **Tap tempo** is available from the speed menu while stopped. Two or more
   taps set an exact 30–260 BPM tempo; Space and Enter activate the large Tap
   control. Choosing a percentage returns to percentage mode.

@@ -469,9 +469,37 @@ test("tap tempo and finite practice goals produce a page-session summary", async
   await expect(goalDialog).toBeHidden();
   await page.getByRole("button", { name: "Loop options" }).click();
   await page.getByRole("menuitem", { name: "Practice repetitions…" }).click();
+  await goalDialog.getByRole("spinbutton", { name: "Passes" }).fill("32");
   await goalDialog.getByRole("button", { name: "Start goal" }).click();
   await page.getByRole("dialog", { name: "Confirm action" }).getByRole("button", { name: "Confirm" }).click();
   await expect(goalDialog).toBeHidden();
+
+  await expect.poll(async () => page.locator("#pg-preview .drum-notation__practice-label").textContent(), {
+    timeout: 5_000
+  }).toMatch(/Practice goal .* [1-9]\d*\/32/);
+  await page.locator("#pg-stop").click();
+  await expect(page.locator("#pg-preview .drum-notation__practice-label")).toContainText("Practice paused");
+  const finishAndSummary = page.getByRole("button", { name: "Finish session and view summary" });
+  await expect(finishAndSummary).toBeVisible();
+  const actionButtonBounds = await finishAndSummary.boundingBox();
+  const actionIconBounds = await finishAndSummary.locator("svg").boundingBox();
+  const actionLabelBounds = await finishAndSummary.locator("span").boundingBox();
+  expect(actionButtonBounds).not.toBeNull();
+  expect(actionIconBounds).not.toBeNull();
+  expect(actionLabelBounds).not.toBeNull();
+  expect(actionIconBounds!.x + actionIconBounds!.width).toBeLessThan(actionLabelBounds!.x);
+  const actionCenter = actionButtonBounds!.x + actionButtonBounds!.width / 2;
+  const contentCenter = (actionIconBounds!.x + actionLabelBounds!.x + actionLabelBounds!.width) / 2;
+  expect(Math.abs(actionCenter - contentCenter)).toBeLessThan(1);
+  expect(actionButtonBounds!.width).toBeLessThan(140);
+  await page.setViewportSize({ width: 500, height: 800 });
+  await expect(finishAndSummary.locator("span")).toBeHidden();
+  await expect(finishAndSummary.locator("svg path")).toBeVisible();
+  await page.setViewportSize({ width: 1200, height: 800 });
+  await finishAndSummary.click();
+  const earlySummary = page.getByRole("dialog", { name: "Practice summary" });
+  await expect(earlySummary).toContainText(/Passes: [1-9]\d*\/32/);
+  await expect(earlySummary).toContainText("Result: Finished early");
 });
 
 test("wake lock control is disabled when the API is unavailable", async ({ page }) => {

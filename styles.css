@@ -153,6 +153,18 @@
   line-height: 1;
 }
 
+.drum-notation__practice-action--labeled-icon {
+  min-width: 0;
+  padding-inline: 0.52rem;
+  gap: 0.4rem;
+}
+
+.drum-notation__practice-action--labeled-icon svg {
+  position: static;
+  flex: 0 0 auto;
+  transform: none;
+}
+
 .drum-notation__warnings[hidden] {
   display: none;
 }
@@ -740,6 +752,10 @@ body.is-mobile .drum-notation__speed {
 
   .drum-notation__practice-action {
     min-width: 1.9rem;
+  }
+
+  .drum-notation__practice-action--labeled-icon {
+    padding-inline: 0.42rem;
   }
 
   .drum-notation__practice-action svg {

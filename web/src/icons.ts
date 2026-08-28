@@ -31,6 +31,10 @@ const ICON_SHAPES: Record<string, IconShape[]> = {
     { tag: "path", attrs: { d: "M12 20h9" } },
     { tag: "path", attrs: { d: "M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" } }
   ],
+  flag: [
+    { tag: "path", attrs: { d: "M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" } },
+    { tag: "line", attrs: { x1: "4", x2: "4", y1: "22", y2: "15" } }
+  ],
   "volume-2": [
     { tag: "polygon", attrs: { points: "11 5 6 9 2 9 2 15 6 15 11 19 11 5" } },
     { tag: "path", attrs: { d: "M15.54 8.46a5 5 0 0 1 0 7.07" } },

@@ -159,8 +159,8 @@ Choose **Practice repetitions…** from the Loop menu to drill the captured
 current bar, selected phrase, or complete notation for a finite goal of 1–999
 passes. Quick choices cover 4, 8, 16, and 32 passes. **Stop** pauses without
 counting an incomplete pass; Play resumes from the beginning of the target.
-**Finish session** records an early result, while Reset keeps the target and
-starts its counters again. A tempo ramp is also a tracked practice session;
+While paused, **Finish & summary** records an early result and opens its summary
+directly; Reset keeps the target and starts its counters again. A tempo ramp is also a tracked practice session;
 ordinary Play and Loop remain lightweight and do not create summaries.
 
 The practice status shows completed passes, current tempo, and whether a session

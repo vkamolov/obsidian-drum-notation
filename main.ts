@@ -755,6 +755,13 @@ export default class DrumNotationPlugin extends Plugin {
           ? `${completedSummary.performedPasses} passes`
           : `${completedSummary.performedPasses}/${completedSummary.requestedPasses}`} · View summary`
         : null;
+      const pausedRepetitionGoal = repetitionGoal.config !== null &&
+        repetitionGoal.runMetrics?.status === "paused" &&
+        !repetitionGoal.progress.completed;
+      const pausedTempoRamp = tempoRamp.config !== null &&
+        tempoRamp.armed &&
+        tempoRampRunMetrics?.status === "paused" &&
+        !tempoRamp.progress.completed;
       const showPracticeStatus = selectionModeOpen || selectedCount > 0 || advancedClickStatus !== null || tempoRampStatus !== null || goalStatus !== null || summaryStatus !== null;
       tipEl.toggleClass("drum-notation__tip--practice", showPracticeStatus);
       tipEl.hidden = !showPracticeStatus && this.settings.dismissedFirstRunTip;
@@ -776,6 +783,21 @@ export default class DrumNotationPlugin extends Plugin {
             attr: { type: "button", "aria-label": "View practice summary" }
           });
           summaryButton.addEventListener("click", openPracticeSummary);
+        } else if (pausedRepetitionGoal || pausedTempoRamp) {
+          const finishButton = tipEl.createEl("button", {
+            cls: "drum-notation__tip-dismiss drum-notation__practice-action drum-notation__practice-action--labeled-icon",
+            attr: { type: "button", "aria-label": "Finish session and view summary" }
+          });
+          setIcon(finishButton, "flag");
+          finishButton.createSpan({ text: "Finish & summary" });
+          finishButton.addEventListener("click", () => {
+            if (pausedRepetitionGoal) {
+              finishRepetitionGoalEarly();
+            } else {
+              finishTempoRampSessionEarly();
+            }
+            openPracticeSummary();
+          });
         }
         if (!selectionStatus) {
           return;
