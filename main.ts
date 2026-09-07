@@ -27,6 +27,7 @@ import {
   updateMeasureRepeatProgress
 } from "./src/engrave";
 import { DrumBarClipboardStore } from "./src/bar-clipboard";
+import { getStructuralEditCapability } from "./src/edit";
 import {
   DEFAULT_DRUM_AUTHORING_DEFAULTS,
   DrumAuthoringDefaults,
@@ -3542,17 +3543,11 @@ export default class DrumNotationPlugin extends Plugin {
       return { ok: false, reason: "Visual edit mode needs at least one parsed drum row." };
     }
 
-    if (block.containsTupletSyntax) {
+    const structuralCapability = getStructuralEditCapability(block);
+    if (!structuralCapability.ok) {
       return {
         ok: false,
-        reason: "Visual editing is not available for notation with tuplets. Edit the notation text directly."
-      };
-    }
-
-    if (hasSystemRhythmOverrides(block)) {
-      return {
-        ok: false,
-        reason: "Visual editing is not yet available for notation with system-level Time or Grouping changes. Edit the notation text directly."
+        reason: structuralCapability.message
       };
     }
 

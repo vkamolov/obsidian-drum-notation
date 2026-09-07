@@ -89,7 +89,13 @@ import {
 } from "../../src/screen-wake-lock";
 import { serializeDrumBlock } from "../../src/serializer";
 import { validateDrumNotation } from "../../src/validation";
-import { setGrid, setRepeatCount, setTempo, setTimeSignature } from "../../src/edit";
+import {
+  getStructuralEditCapability,
+  setGrid,
+  setRepeatCount,
+  setTempo,
+  setTimeSignature
+} from "../../src/edit";
 import { createSynthPlaybackBackend } from "../../src/synth";
 import {
   cloneTempoRampConfig,
@@ -559,13 +565,11 @@ function renderPreview(): void {
   speedBtn.disabled = !hasRows;
   metronomeBtn.disabled = block.slots.length === 0;
   muteBtn.disabled = !hasRows;
-  const hasSystemOverrides = hasSystemRhythmOverrides(block);
-  editBtn.disabled = !hasRows || block.containsTupletSyntax || hasSystemOverrides;
-  const editDescription = block.containsTupletSyntax
-    ? "Visual editing is not available for notation with tuplets. Edit the notation text directly."
-    : hasSystemOverrides
-      ? "Visual editing is not yet available for notation with system-level Time or Grouping changes. Edit the notation text directly."
-      : "Edit notation visually";
+  const structuralCapability = getStructuralEditCapability(block);
+  editBtn.disabled = !hasRows || !structuralCapability.ok;
+  const editDescription = structuralCapability.ok
+    ? "Edit notation visually"
+    : structuralCapability.message;
   editBtn.title = editDescription;
   editBtn.setAttribute("aria-label", editDescription);
   syncPlaybackControls(block);
@@ -588,7 +592,7 @@ function renderPreview(): void {
   if (verificationActive) {
     renderVerificationSignals();
   }
-  if (gridEditor && (block.containsTupletSyntax || hasSystemOverrides)) {
+  if (gridEditor && !structuralCapability.ok) {
     exitEditMode();
     gridEditorMessage = editDescription;
   }
@@ -3188,15 +3192,9 @@ function enterEditMode(): void {
   if (gridEditor || !currentBlock || currentBlock.slots.length === 0) {
     return;
   }
-  if (currentBlock.containsTupletSyntax) {
-    gridEditorMessage =
-      "Visual editing is not available for notation with tuplets. Edit the notation text directly.";
-    renderNotes(currentBlock, editor.value);
-    return;
-  }
-  if (hasSystemRhythmOverrides(currentBlock)) {
-    gridEditorMessage =
-      "Visual editing is not yet available for notation with system-level Time or Grouping changes. Edit the notation text directly.";
+  const structuralCapability = getStructuralEditCapability(currentBlock);
+  if (!structuralCapability.ok) {
+    gridEditorMessage = structuralCapability.message;
     renderNotes(currentBlock, editor.value);
     return;
   }

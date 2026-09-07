@@ -2,35 +2,66 @@ import { describe, expect, it } from "vitest";
 import { INSTRUMENTS_BY_ALIAS } from "../src/kit";
 import { parseDrumBlock } from "../src/parser";
 import { serializeDrumBlock } from "../src/serializer";
+import type { DrumBlock } from "../src/types";
 import {
-  applyArticulation,
-  applyArticulationToInstrumentInBar,
-  clearHit,
-  clearInstrumentInBar,
-  clearSticking,
-  clearBarRepeat,
-  deleteBar,
-  duplicateBar,
-  duplicateBarToNextSystem,
+  applyArticulation as applyArticulationResult,
+  applyArticulationToInstrumentInBar as applyArticulationToInstrumentInBarResult,
+  clearHit as clearHitResult,
+  clearInstrumentInBar as clearInstrumentInBarResult,
+  clearSticking as clearStickingResult,
+  clearBarRepeat as clearBarRepeatResult,
+  deleteBar as deleteBarResult,
+  duplicateBar as duplicateBarResult,
+  duplicateBarToNextSystem as duplicateBarToNextSystemResult,
   findHit,
   findSticking,
   getBarRepeatGroupCount,
   getBarRepeatGroupRange,
+  getStructuralEditCapability,
   hitKey,
-  insertBarAfter,
-  insertRepeatBarAfter,
-  removeHit,
-  resizeBarRepeatGroup,
+  insertBarAfter as insertBarAfterResult,
+  insertRepeatBarAfter as insertRepeatBarAfterResult,
+  removeHit as removeHitResult,
+  resizeBarRepeatGroup as resizeBarRepeatGroupResult,
   setGrid,
-  setBarRepeat,
-  splitSystemAfterBar,
-  setHit,
-  setInstrument,
-  setSticking,
+  setBarRepeat as setBarRepeatResult,
+  splitSystemAfterBar as splitSystemAfterBarResult,
+  setHit as setHitResult,
+  setInstrument as setInstrumentResult,
+  setSticking as setStickingResult,
   setTempo,
   setTimeSignature,
-  toggleHit
+  toggleHit as toggleHitResult,
+  type StructuralEditResult
 } from "../src/edit";
+
+function edited(result: StructuralEditResult): DrumBlock {
+  expect(result.ok).toBe(true);
+  if (!result.ok) {
+    throw new Error(result.message);
+  }
+  return result.block;
+}
+
+const applyArticulation = (...args: Parameters<typeof applyArticulationResult>) => edited(applyArticulationResult(...args));
+const applyArticulationToInstrumentInBar = (...args: Parameters<typeof applyArticulationToInstrumentInBarResult>) => edited(applyArticulationToInstrumentInBarResult(...args));
+const clearHit = (...args: Parameters<typeof clearHitResult>) => edited(clearHitResult(...args));
+const clearInstrumentInBar = (...args: Parameters<typeof clearInstrumentInBarResult>) => edited(clearInstrumentInBarResult(...args));
+const clearSticking = (...args: Parameters<typeof clearStickingResult>) => edited(clearStickingResult(...args));
+const clearBarRepeat = (...args: Parameters<typeof clearBarRepeatResult>) => edited(clearBarRepeatResult(...args));
+const deleteBar = (...args: Parameters<typeof deleteBarResult>) => edited(deleteBarResult(...args));
+const duplicateBar = (...args: Parameters<typeof duplicateBarResult>) => edited(duplicateBarResult(...args));
+const duplicateBarToNextSystem = (...args: Parameters<typeof duplicateBarToNextSystemResult>) => edited(duplicateBarToNextSystemResult(...args));
+const insertBarAfter = (...args: Parameters<typeof insertBarAfterResult>) => edited(insertBarAfterResult(...args));
+const insertRepeatBarAfter = (...args: Parameters<typeof insertRepeatBarAfterResult>) => edited(insertRepeatBarAfterResult(...args));
+const removeHit = (...args: Parameters<typeof removeHitResult>) => edited(removeHitResult(...args));
+const resizeBarRepeatGroup = (...args: Parameters<typeof resizeBarRepeatGroupResult>) => edited(resizeBarRepeatGroupResult(...args));
+const setBarRepeat = (...args: Parameters<typeof setBarRepeatResult>) => edited(setBarRepeatResult(...args));
+const splitSystemAfterBar = (...args: Parameters<typeof splitSystemAfterBarResult>) => edited(splitSystemAfterBarResult(...args));
+const setHit = (...args: Parameters<typeof setHitResult>) => edited(setHitResult(...args));
+const setInstrument = (...args: Parameters<typeof setInstrumentResult>) => edited(setInstrumentResult(...args));
+const setSticking = (...args: Parameters<typeof setStickingResult>) => edited(setStickingResult(...args));
+const toggleHit = (...args: Parameters<typeof toggleHitResult>) => edited(toggleHitResult(...args));
 
 const instrument = (alias: string) => INSTRUMENTS_BY_ALIAS.get(alias)!;
 const HH = instrument("hh");
@@ -258,6 +289,7 @@ HH | x-x-x-x-x-x-`);
     expect(result).toEqual({
       ok: false,
       block: mixed,
+      code: "system-rhythm",
       message: "Edit system-level Time and Grouping declarations in the notation text."
     });
   });
@@ -269,8 +301,40 @@ Bar
 Time: 3/4
 HH | x-x-x-x-x-x-`);
 
-    expect(insertBarAfter(mixed, 0)).toBe(mixed);
-    expect(setHit(mixed, 0, SD, "normal")).toBe(mixed);
+    expect(insertBarAfterResult(mixed, 0)).toMatchObject({
+      ok: false,
+      block: mixed,
+      code: "system-rhythm"
+    });
+    expect(setHitResult(mixed, 0, SD, "normal")).toMatchObject({
+      ok: false,
+      block: mixed,
+      code: "system-rhythm"
+    });
+  });
+
+  it("returns an explicit failure before a tuplet edit can flatten source structure", () => {
+    const tuplet = parseDrumBlock("SD | 3(ooo)");
+
+    expect(getStructuralEditCapability(tuplet)).toEqual({
+      ok: false,
+      code: "tuplet-structure",
+      message: "Visual structural editing is unavailable for tuplets. Edit the tuplet in the notation text."
+    });
+    expect(setHitResult(tuplet, 0, HH)).toEqual({
+      ok: false,
+      block: tuplet,
+      code: "tuplet-structure",
+      message: "Visual structural editing is unavailable for tuplets. Edit the tuplet in the notation text."
+    });
+    expect(serializeDrumBlock(tuplet)).toBe("SD | 3(ooo)");
+  });
+
+  it("reports unchanged structural edits without manufacturing undo work", () => {
+    const block = parseDrumBlock("HH | x---");
+
+    expect(setHitResult(block, 0, HH)).toMatchObject({ ok: true, changed: false });
+    expect(insertBarAfterResult(block, 99)).toMatchObject({ ok: true, changed: false, block });
   });
 
   it("preserves compatible grouping and clears it when the meter becomes incompatible", () => {

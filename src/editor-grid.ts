@@ -29,7 +29,8 @@ import {
   setHit,
   setInstrument,
   setSticking,
-  splitSystemAfterBar
+  splitSystemAfterBar,
+  type StructuralEditResult
 } from "./edit";
 import { DrumBarClipboardStore, serializeDrumBarClipboardText } from "./bar-clipboard";
 import { DRUM_KIT, getAllowedArticulations, getArticulationForKey, getHitChar, isArticulationAllowed } from "./kit";
@@ -284,20 +285,29 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     extraInstrumentIds: extraInstruments.map((instrument) => instrument.id)
   });
 
-  const applyChange = (next: DrumBlock, slotIndex?: number, nextSelectedBarIndex = selectedBarIndex) => {
-    if (next === working) {
-      return;
+  const applyChange = (
+    result: StructuralEditResult,
+    slotIndex?: number,
+    nextSelectedBarIndex = selectedBarIndex
+  ): boolean => {
+    if (!result.ok) {
+      options.notifyAction?.(result.message);
+      return false;
+    }
+    if (!result.changed) {
+      return false;
     }
 
     undoStack.push({ block: working, slotIndex, barIndex: selectedBarIndex });
     redoStack.length = 0;
-    working = next;
+    working = result.block;
     selectedBarIndex = clampBarIndex(working, nextSelectedBarIndex);
     if (!cellBelongsToSelectedBar()) {
       selectedCell = null;
     }
     options.onChange(working, slotIndex, selectedBarIndex);
     render(true);
+    return true;
   };
 
   const undo = () => {
@@ -500,7 +510,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
       ? applyArticulation(working, selectedCell.slotIndex, instrument, articulation)
       : setHit(working, selectedCell.slotIndex, instrument, articulation);
 
-    if (!existing) {
+    if (!existing && next.ok && next.changed) {
       markExtraInstrumentModeled(instrument.id);
     }
 
@@ -550,8 +560,11 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
 
     const slotIndex = selectedCell.slotIndex;
     selectedCell = { kind: "instrument", slotIndex, instrumentId: target.instrument.id };
-    markExtraInstrumentModeled(target.instrument.id);
-    applyChange(setInstrument(working, slotIndex, fromInstrument, target.instrument), slotIndex);
+    const result = setInstrument(working, slotIndex, fromInstrument, target.instrument);
+    if (result.ok && result.changed) {
+      markExtraInstrumentModeled(target.instrument.id);
+    }
+    applyChange(result, slotIndex);
   };
 
   const applyStickingToSelection = (hand: StickingHand) => {
@@ -764,12 +777,14 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
   };
 
   const copySelectedBar = () => {
-    const payload = captureBarClipboardPayload(working, selectedBarIndex);
+    const result = captureBarClipboardPayload(working, selectedBarIndex);
 
-    if (!payload) {
+    if (!result.ok) {
+      notifyAction(result.message);
       return;
     }
 
+    const payload = result.payload;
     options.barClipboard.set(payload);
     if (options.writeClipboardText) {
       void options.writeClipboardText(serializeDrumBarClipboardText(payload)).catch(() => undefined);
@@ -784,11 +799,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
 
     const result = pasteBarClipboardPayload(working, selectedBarIndex, payload);
     if (!result.ok) {
-      notifyAction(
-        result.reason === "incompatible"
-          ? "Copied bar cannot be pasted here. The source and target Time, Grid, and bar length must match."
-          : "The copied bar is no longer available."
-      );
+      notifyAction(result.message);
       return;
     }
 
@@ -802,7 +813,7 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
     }
 
     selectedCell = null;
-    applyChange(result.block, undefined, selectedBarIndex);
+    applyChange(result, undefined, selectedBarIndex);
   };
 
   const addBarOnNewSystem = () => {
@@ -1388,8 +1399,11 @@ export function mountGridEditor(options: GridEditorOptions): GridEditorHandle {
             instrumentId: instrument.id,
             hadValue: false
           });
-          markExtraInstrumentModeled(instrument.id);
-          applyChange(setHit(working, slot.index, instrument), slot.index);
+          const result = setHit(working, slot.index, instrument);
+          if (result.ok && result.changed) {
+            markExtraInstrumentModeled(instrument.id);
+          }
+          applyChange(result, slot.index);
         });
 
         cell.addEventListener("dblclick", (event) => {

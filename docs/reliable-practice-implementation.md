@@ -6,10 +6,10 @@ sample mix and advanced-notation gates are unchanged. Implementation branch:
 
 ## Delivery checklist
 
-- [ ] 1. Independent-clock tests and unchanged-synth audio references.
-- [ ] 2. Random-source seam, conditional noise caching, completed-voice cleanup.
-- [ ] 3. Advance pass preparation, reconciliation, lifecycle and audio-time restoration.
-- [ ] 4a. Explicit structural edit results and shared capabilities.
+- [x] 1. Independent-clock tests and unchanged-synth audio references.
+- [x] 2. Random-source seam, conditional noise caching, completed-voice cleanup.
+- [x] 3. Advance pass preparation, reconciliation, lifecycle and audio-time restoration.
+- [x] 4a. Explicit structural edit results and shared capabilities.
 - [ ] 4b. Native web dialogs with keyboard/focus behavior.
 - [ ] 5. Shared practice coordination and guarded explicit summary persistence.
 - [ ] 6. Discoverable Practice tools and session-local Practice view.
@@ -70,3 +70,13 @@ Do not represent browser emulation as physical-device coverage.
   passes. Start/stop races and passive-renderer publication are guarded.
 - Verification: 649/649 unit tests, plugin build, web build/typecheck, and 38/38 Chromium/WebKit
   production workflow/CSP tests passed.
+
+### Stage 4a structural editing checkpoint
+
+- Structural mutators now return discriminated results with the original block and a stable reason
+  code on failure. Successful no-ops report `changed: false` and do not create undo or write work.
+- One shared capability check protects tuplets and system-level rhythm declarations in the core,
+  the Obsidian adapter and the playground. Bar clipboard capture and paste use the same boundary.
+- Time-signature edits retain their tuplet-aware relative/absolute span behavior and reject written-
+  beat overflow. Advanced source structure remains available through text editing.
+- Verification: 652/652 unit tests, plugin build and web build/typecheck passed.

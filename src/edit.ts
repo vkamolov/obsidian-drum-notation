@@ -61,9 +61,56 @@ export function setGrid(block: DrumBlock, grid: GridResolution): DrumBlock {
   return { ...block, gridResolution: grid === 32 ? 32 : 16 };
 }
 
-export type TimeSignatureEditResult =
-  | { ok: true; block: DrumBlock }
-  | { ok: false; block: DrumBlock; message: string };
+export type StructuralEditFailureCode =
+  | "tuplet-structure"
+  | "system-rhythm"
+  | "missing-target"
+  | "incompatible"
+  | "invalid-payload";
+
+export type StructuralEditCapability =
+  | { ok: true }
+  | { ok: false; code: "tuplet-structure" | "system-rhythm"; message: string };
+
+export type StructuralEditResult =
+  | { ok: true; block: DrumBlock; changed: boolean }
+  | { ok: false; block: DrumBlock; code: StructuralEditFailureCode; message: string };
+
+export type TimeSignatureEditResult = StructuralEditResult;
+
+export function getStructuralEditCapability(block: DrumBlock): StructuralEditCapability {
+  if (block.containsTupletSyntax) {
+    return {
+      ok: false,
+      code: "tuplet-structure",
+      message: "Visual structural editing is unavailable for tuplets. Edit the tuplet in the notation text."
+    };
+  }
+  if (hasSystemRhythmOverrides(block)) {
+    return {
+      ok: false,
+      code: "system-rhythm",
+      message: "Edit system-level Time and Grouping declarations in the notation text."
+    };
+  }
+  return { ok: true };
+}
+
+function unchanged(block: DrumBlock): StructuralEditResult {
+  return { ok: true, block, changed: false };
+}
+
+function failed(
+  block: DrumBlock,
+  capability: Exclude<StructuralEditCapability, { ok: true }>
+): StructuralEditResult {
+  return { ok: false, block, code: capability.code, message: capability.message };
+}
+
+function structuralGuard(block: DrumBlock): StructuralEditResult | null {
+  const capability = getStructuralEditCapability(block);
+  return capability.ok ? null : failed(block, capability);
+}
 
 export function setTimeSignature(
   block: DrumBlock,
@@ -74,6 +121,7 @@ export function setTimeSignature(
     return {
       ok: false,
       block,
+      code: "system-rhythm",
       message: "Edit system-level Time and Grouping declarations in the notation text."
     };
   }
@@ -129,6 +177,7 @@ export function setTimeSignature(
     return {
       ok: false,
       block,
+      code: "tuplet-structure",
       message: `Cannot change Time to ${timeSignature}: a written-beat tuplet would extend beyond the bar.`
     };
   }
@@ -145,9 +194,11 @@ export function setTimeSignature(
     bars
   };
 
+  const rebuilt = parseDrumBlock(serializeDrumBlock(nextBlock));
   return {
     ok: true,
-    block: parseDrumBlock(serializeDrumBlock(nextBlock))
+    block: rebuilt,
+    changed: serializeDrumBlock(rebuilt) !== serializeDrumBlock(block)
   };
 }
 
@@ -158,7 +209,7 @@ export function toggleHit(
   slotIndex: number,
   instrument: DrumInstrument,
   articulation: DrumArticulation = "normal"
-): DrumBlock {
+): StructuralEditResult {
   const existing = findHit(block, slotIndex, instrument.id);
 
   return existing ? clearHit(block, slotIndex, instrument) : setHit(block, slotIndex, instrument, articulation);
@@ -169,15 +220,15 @@ export function setHit(
   slotIndex: number,
   instrument: DrumInstrument,
   articulation: DrumArticulation = "normal"
-): DrumBlock {
+): StructuralEditResult {
   return withHitChar(block, slotIndex, instrument, getHitChar(instrument, articulation));
 }
 
-export function clearHit(block: DrumBlock, slotIndex: number, instrument: DrumInstrument): DrumBlock {
+export function clearHit(block: DrumBlock, slotIndex: number, instrument: DrumInstrument): StructuralEditResult {
   return removeHit(block, slotIndex, instrument);
 }
 
-export function removeHit(block: DrumBlock, slotIndex: number, instrument: DrumInstrument): DrumBlock {
+export function removeHit(block: DrumBlock, slotIndex: number, instrument: DrumInstrument): StructuralEditResult {
   return withHitChar(block, slotIndex, instrument, null);
 }
 
@@ -186,7 +237,7 @@ export function applyArticulation(
   slotIndex: number,
   instrument: DrumInstrument,
   articulation: DrumArticulation
-): DrumBlock {
+): StructuralEditResult {
   return withHitChar(block, slotIndex, instrument, getHitChar(instrument, articulation));
 }
 
@@ -195,12 +246,14 @@ export function applyArticulationToInstrumentInBar(
   barIndex: number,
   instrument: DrumInstrument,
   articulation: DrumArticulation
-): DrumBlock {
+): StructuralEditResult {
+  const guard = structuralGuard(block);
+  if (guard) return guard;
   const views = block.systems.map(toSystemView);
   const location = locateBar(views, barIndex);
 
   if (!location) {
-    return block;
+    return unchanged(block);
   }
 
   const view = views[location.system];
@@ -208,14 +261,14 @@ export function applyArticulationToInstrumentInBar(
   const pattern = row?.patterns[location.bar];
 
   if (!row || pattern === undefined || !patternHasHits(pattern)) {
-    return block;
+    return unchanged(block);
   }
 
   const hitChar = getHitChar(instrument, articulation);
   const nextPattern = replacePatternHits(pattern, hitChar);
 
   if (nextPattern === pattern) {
-    return block;
+    return unchanged(block);
   }
 
   row.patterns[location.bar] = nextPattern;
@@ -223,12 +276,14 @@ export function applyArticulationToInstrumentInBar(
   return rebuildBlock(block, views);
 }
 
-export function clearInstrumentInBar(block: DrumBlock, barIndex: number, instrument: DrumInstrument): DrumBlock {
+export function clearInstrumentInBar(block: DrumBlock, barIndex: number, instrument: DrumInstrument): StructuralEditResult {
+  const guard = structuralGuard(block);
+  if (guard) return guard;
   const views = block.systems.map(toSystemView);
   const location = locateBar(views, barIndex);
 
   if (!location) {
-    return block;
+    return unchanged(block);
   }
 
   const view = views[location.system];
@@ -236,7 +291,7 @@ export function clearInstrumentInBar(block: DrumBlock, barIndex: number, instrum
   const pattern = row?.patterns[location.bar];
 
   if (!row || pattern === undefined || !patternHasHits(pattern)) {
-    return block;
+    return unchanged(block);
   }
 
   row.patterns[location.bar] = "-".repeat(view.bars[location.bar].width);
@@ -254,29 +309,31 @@ export function setInstrument(
   slotIndex: number,
   fromInstrument: DrumInstrument,
   toInstrument: DrumInstrument
-): DrumBlock {
+): StructuralEditResult {
+  const guard = structuralGuard(block);
+  if (guard) return guard;
   if (fromInstrument.id === toInstrument.id || findHit(block, slotIndex, toInstrument.id)) {
-    return block;
+    return unchanged(block);
   }
 
   const hit = findHit(block, slotIndex, fromInstrument.id);
 
   if (!hit) {
-    return block;
+    return unchanged(block);
   }
 
   const cleared = withHitChar(block, slotIndex, fromInstrument, null);
-
-  return withHitChar(cleared, slotIndex, toInstrument, getHitChar(toInstrument, hit.articulation));
+  if (!cleared.ok) return cleared;
+  return withHitChar(cleared.block, slotIndex, toInstrument, getHitChar(toInstrument, hit.articulation));
 }
 
 // --- Sticking edits ---------------------------------------------------------
 
-export function setSticking(block: DrumBlock, slotIndex: number, hand: StickingHand): DrumBlock {
+export function setSticking(block: DrumBlock, slotIndex: number, hand: StickingHand): StructuralEditResult {
   return withStickingChar(block, slotIndex, getStickingChar(hand));
 }
 
-export function clearSticking(block: DrumBlock, slotIndex: number): DrumBlock {
+export function clearSticking(block: DrumBlock, slotIndex: number): StructuralEditResult {
   return withStickingChar(block, slotIndex, "-");
 }
 
@@ -320,22 +377,22 @@ interface SystemView {
 
 export type BarPlacement = "same-system" | "new-system";
 
-export type PasteBarClipboardResult =
-  | {
-      ok: true;
-      block: DrumBlock;
-    }
-  | {
-      ok: false;
-      reason: "missing-target" | "incompatible" | "invalid-payload";
-    };
+export type PasteBarClipboardResult = StructuralEditResult;
 
-export function captureBarClipboardPayload(block: DrumBlock, barIndex: number): DrumBarClipboardPayload | null {
+export type CaptureBarClipboardResult =
+  | { ok: true; payload: DrumBarClipboardPayload }
+  | { ok: false; block: DrumBlock; code: StructuralEditFailureCode; message: string };
+
+export function captureBarClipboardPayload(block: DrumBlock, barIndex: number): CaptureBarClipboardResult {
+  const guard = structuralGuard(block);
+  if (guard && !guard.ok) {
+    return guard;
+  }
   const views = block.systems.map(toSystemView);
   const location = locateBar(views, barIndex);
 
   if (!location) {
-    return null;
+    return { ok: false, block, code: "missing-target", message: "The selected bar no longer exists." };
   }
 
   const view = views[location.system];
@@ -346,19 +403,22 @@ export function captureBarClipboardPayload(block: DrumBlock, barIndex: number): 
     snapshot.stickingPattern && /[RLB]/.test(snapshot.stickingPattern) ? snapshot.stickingPattern : undefined;
 
   return {
-    kind: "drum-notation-bar",
-    version: 1,
-    timeSignature: sourceBar?.timeSignature ?? block.timeSignature,
-    gridResolution: block.gridResolution,
-    width: bar.width,
-    rows: snapshot.rows
-      .filter((row) => patternHasHits(row.pattern))
-      .map((row) => ({
-        instrumentId: row.instrument.id,
-        label: row.label,
-        pattern: normalizePattern(row.instrument, row.pattern)
-      })),
-    ...(stickingPattern ? { stickingPattern: normalizeStickingPattern(stickingPattern) } : {})
+    ok: true,
+    payload: {
+      kind: "drum-notation-bar",
+      version: 1,
+      timeSignature: sourceBar?.timeSignature ?? block.timeSignature,
+      gridResolution: block.gridResolution,
+      width: bar.width,
+      rows: snapshot.rows
+        .filter((row) => patternHasHits(row.pattern))
+        .map((row) => ({
+          instrumentId: row.instrument.id,
+          label: row.label,
+          pattern: normalizePattern(row.instrument, row.pattern)
+        })),
+      ...(stickingPattern ? { stickingPattern: normalizeStickingPattern(stickingPattern) } : {})
+    }
   };
 }
 
@@ -373,11 +433,13 @@ export function pasteBarClipboardPayload(
   barIndex: number,
   payload: DrumBarClipboardPayload
 ): PasteBarClipboardResult {
+  const guard = structuralGuard(block);
+  if (guard) return guard;
   const views = block.systems.map(toSystemView);
   const location = locateBar(views, barIndex);
 
   if (!location) {
-    return { ok: false, reason: "missing-target" };
+    return { ok: false, block, code: "missing-target", message: "The target bar no longer exists." };
   }
 
   const view = views[location.system];
@@ -391,7 +453,7 @@ export function pasteBarClipboardPayload(
     payload.gridResolution !== block.gridResolution ||
     payload.width !== targetBar.width
   ) {
-    return { ok: false, reason: "incompatible" };
+    return { ok: false, block, code: "incompatible", message: "The copied bar uses incompatible timing." };
   }
 
   const rows: RowSnapshot[] = [];
@@ -399,7 +461,7 @@ export function pasteBarClipboardPayload(
     const instrument = DRUM_KIT.find((candidate) => candidate.id === payloadRow.instrumentId);
 
     if (!instrument || Array.from(payloadRow.pattern).length !== payload.width) {
-      return { ok: false, reason: "invalid-payload" };
+      return { ok: false, block, code: "invalid-payload", message: "The copied bar contains invalid instrument data." };
     }
 
     rows.push({
@@ -410,7 +472,7 @@ export function pasteBarClipboardPayload(
   }
 
   if (payload.stickingPattern !== undefined && Array.from(payload.stickingPattern).length !== payload.width) {
-    return { ok: false, reason: "invalid-payload" };
+    return { ok: false, block, code: "invalid-payload", message: "The copied sticking pattern has an invalid width." };
   }
 
   delete targetBar.measureRepeat;
@@ -424,7 +486,7 @@ export function pasteBarClipboardPayload(
   view.rows.forEach((row) => trimEmptyInstrumentRowSegments(view, row));
   view.rows = view.rows.filter((row) => row.patterns.length > 0);
 
-  return { ok: true, block: rebuildBlock(block, views) };
+  return rebuildBlock(block, views);
 }
 
 function withHitChar(
@@ -432,12 +494,14 @@ function withHitChar(
   slotIndex: number,
   instrument: DrumInstrument,
   char: string | null
-): DrumBlock {
+): StructuralEditResult {
+  const guard = structuralGuard(block);
+  if (guard) return guard;
   const views = block.systems.map(toSystemView);
   const location = locate(views, slotIndex);
 
   if (!location) {
-    return block;
+    return unchanged(block);
   }
 
   const view = views[location.system];
@@ -446,7 +510,7 @@ function withHitChar(
   if (!row) {
     // Removing a hit that does not exist is a no-op; only adds create a row.
     if (char === null) {
-      return block;
+      return unchanged(block);
     }
 
     row = { instrument, label: defaultLabel(instrument), patterns: [] };
@@ -465,19 +529,21 @@ function withHitChar(
   return rebuildBlock(block, views);
 }
 
-function withStickingChar(block: DrumBlock, slotIndex: number, char: "R" | "L" | "B" | "-"): DrumBlock {
+function withStickingChar(block: DrumBlock, slotIndex: number, char: "R" | "L" | "B" | "-"): StructuralEditResult {
+  const guard = structuralGuard(block);
+  if (guard) return guard;
   const views = block.systems.map(toSystemView);
   const location = locate(views, slotIndex);
 
   if (!location) {
-    return block;
+    return unchanged(block);
   }
 
   const view = views[location.system];
   const current = view.bars[location.bar].stickingPattern?.[location.local] ?? "-";
 
   if (current === char) {
-    return block;
+    return unchanged(block);
   }
 
   while (view.bars.length > 0 && view.bars.length <= location.bar) {
@@ -498,12 +564,14 @@ function withStickingChar(block: DrumBlock, slotIndex: number, char: "R" | "L" |
 
 // --- Bar edits --------------------------------------------------------------
 
-export function insertBarAfter(block: DrumBlock, barIndex: number, placement: BarPlacement = "same-system"): DrumBlock {
+export function insertBarAfter(block: DrumBlock, barIndex: number, placement: BarPlacement = "same-system"): StructuralEditResult {
+  const guard = structuralGuard(block);
+  if (guard) return guard;
   const views = block.systems.map(toSystemView);
   const location = locateBar(views, barIndex);
 
   if (!location) {
-    return block;
+    return unchanged(block);
   }
 
   const sourceView = views[location.system];
@@ -533,12 +601,14 @@ export function insertBarAfter(block: DrumBlock, barIndex: number, placement: Ba
   return rebuildBlock(block, views);
 }
 
-export function splitSystemAfterBar(block: DrumBlock, barIndex: number): DrumBlock {
+export function splitSystemAfterBar(block: DrumBlock, barIndex: number): StructuralEditResult {
+  const guard = structuralGuard(block);
+  if (guard) return guard;
   const views = block.systems.map(toSystemView);
   const location = locateBar(views, barIndex);
 
   if (!location) {
-    return block;
+    return unchanged(block);
   }
 
   const sourceView = views[location.system];
@@ -570,12 +640,14 @@ export function splitSystemAfterBar(block: DrumBlock, barIndex: number): DrumBlo
   return rebuildBlock(block, views);
 }
 
-export function duplicateBar(block: DrumBlock, barIndex: number, placement: BarPlacement = "same-system"): DrumBlock {
+export function duplicateBar(block: DrumBlock, barIndex: number, placement: BarPlacement = "same-system"): StructuralEditResult {
+  const guard = structuralGuard(block);
+  if (guard) return guard;
   const views = block.systems.map(toSystemView);
   const location = locateBar(views, barIndex);
 
   if (!location) {
-    return block;
+    return unchanged(block);
   }
 
   const sourceView = views[location.system];
@@ -602,12 +674,14 @@ export function duplicateBar(block: DrumBlock, barIndex: number, placement: BarP
   return rebuildBlock(block, views);
 }
 
-export function duplicateBarToNextSystem(block: DrumBlock, barIndex: number): DrumBlock {
+export function duplicateBarToNextSystem(block: DrumBlock, barIndex: number): StructuralEditResult {
+  const guard = structuralGuard(block);
+  if (guard) return guard;
   const views = block.systems.map(toSystemView);
   const location = locateBar(views, barIndex);
 
   if (!location) {
-    return block;
+    return unchanged(block);
   }
 
   const sourceView = views[location.system];
@@ -635,12 +709,14 @@ export function duplicateBarToNextSystem(block: DrumBlock, barIndex: number): Dr
   return rebuildBlock(block, views);
 }
 
-export function deleteBar(block: DrumBlock, barIndex: number): DrumBlock {
+export function deleteBar(block: DrumBlock, barIndex: number): StructuralEditResult {
+  const guard = structuralGuard(block);
+  if (guard) return guard;
   const views = block.systems.map(toSystemView);
   const location = locateBar(views, barIndex);
 
   if (!location) {
-    return block;
+    return unchanged(block);
   }
 
   const view = views[location.system];
@@ -659,13 +735,15 @@ export function deleteBar(block: DrumBlock, barIndex: number): DrumBlock {
   return rebuildBlock(block, views);
 }
 
-export function setBarRepeat(block: DrumBlock, barIndex: number): DrumBlock {
+export function setBarRepeat(block: DrumBlock, barIndex: number): StructuralEditResult {
+  const guard = structuralGuard(block);
+  if (guard) return guard;
   const views = block.systems.map(toSystemView);
   const location = locateBar(views, barIndex);
   const previousLocation = locateBar(views, barIndex - 1);
 
   if (!location || !previousLocation) {
-    return block;
+    return unchanged(block);
   }
 
   syncMeasureRepeatCopies(views);
@@ -681,12 +759,14 @@ export function setBarRepeat(block: DrumBlock, barIndex: number): DrumBlock {
   return rebuildBlock(block, views);
 }
 
-export function insertRepeatBarAfter(block: DrumBlock, barIndex: number, count = 1): DrumBlock {
+export function insertRepeatBarAfter(block: DrumBlock, barIndex: number, count = 1): StructuralEditResult {
+  const guard = structuralGuard(block);
+  if (guard) return guard;
   const views = block.systems.map(toSystemView);
   const location = locateBar(views, barIndex);
 
   if (!location) {
-    return block;
+    return unchanged(block);
   }
 
   const requestedCount = Number.isFinite(count) ? Math.round(count) : 1;
@@ -741,26 +821,28 @@ export function getBarRepeatGroupRange(
   };
 }
 
-export function resizeBarRepeatGroup(block: DrumBlock, barIndex: number, count: number): DrumBlock {
+export function resizeBarRepeatGroup(block: DrumBlock, barIndex: number, count: number): StructuralEditResult {
+  const guard = structuralGuard(block);
+  if (guard) return guard;
   const views = block.systems.map(toSystemView);
   const location = locateBar(views, barIndex);
 
   if (!location) {
-    return block;
+    return unchanged(block);
   }
 
   const view = views[location.system];
   const group = locateRepeatGroup(view, location.bar);
 
   if (!group) {
-    return block;
+    return unchanged(block);
   }
 
   const requestedCount = Number.isFinite(count) ? Math.round(count) : group.count;
   const repeatCount = Math.min(MAX_MEASURE_REPEAT_COUNT, Math.max(1, requestedCount));
 
   if (repeatCount === group.count) {
-    return block;
+    return unchanged(block);
   }
 
   syncMeasureRepeatCopies(views);
@@ -801,19 +883,21 @@ export function resizeBarRepeatGroup(block: DrumBlock, barIndex: number, count: 
   return rebuildBlock(block, views);
 }
 
-export function clearBarRepeat(block: DrumBlock, barIndex: number): DrumBlock {
+export function clearBarRepeat(block: DrumBlock, barIndex: number): StructuralEditResult {
+  const guard = structuralGuard(block);
+  if (guard) return guard;
   const views = block.systems.map(toSystemView);
   const location = locateBar(views, barIndex);
 
   if (!location) {
-    return block;
+    return unchanged(block);
   }
 
   const view = views[location.system];
   const group = locateRepeatGroup(view, location.bar);
 
   if (!group) {
-    return block;
+    return unchanged(block);
   }
 
   syncMeasureRepeatCopies(views);
@@ -914,18 +998,17 @@ function toRepeatSection(view: SystemView): Array<MeasureRepeatInput | undefined
   );
 }
 
-function rebuildBlock(block: DrumBlock, views: SystemView[]): DrumBlock {
+function rebuildBlock(block: DrumBlock, views: SystemView[]): StructuralEditResult {
   // Mixed-meter blocks are text-authored in this release. Every grid/bar edit
   // eventually rebuilds through this function, so fail closed here as well as
   // in the UI instead of accidentally flattening per-system rhythm settings.
-  if (hasSystemRhythmOverrides(block)) {
-    return block;
-  }
+  const guard = structuralGuard(block);
+  if (guard) return guard;
 
   syncMeasureRepeatCopies(views);
   views.forEach(compactStickingPatterns);
 
-  return finalizeDrumBlock(
+  const rebuilt = finalizeDrumBlock(
     headerOf(block),
     views.map(toRowSection),
     views.map(toRepeatSection),
@@ -936,6 +1019,7 @@ function rebuildBlock(block: DrumBlock, views: SystemView[]): DrumBlock {
     [],
     block.sectionRepeats
   );
+  return { ok: true, block: rebuilt, changed: serializeDrumBlock(rebuilt) !== serializeDrumBlock(block) };
 }
 
 function syncMeasureRepeatCopies(views: SystemView[]): void {

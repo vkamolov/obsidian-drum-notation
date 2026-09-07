@@ -6,13 +6,21 @@ import {
 } from "../src/bar-clipboard";
 import {
   barHasMeaningfulContent,
-  captureBarClipboardPayload,
+  captureBarClipboardPayload as captureBarClipboardPayloadResult,
   findHit,
   findSticking,
   pasteBarClipboardPayload
 } from "../src/edit";
 import { parseDrumBlock } from "../src/parser";
 import { serializeDrumBlock } from "../src/serializer";
+import type { DrumBarClipboardPayload } from "../src/types";
+
+function captureBarClipboardPayload(
+  ...args: Parameters<typeof captureBarClipboardPayloadResult>
+): DrumBarClipboardPayload | null {
+  const result = captureBarClipboardPayloadResult(...args);
+  return result.ok ? result.payload : null;
+}
 
 describe("bar clipboard model helpers", () => {
   it("captures canonical notes, articulations, sticking, and source timing", () => {
@@ -38,6 +46,17 @@ describe("bar clipboard model helpers", () => {
 
     expect(captureBarClipboardPayload(block, 1)?.rows).toEqual([]);
     expect(barHasMeaningfulContent(block, 1)).toBe(false);
+  });
+
+  it("rejects clipboard capture when structural source cannot be preserved", () => {
+    const tuplet = parseDrumBlock("SD | 3(ooo)");
+
+    expect(captureBarClipboardPayloadResult(tuplet, 0)).toEqual({
+      ok: false,
+      block: tuplet,
+      code: "tuplet-structure",
+      message: "Visual structural editing is unavailable for tuplets. Edit the tuplet in the notation text."
+    });
   });
 
   it("pastes into the selected bar while preserving its system and subtitle", () => {
@@ -120,7 +139,12 @@ CR | c---`);
 
     const result = pasteBarClipboardPayload(target, 0, payload!);
 
-    expect(result).toEqual({ ok: false, reason: "incompatible" });
+    expect(result).toEqual({
+      ok: false,
+      block: target,
+      code: "incompatible",
+      message: "The copied bar uses incompatible timing."
+    });
     expect(serializeDrumBlock(target)).toBe("HH | x---------------");
   });
 
@@ -129,13 +153,15 @@ CR | c---`);
     const shortPayload = captureBarClipboardPayload(parseDrumBlock("HH | x---"), 0)!;
     const grid16Target = parseDrumBlock("HH | ----------------");
 
-    expect(pasteBarClipboardPayload(grid16Target, 0, grid32Payload)).toEqual({
+    expect(pasteBarClipboardPayload(grid16Target, 0, grid32Payload)).toMatchObject({
       ok: false,
-      reason: "incompatible"
+      block: grid16Target,
+      code: "incompatible"
     });
-    expect(pasteBarClipboardPayload(grid16Target, 0, shortPayload)).toEqual({
+    expect(pasteBarClipboardPayload(grid16Target, 0, shortPayload)).toMatchObject({
       ok: false,
-      reason: "incompatible"
+      block: grid16Target,
+      code: "incompatible"
     });
   });
 
