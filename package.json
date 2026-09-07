@@ -31,7 +31,8 @@
     "security:style-sinks": "node tools/check-style-sinks.mjs",
     "sound:capture": "node tools/sound-reference.mjs capture",
     "sound:seam": "node tools/sound-reference.mjs seam",
-    "sound:compare": "node tools/sound-reference.mjs compare"
+    "sound:compare": "node tools/sound-reference.mjs compare",
+    "font:experiment": "node tools/font-experiment/benchmark.mjs"
   },
   "keywords": [
     "obsidian",

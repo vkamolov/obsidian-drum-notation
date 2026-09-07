@@ -13,8 +13,9 @@ sample mix and advanced-notation gates are unchanged. Implementation branch:
 - [x] 4b. Native web dialogs with keyboard/focus behavior.
 - [x] 5. Shared practice coordination and guarded explicit summary persistence.
 - [x] 6. Discoverable Practice tools and session-local Practice view.
-- [ ] 7. Conditional web-font experiment (retain inline packaging unless gates pass).
-- [ ] Final automated verification and documented manual coverage.
+- [x] 7. Conditional web-font experiment (candidate rejected; inline packaging retained).
+- [x] Final automated verification and documented manual coverage.
+- [ ] Pre-publication hands-on and draft-release/source-check gates (see below).
 
 ## Validation records
 
@@ -121,3 +122,44 @@ Do not represent browser emulation as physical-device coverage.
 - Verification: 659/659 unit tests, plugin build, web build/typecheck and all 40 Chromium/WebKit
   production workflow/CSP tests passed. The Practice-view browser check covers light/dark state,
   widths of 390, 650 and 1,280 px, and 200% page zoom.
+
+### Stage 7 font-packaging decision
+
+- Completed 240 measured visits: 30 interleaved trials per build for cold, repeat,
+  fresh-cache post-update and expired-cache post-update scenarios.
+- External fonts fail acceptance: cold median +5.2%; expired-cache median +6.5%.
+  Fresh-cache updates improve by 44.5%, which does not independently qualify.
+- Normal web builds retain inline fonts. The isolated experiment and full measurement
+  record remain available; see [method, results and limitations](benchmarks/font-packaging.md).
+- The candidate passed the 40-test Chromium/WebKit suite and real-server font failure/
+  reload recovery checks. No deployed-candidate or native-device validation is claimed.
+
+### Final verification — 2026-09-07
+
+- `npm test`: 659/659 passing across 37 files.
+- `npm run build`, `npm run web:build`, `npm run web:typecheck`: passing; local
+  `main.js` rebuilt and normal inline-font web output restored.
+- `npx playwright test`: 42/42 Chromium/WebKit tests passing, including new coverage
+  for Practice label width, block-scoped controls and hiding Exit outside Practice view.
+- `check:agent-plugin`: 42 conformance fixtures passing. `check:openai-submission`,
+  `check:kit-reference`, `check:notation-reference`, `check:third-party` and
+  `security:style-sinks`: passing. `npm audit --omit=dev`: zero vulnerabilities.
+- `pilot:check`: aggregate valid, pilot still not started (0/20). Sample mix,
+  thresholds, extension rule and independent cymbal gate remain unchanged.
+- `git diff --check`: clean. Vite still reports the known large-chunk warning;
+  the measured font experiment does not justify changing packaging to silence it.
+
+### Actual manual coverage and remaining publication gates
+
+This implementation run completed automated desktop-browser coverage. It did not
+complete a listening audition, a 30–60 minute hands-on playback session, physical
+mobile testing, or native Obsidian checks. Before publication, record:
+
+- [ ] 30–60 minute real-audio practice run with background/foreground transitions.
+- [ ] Native Obsidian Reading view, Live Preview, embeds, pop-outs and print/PDF.
+- [ ] Actual mobile device/OS coverage and audio-interruption recovery.
+- [ ] Draft release and Obsidian automated source check, resolving new findings.
+
+No release was published, and browser viewport emulation is not claimed as mobile
+hardware coverage. These are publication gates, separate from the completed code
+implementation and the unchanged chart-pilot requirements.
