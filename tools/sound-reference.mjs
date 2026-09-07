@@ -10,14 +10,15 @@ const mode = process.argv[2] ?? 'compare';
 if (!['capture', 'seam', 'compare'].includes(mode)) throw new Error('Expected capture, seam, or compare');
 const baselinePath = 'tests/fixtures/sound/baseline.json';
 const rawDirectory = 'test-results/sound-baseline';
-const outputDirectory = `test-results/sound-${mode}`;
+const original = process.argv.includes("--original");
+const outputDirectory = `test-results/sound-${mode}${original ? "-original" : ""}`;
 const sourceHash = createHash('sha256').update(await readFile('src/synth.ts')).digest('hex');
 const revision = execFileSync('git', ['rev-parse', 'HEAD'], {encoding: 'utf8'}).trim();
 if (mode === 'capture') {
   let exists = false; try { await access(baselinePath); exists = true; } catch {}
   if (exists) throw new Error('Baseline already exists. Refusing to overwrite original sound references.');
 }
-const bundle = await build({entryPoints: ['tools/audio/render-reference.ts'], bundle: true, write: false, format: 'iife', globalName: 'SoundReference', target: 'es2022'});
+const bundle = await build({entryPoints: ['tools/audio/render-reference.ts'], bundle: true, write: false, format: 'iife', globalName: 'SoundReference', target: 'es2022', plugins: original ? [{name: 'original-synth', setup(builder) {builder.onLoad({filter: /[\\/]src[\\/]synth\.ts$/}, () => ({contents: execFileSync('git', ['show', '4c65f4a781c8cb0a19310d0079d0da2c9f844116:src/synth.ts'], {encoding: 'utf8'}), loader: 'ts'}));}}] : []});
 const baseline = mode === 'capture' ? {revision, sourceHash, createdAt: new Date().toISOString(), seeds: [1, 17, 42, 123, 1024, 65537, 1234567, 4294967294], cases: []} : JSON.parse(await readFile(baselinePath, 'utf8'));
 const records = [], failures = [];
 await mkdir(rawDirectory, {recursive: true}); await mkdir(outputDirectory, {recursive: true});

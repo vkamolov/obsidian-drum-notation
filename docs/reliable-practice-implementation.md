@@ -36,3 +36,22 @@ Do not represent browser emulation as physical-device coverage.
 - Raw seeded audio: 100 MB in ignored test results; tracked references contain measurements.
 - Production synthesis remains unchanged at this checkpoint. Adapter lifecycle/persistence
   regression coverage is extended alongside the corresponding fixes before controller extraction.
+
+### Stage 2 sound decision and resource cleanup
+
+- The injected random source preserves **every generated Float32 buffer and every Web Audio
+  node parameter/connection/scheduling call exactly** across 16 seed/rate combinations and
+  144 instrument/articulation combinations each (`node tools/audio/compare-seam.mjs`).
+- The proposed `1e-7` final-mix threshold is not reproducible in these browsers: both the
+  seam run and an independent original-versus-original run have 54 failures, typically
+  `1.04e-7`–`1.79e-7`. Original code is loaded from the recorded revision without editing it.
+  These are final-mix roundoff differences; the exact buffer/graph comparison passes.
+  The threshold and original references were not widened or regenerated.
+- One original WebKit/48 kHz/60 ms buzz window exceeds the fixed 4 dB variability ceiling.
+  **Noise caching is not shipped:** its automatic sound-acceptance prerequisites fail.
+  Original noise generation and modulation are retained as required by the fallback.
+- Completed sources now release their own chains. Shared cymbal filters/gains survive until
+  all six oscillators finish. Stop cancels prepared sources and removes ended listeners;
+  a pending asynchronous start cannot recreate resources after Stop.
+- Synth lifecycle regressions: 4/4 passed; plugin build passed. Raw comparison reports and
+  WAV clips remain in ignored test results. No claim of a listening audition is made.

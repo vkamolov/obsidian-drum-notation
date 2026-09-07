@@ -50,26 +50,34 @@ export class DrumSynth implements DrumPlaybackBackend {
   // routes through its own master gain and tracks the node chains it schedules,
   // so stop() can silence just this synth without tearing down the context.
   private master: GainNode | null = null;
-  private sources: AudioScheduledSourceNode[] = [];
-  private nodes: AudioNode[] = [];
+  private sources = new Set<AudioScheduledSourceNode>();
+  private nodes = new Set<AudioNode>();
+  private sourceCleanups = new Map<AudioScheduledSourceNode, () => void>();
+  private generation = 0;
 
-  constructor(private readonly audioContext: AudioContext) {}
+  constructor(
+    private readonly audioContext: AudioContext,
+    private readonly random: () => number = Math.random
+  ) {}
 
   get currentTime(): number {
     return this.audioContext.currentTime;
   }
 
   async start(): Promise<void> {
+    const generation = ++this.generation;
     if (this.audioContext.state === "suspended") {
       await this.audioContext.resume();
     }
 
+    if (generation !== this.generation) return;
     this.master = this.audioContext.createGain();
     this.master.gain.setValueAtTime(1, this.audioContext.currentTime);
     this.master.connect(this.audioContext.destination);
   }
 
   stop(): void {
+    this.generation += 1;
     this.sources.forEach((source) => {
       try {
         source.stop();
@@ -77,7 +85,8 @@ export class DrumSynth implements DrumPlaybackBackend {
         // A source that already ended throws on stop(); ignore it.
       }
     });
-    this.sources = [];
+    for (const cleanup of [...this.sourceCleanups.values()]) cleanup();
+    this.sources.clear();
 
     this.nodes.forEach((node) => {
       try {
@@ -86,7 +95,7 @@ export class DrumSynth implements DrumPlaybackBackend {
         // Already disconnected; ignore.
       }
     });
-    this.nodes = [];
+    this.nodes.clear();
 
     if (this.master) {
       try {
@@ -333,7 +342,7 @@ export class DrumSynth implements DrumPlaybackBackend {
     for (let i = 0; i < bufferSize; i += 1) {
       const progress = i / bufferSize;
       const tremor = 0.72 + Math.sin(progress * Math.PI * 2 * envelope.sourceDuration * 42) * 0.28;
-      data[i] = (Math.random() * 2 - 1) * tremor;
+      data[i] = (this.random() * 2 - 1) * tremor;
     }
 
     const source = context.createBufferSource();
@@ -385,7 +394,7 @@ export class DrumSynth implements DrumPlaybackBackend {
     const data = buffer.getChannelData(0);
 
     for (let i = 0; i < bufferSize; i += 1) {
-      data[i] = Math.random() * 2 - 1;
+      data[i] = this.random() * 2 - 1;
     }
 
     const source = context.createBufferSource();
@@ -440,7 +449,7 @@ export class DrumSynth implements DrumPlaybackBackend {
     // fixed between hits; only the noise wash drifts a little. Randomizing the
     // tone frequencies makes consecutive hits play recognizably different
     // notes (the flaw that made the old crash sound like a xylophone).
-    const drift = 0.97 + Math.random() * 0.06;
+    const drift = 0.97 + this.random() * 0.06;
 
     this.scheduleTone(time, 0.065, 2550, velocity * 0.28, "triangle");
     this.scheduleTone(time, 0.11, 3820, velocity * 0.13, "sine");
@@ -451,7 +460,7 @@ export class DrumSynth implements DrumPlaybackBackend {
 
   private scheduleRideBell(time: number, velocity: number): void {
     // A bell strike is pitched and does not change pitch between hits.
-    const drift = 0.985 + Math.random() * 0.03;
+    const drift = 0.985 + this.random() * 0.03;
 
     this.scheduleTone(time, 0.18, 2850, velocity * 0.42, "triangle");
     this.scheduleTone(time, 0.13, 4020, velocity * 0.24, "sine");
@@ -460,7 +469,7 @@ export class DrumSynth implements DrumPlaybackBackend {
   }
 
   private scheduleRideBellChoke(time: number, velocity: number): void {
-    const drift = 0.985 + Math.random() * 0.03;
+    const drift = 0.985 + this.random() * 0.03;
 
     this.scheduleTone(time, 0.08, 2850, velocity * 0.34, "triangle");
     this.scheduleTone(time, 0.06, 4020, velocity * 0.16, "sine");
@@ -472,7 +481,7 @@ export class DrumSynth implements DrumPlaybackBackend {
     // repeated crashes from sounding machine-identical without any pitch
     // change. The old voice randomized two audible triangle tones instead,
     // which read as a cowbell/xylophone playing a different note every hit.
-    const drift = 0.97 + Math.random() * 0.06;
+    const drift = 0.97 + this.random() * 0.06;
 
     this.scheduleFilteredNoiseEnvelope(time, 0.42, "highpass", 5200 * drift, velocity * 0.5, 0.6, 0.003);
     this.scheduleFilteredNoiseEnvelope(time + 0.01, 1.65, "highpass", 3300 * drift, velocity * 0.46, 0.55, 0.03);
@@ -500,9 +509,7 @@ export class DrumSynth implements DrumPlaybackBackend {
     gain.gain.setValueAtTime(velocity, time);
     gain.gain.exponentialRampToValueAtTime(0.001, time + duration);
     highpass.connect(gain).connect(this.target());
-    this.nodes.push(highpass, gain);
-
-    frequencies.forEach((frequency) => {
+    const sources = frequencies.map((frequency) => {
       const oscillator = context.createOscillator();
 
       oscillator.type = "square";
@@ -510,8 +517,9 @@ export class DrumSynth implements DrumPlaybackBackend {
       oscillator.connect(highpass);
       oscillator.start(time);
       oscillator.stop(time + duration + 0.02);
-      this.track(oscillator);
+      return oscillator;
     });
+    this.trackGroup(sources, [highpass, gain]);
   }
 
   private scheduleClick(time: number, velocity: number): void {
@@ -558,7 +566,7 @@ export class DrumSynth implements DrumPlaybackBackend {
     const data = buffer.getChannelData(0);
 
     for (let i = 0; i < bufferSize; i += 1) {
-      data[i] = Math.random() * 2 - 1;
+      data[i] = this.random() * 2 - 1;
     }
 
     const source = context.createBufferSource();
@@ -594,7 +602,7 @@ export class DrumSynth implements DrumPlaybackBackend {
     const data = buffer.getChannelData(0);
 
     for (let i = 0; i < bufferSize; i += 1) {
-      data[i] = Math.random() * 2 - 1;
+      data[i] = this.random() * 2 - 1;
     }
 
     const source = context.createBufferSource();
@@ -621,10 +629,36 @@ export class DrumSynth implements DrumPlaybackBackend {
   }
 
   private track<T extends AudioScheduledSourceNode>(source: T, ...nodes: AudioNode[]): T {
-    this.sources.push(source);
-    this.nodes.push(source, ...nodes);
+    this.trackGroup([source], nodes);
     return source;
   }
+
+  private trackGroup(sources: AudioScheduledSourceNode[], nodes: AudioNode[]): void {
+    let remaining = sources.length;
+    nodes.forEach(node => this.nodes.add(node));
+    for (const source of sources) {
+      this.sources.add(source);
+      let ended = false;
+      const cleanup = () => {
+        if (ended) return;
+        ended = true;
+        source.removeEventListener("ended", cleanup);
+        this.sourceCleanups.delete(source);
+        this.sources.delete(source);
+        source.disconnect();
+        remaining -= 1;
+        if (remaining === 0) {
+          for (const node of nodes) {
+            node.disconnect();
+            this.nodes.delete(node);
+          }
+        }
+      };
+      this.sourceCleanups.set(source, cleanup);
+      source.addEventListener("ended", cleanup);
+    }
+  }
+
 }
 
 export const createSynthPlaybackBackend: DrumPlaybackBackendFactory = (audioContext) => new DrumSynth(audioContext);
