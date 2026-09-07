@@ -66,13 +66,16 @@ select charts, classify outcomes or replace the human Track A/Track B decision. 
 walkthrough and examples.
 
 > The intended 1.11.0 publication gate was not completed before 1.11.0 was published. The pilot
-> therefore gates **1.12.0 scoping and implementation** directly. The corrective 1.11.1 patch may
-> proceed because it adds no new roadmap scope, but it must not become another reason to defer the
-> evidence needed to choose Track A or Track B.
+> therefore gates **new notation/navigation scope and expanded advanced editing** directly.
+> The agreed pre-pilot exception permits behavioral/sound references, synthesis resource cleanup,
+> playback scheduling and session-accounting corrections, explicit edit failures, accessible
+> dialogs, shared practice coordination, and a session-local Practice view using existing tools.
+> A measured web-font packaging experiment may also proceed independently. This maintenance and
+> practice-UI work must not defer the evidence needed to choose Track A or Track B.
 > If twenty charts is the barrier, shrink the sample and amend the protocol *before* sampling —
 > a directional read from eight real charts beats a precise threshold applied to zero.
 
-Before scoping or implementing 1.12.0:
+Before scoping or implementing either pilot-dependent track:
 
 1. Complete the predeclared sample, including a precommitted extension when the result is within
    one chart of the threshold.
@@ -91,7 +94,7 @@ Builds on the pass-tracking introduced by the tempo ramp trainer. The core lives
 - Count-in cadence: once at transport start, or before every pass.
 - Exact-BPM tap tempo (30–260), entering an exact-BPM mode rather than rounding to a percentage.
 - Resumable session progress and an **active session time** clock (includes count-in; excludes
-  pauses; must never accrue during rerenders or scroll-away).
+  pauses and unavailable playback; rendering and visibility alone never add practice time).
 - Practice summary with explicit **Save to log** — never automatic — inserting atomically via
   `vault.process()` into reverse-chronological `## YYYY-MM-DD` sections in a configurable note.
 - Playground equivalent with Copy Markdown, no persistence.

@@ -28,7 +28,10 @@
     "check:kit-reference": "node tools/generate-kit-reference.mjs --check",
     "check:notation-reference": "node tools/check-notation-reference.mjs",
     "check:third-party": "node tools/check-third-party.mjs",
-    "security:style-sinks": "node tools/check-style-sinks.mjs"
+    "security:style-sinks": "node tools/check-style-sinks.mjs",
+    "sound:capture": "node tools/sound-reference.mjs capture",
+    "sound:seam": "node tools/sound-reference.mjs seam",
+    "sound:compare": "node tools/sound-reference.mjs compare"
   },
   "keywords": [
     "obsidian",
