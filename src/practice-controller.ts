@@ -212,7 +212,8 @@ export class PracticeSessionController {
       return pending;
     }
 
-    const operation = action(cloneSummary(summary))
+    const operation = Promise.resolve()
+      .then(() => action(cloneSummary(summary)))
       .then(() => {
         this.dispatch({ type: "summary-handled", identity, revision });
         return true;
@@ -226,9 +227,11 @@ export class PracticeSessionController {
     return operation;
   }
 
-  dispose(): void {
+  dispose(settle = true): void {
     if (this.disposed) return;
-    this.dispatch({ type: "settle" });
+    if (settle) {
+      this.dispatch({ type: "settle" });
+    }
     this.disposed = true;
     this.nextTransportGeneration();
     this.options.transport?.cancel?.();
@@ -290,7 +293,7 @@ export class PracticeSummarySaveCoordinator {
     if (existing) {
       return existing;
     }
-    const operation = write().finally(() => {
+    const operation = Promise.resolve().then(write).finally(() => {
       if (this.pending.get(identity) === operation) {
         this.pending.delete(identity);
       }

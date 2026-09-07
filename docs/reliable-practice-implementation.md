@@ -11,7 +11,7 @@ sample mix and advanced-notation gates are unchanged. Implementation branch:
 - [x] 3. Advance pass preparation, reconciliation, lifecycle and audio-time restoration.
 - [x] 4a. Explicit structural edit results and shared capabilities.
 - [x] 4b. Native web dialogs with keyboard/focus behavior.
-- [ ] 5. Shared practice coordination and guarded explicit summary persistence.
+- [x] 5. Shared practice coordination and guarded explicit summary persistence.
 - [ ] 6. Discoverable Practice tools and session-local Practice view.
 - [ ] 7. Conditional web-font experiment (retain inline packaging unless gates pass).
 - [ ] Final automated verification and documented manual coverage.
@@ -91,3 +91,19 @@ Do not represent browser emulation as physical-device coverage.
   inputs instead of discarding them. Obsidian continues to use its native modal classes.
 - Chromium and WebKit browser coverage exercises initial focus, Tab wrapping, Escape, nested
   confirmation cancellation and missing-trigger restoration.
+
+### Stage 5 shared coordination checkpoint
+
+- A DOM-free `PracticeSessionController` now owns run start/resume, audio checkpoints, pass
+  accounting, settlement, summary completion and summary handling through typed commands.
+  Read-only cloned snapshots, subscriptions, transport/lifecycle ports and disposal are explicit.
+- The playground migrated first, followed by Obsidian. DOM rendering, clipboard formatting and
+  vault access remain adapter concerns. A shared cancellation-generation primitive guards both
+  hosts' asynchronous transport starts.
+- Summary actions capture identity and revision. An older completion cannot handle a replacement
+  summary; failures leave the summary available. Same-summary saves coalesce per controller and
+  across Obsidian renderers through one plugin-wide coordinator.
+- Obsidian log creation retains race recovery and existing-file writes remain atomic through
+  `vault.process`. Score writeback and its expected-source conflict check remain separate.
+- Verification: 658/658 unit tests, plugin build and web typecheck passed; the focused Chromium/
+  WebKit practice workflows passed after the playground migration.

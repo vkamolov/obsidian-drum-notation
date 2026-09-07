@@ -148,6 +148,7 @@ describe("PracticeSessionController", () => {
       completedSummary: { ...firstSummary, startedAtEpochMs: firstSummary.startedAtEpochMs + 1 },
       completedSummaryHandled: false
     });
+    await Promise.resolve();
     release?.();
     await Promise.all([first, duplicate]);
 
@@ -212,6 +213,7 @@ describe("PracticeSessionController", () => {
 
     const first = coordinator.save(summary, write);
     const duplicate = coordinator.save(summary, write);
+    await Promise.resolve();
     release?.();
     await Promise.all([first, duplicate]);
     expect(write).toHaveBeenCalledTimes(1);

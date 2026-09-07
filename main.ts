@@ -99,14 +99,17 @@ import {
   togglePracticeRegion
 } from "./src/practice";
 import {
+  CancellationGeneration,
+  PracticeSessionController,
+  PracticeSummarySaveCoordinator,
+  getPracticeSummaryIdentity
+} from "./src/practice-controller";
+import {
   DEFAULT_COUNT_IN_CADENCE,
   MAX_REPETITION_GOAL_PASSES,
   MIN_REPETITION_GOAL_PASSES,
   createDefaultRepetitionGoalConfig,
   createPracticeClock,
-  checkpointPracticeRunMetrics,
-  createPracticeRunMetrics,
-  createPracticeRunSummary,
   createTapTempoState,
   formatActiveSessionTime,
   formatPracticeSummaryMarkdown,
@@ -117,11 +120,8 @@ import {
   normalizePracticeLogPath,
   normalizeRepetitionGoalConfig,
   normalizeRepetitionGoalProgress,
-  recordPracticePass,
   recordTapTempo,
   practiceTargetsEqual,
-  resumePracticeRunMetrics,
-  settlePracticeRunMetrics,
   type PracticeClock
 } from "./src/practice-session";
 import { getMeasureRepeatProgress } from "./src/repeat-progress";
@@ -325,7 +325,7 @@ export default class DrumNotationPlugin extends Plugin {
     authoringDefaults: { ...DEFAULT_DRUM_AUTHORING_DEFAULTS }
   };
   private activePlayer: DrumPlayer | null = null;
-  private playbackStartGeneration = 0;
+  private readonly playbackStartGeneration = new CancellationGeneration();
   private activePlaybackReset: (() => void) | null = null;
   private activePlaybackOwner: symbol | null = null;
   private activePracticeSessionKey: string | null = null;
@@ -337,6 +337,7 @@ export default class DrumNotationPlugin extends Plugin {
   private readonly editRestoreSessions = new Map<string, RestoredEditSession>();
   private readonly barClipboard = new DrumBarClipboardStore();
   private readonly transportSessions = new DrumTransportSessionStore();
+  private readonly practiceSummarySaves = new PracticeSummarySaveCoordinator();
   private readonly notationControllers = new Map<symbol, DrumNotationController>();
   private readonly screenWakeLock = new ScreenWakeLockController(() => {
     new Notice("Could not keep the screen awake. Playback will continue normally.");
@@ -441,39 +442,41 @@ export default class DrumNotationPlugin extends Plugin {
     blockTitle: string,
     note: string
   ): Promise<void> {
-    const pathResult = normalizePracticeLogPath(this.settings.practiceLogPath);
-    if (!pathResult.ok) {
-      throw new Error(pathResult.message);
-    }
-    const formatted = formatPracticeSummaryMarkdown(summary, {
-      sourcePath,
-      blockTitle,
-      note
+    await this.practiceSummarySaves.save(summary, async () => {
+      const pathResult = normalizePracticeLogPath(this.settings.practiceLogPath);
+      if (!pathResult.ok) {
+        throw new Error(pathResult.message);
+      }
+      const formatted = formatPracticeSummaryMarkdown(summary, {
+        sourcePath,
+        blockTitle,
+        note
+      });
+      const path = pathResult.path;
+      const slashIndex = path.lastIndexOf("/");
+      if (slashIndex >= 0) {
+        await this.ensureVaultFolder(path.slice(0, slashIndex));
+      }
+
+      const appendToFile = async (file: TFile) => {
+        await this.app.vault.process(file, (current) =>
+          insertPracticeLogEntry(current, formatted.date, formatted.markdown)
+        );
+      };
+      const existing = this.getSourceFile(path);
+      if (existing) {
+        await appendToFile(existing);
+        return;
+      }
+
+      try {
+        await this.app.vault.create(path, `## ${formatted.date}\n\n${formatted.markdown}\n`);
+      } catch (error) {
+        const racedFile = this.getSourceFile(path);
+        if (!racedFile) throw error;
+        await appendToFile(racedFile);
+      }
     });
-    const path = pathResult.path;
-    const slashIndex = path.lastIndexOf("/");
-    if (slashIndex >= 0) {
-      await this.ensureVaultFolder(path.slice(0, slashIndex));
-    }
-
-    const appendToFile = async (file: TFile) => {
-      await this.app.vault.process(file, (current) =>
-        insertPracticeLogEntry(current, formatted.date, formatted.markdown)
-      );
-    };
-    const existing = this.getSourceFile(path);
-    if (existing) {
-      await appendToFile(existing);
-      return;
-    }
-
-    try {
-      await this.app.vault.create(path, `## ${formatted.date}\n\n${formatted.markdown}\n`);
-    } catch (error) {
-      const racedFile = this.getSourceFile(path);
-      if (!racedFile) throw error;
-      await appendToFile(racedFile);
-    }
   }
 
   private async ensureVaultFolder(folderPath: string): Promise<void> {
@@ -619,18 +622,30 @@ export default class DrumNotationPlugin extends Plugin {
     };
     let completedSummary: PracticeRunSummary | null = restoredPracticeSession?.completedSummary ?? null;
     let completedSummaryHandled = restoredPracticeSession?.completedSummaryHandled ?? false;
+    const practiceController = new PracticeSessionController({
+      state: {
+        read: () => ({
+          tempoRamp,
+          tempoRampRunMetrics,
+          repetitionGoal,
+          completedSummary,
+          completedSummaryHandled
+        }),
+        write: (state) => {
+          tempoRamp = state.tempoRamp;
+          tempoRampRunMetrics = state.tempoRampRunMetrics;
+          repetitionGoal = state.repetitionGoal;
+          completedSummary = state.completedSummary;
+          completedSummaryHandled = state.completedSummaryHandled;
+        }
+      },
+      clock: this.practiceClock,
+      transport: { audioProgress: () => this.activePlayer?.getAudioProgress() ?? null }
+    });
     const hasMatchingActivePlayer = this.activePlayer !== null &&
       this.activePracticeSessionKey === practiceSessionKey;
     if (!hasMatchingActivePlayer) {
-      if (tempoRampRunMetrics?.status === "running") {
-        tempoRampRunMetrics = settlePracticeRunMetrics(tempoRampRunMetrics, this.practiceClock);
-      }
-      if (repetitionGoal.runMetrics?.status === "running") {
-        repetitionGoal = {
-          ...repetitionGoal,
-          runMetrics: settlePracticeRunMetrics(repetitionGoal.runMetrics, this.practiceClock)
-        };
-      }
+      practiceController.dispatch({ type: "settle" });
     }
     let activePlaybackBarIndex: number | null = null;
     let activePlaybackBarState: PlaybackBarState | null = null;
@@ -888,33 +903,17 @@ export default class DrumNotationPlugin extends Plugin {
         : exactTempoBpm ?? getEffectivePlaybackTempo(block.tempo, playbackSpeedPercent);
 
     const startOrResumeTrackedRun = (kind: PracticeRunSummary["kind"]): void => {
-      const bpm = getCurrentEffectiveTempo();
-      if (kind === "tempo-ramp") {
-        tempoRampRunMetrics = tempoRampRunMetrics
-          ? resumePracticeRunMetrics(tempoRampRunMetrics, bpm, this.practiceClock)
-          : createPracticeRunMetrics(bpm, this.practiceClock);
-      } else {
-        repetitionGoal = {
-          ...repetitionGoal,
-          runMetrics: repetitionGoal.runMetrics
-            ? resumePracticeRunMetrics(repetitionGoal.runMetrics, bpm, this.practiceClock)
-            : createPracticeRunMetrics(bpm, this.practiceClock)
-        };
-      }
+      practiceController.dispatch({
+        type: "start-or-resume",
+        kind,
+        bpm: getCurrentEffectiveTempo()
+      });
       publishPracticeSession();
     };
 
     const settleTrackedRun = (status: PracticeRunMetrics["status"] = "paused"): void => {
       if (this.activePlayer && this.activePracticeSessionKey === practiceSessionKey && this.activePlaybackOwner !== renderOwner) return;
-      if (tempoRamp.armed && tempoRampRunMetrics?.status === "running") {
-        tempoRampRunMetrics = settlePracticeRunMetrics(tempoRampRunMetrics, this.practiceClock, status);
-      }
-      if (repetitionGoal.armed && repetitionGoal.runMetrics?.status === "running") {
-        repetitionGoal = {
-          ...repetitionGoal,
-          runMetrics: settlePracticeRunMetrics(repetitionGoal.runMetrics, this.practiceClock, status)
-        };
-      }
+      practiceController.dispatch({ type: "settle", status });
       publishPracticeSession();
     };
 
@@ -924,62 +923,48 @@ export default class DrumNotationPlugin extends Plugin {
       requestedPasses: number | null,
       completed: boolean
     ): void => {
-      const metrics = kind === "tempo-ramp" ? tempoRampRunMetrics : repetitionGoal.runMetrics;
-      if (!metrics) return;
-      completedSummary = createPracticeRunSummary(
+      practiceController.dispatch({
+        type: "finish",
         kind,
         target,
-        metrics,
         requestedPasses,
-        completed,
-        this.practiceClock
-      );
-      completedSummaryHandled = false;
-      if (kind === "tempo-ramp") {
-        tempoRampRunMetrics = settlePracticeRunMetrics(metrics, this.practiceClock, "complete");
-      } else {
-        repetitionGoal = {
-          ...repetitionGoal,
-          armed: false,
-          runMetrics: settlePracticeRunMetrics(metrics, this.practiceClock, "complete")
-        };
-      }
+        completed
+      });
       publishPracticeSession();
     };
 
     const openPracticeSummary = () => {
       if (!completedSummary) return;
+      const summaryIdentity = getPracticeSummaryIdentity(completedSummary) ?? undefined;
       new PracticeSummaryModal(this.app, {
         summary: completedSummary,
         blockTitle: getTitle(block),
         sourcePath: practiceSourcePath,
         alreadyHandled: completedSummaryHandled,
         onCopy: async (note) => {
-          if (!completedSummary) return false;
-          const formatted = formatPracticeSummaryMarkdown(completedSummary, {
-            sourcePath: practiceSourcePath ?? getTitle(block),
-            blockTitle: getTitle(block),
-            note
+          const handled = await practiceController.runSummaryAction("copy", async (summary) => {
+            const formatted = formatPracticeSummaryMarkdown(summary, {
+              sourcePath: practiceSourcePath ?? getTitle(block),
+              blockTitle: getTitle(block),
+              note
+            });
+            const clipboard = root.ownerDocument.defaultView?.navigator.clipboard;
+            if (!clipboard) throw new Error("Clipboard API is unavailable");
+            await clipboard.writeText(formatted.markdown);
           });
-          const clipboard = root.ownerDocument.defaultView?.navigator.clipboard;
-          if (!clipboard) return false;
-          await clipboard.writeText(formatted.markdown);
-          completedSummaryHandled = true;
           publishPracticeSession();
-          return true;
+          return handled;
         },
         onSave: practiceSourcePath
           ? async (note) => {
-              if (!completedSummary) return false;
-              await this.savePracticeSummary(completedSummary, practiceSourcePath, getTitle(block), note);
-              completedSummaryHandled = true;
+              const handled = await practiceController.runSummaryAction("save", (summary) =>
+                this.savePracticeSummary(summary, practiceSourcePath, getTitle(block), note));
               publishPracticeSession();
-              return true;
+              return handled;
             }
           : null,
         onDiscard: () => {
-          completedSummary = null;
-          completedSummaryHandled = false;
+          practiceController.dispatch({ type: "summary-discarded", identity: summaryIdentity });
           publishPracticeSession();
           renderFirstRunTip();
         }
@@ -1685,12 +1670,12 @@ export default class DrumNotationPlugin extends Plugin {
         ownerDocument: root.ownerDocument,
         onAudioProgress: (progress) => {
           if (this.activePlaybackOwner !== renderOwner || this.activePlayer?.getAudioProgress().generation !== progress.generation) return;
-          const clock = {...this.practiceClock, audioProgress: () => progress};
-          const update = (metrics: PracticeRunMetrics) => started
-            ? checkpointPracticeRunMetrics(metrics, progress)
-            : resumePracticeRunMetrics(metrics, getCurrentEffectiveTempo(), clock);
-          if (tempoRamp.armed && tempoRampRunMetrics) tempoRampRunMetrics = update(tempoRampRunMetrics);
-          if (repetitionGoal.armed && repetitionGoal.runMetrics) repetitionGoal = {...repetitionGoal, runMetrics: update(repetitionGoal.runMetrics)};
+          practiceController.dispatch({
+            type: "audio-progress",
+            progress,
+            bpm: getCurrentEffectiveTempo(),
+            continuing: started
+          });
           started = true;
           publishPracticeSession();
         },
@@ -1721,10 +1706,8 @@ export default class DrumNotationPlugin extends Plugin {
         onTempoRampPassStart: handleTempoRampPassStart,
         onTempoRampPassComplete: handleTempoRampPassComplete,
         onPassComplete: (state: PlaybackPassState) => {
-          if (tempoRampRunMetrics) {
-            tempoRampRunMetrics = recordPracticePass(tempoRampRunMetrics, state.tempoBpm);
-            publishPracticeSession();
-          }
+          practiceController.dispatch({ type: "record-pass", kind: "tempo-ramp", bpm: state.tempoBpm });
+          publishPracticeSession();
         }
       };
     };
@@ -1759,7 +1742,7 @@ export default class DrumNotationPlugin extends Plugin {
       if (renderDisposed) return false;
       pendingPlaybackResume = null;
       this.stopActivePlayer();
-      const generation = this.playbackStartGeneration;
+      const generation = this.playbackStartGeneration.current;
       clearTransportHighlights();
       visuals.clearCursor();
       clearRepeatProgress();
@@ -1780,7 +1763,7 @@ export default class DrumNotationPlugin extends Plugin {
         new Notice(AUDIO_RECOVERY_NOTICE);
       }
 
-      return recovered && generation === this.playbackStartGeneration && !renderDisposed;
+      return recovered && this.playbackStartGeneration.isCurrent(generation) && !renderDisposed;
     };
 
     const startPlayback = async (
@@ -2258,9 +2241,13 @@ export default class DrumNotationPlugin extends Plugin {
                 progress: {
                   completedPasses,
                   completed: completedPasses >= config.totalPasses
-                },
-                runMetrics: recordPracticePass(repetitionGoal.runMetrics, state.tempoBpm)
+                }
               };
+              practiceController.dispatch({
+                type: "record-pass",
+                kind: "repetition-goal",
+                bpm: state.tempoBpm
+              });
             }
             renderFirstRunTip();
             publishPracticeSession();
@@ -3449,6 +3436,7 @@ export default class DrumNotationPlugin extends Plugin {
         this.lastInteractedControllerOwner = null;
       }
       settleTrackedRun();
+      practiceController.dispose(false);
       this.stopActivePlayer(renderOwner);
       this.stopActivePreview(renderOwner);
     });
@@ -3725,7 +3713,7 @@ export default class DrumNotationPlugin extends Plugin {
       return;
     }
 
-    this.playbackStartGeneration += 1;
+    this.playbackStartGeneration.invalidate();
     const reset = this.activePlaybackReset;
 
     this.activePlayer?.stop();
