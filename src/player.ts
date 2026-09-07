@@ -1,3 +1,4 @@
+import { createAudioProgressIdentity, type AudioProgressSnapshot, type PlaybackInterruptionReason } from "./audio-progress";
 import {
   getRangeDurationSecondsAtSecondsPerQuarter,
   getSecondsPerQuarter,
@@ -129,9 +130,36 @@ export function buildSelectedPlaybackRoadmap(
   });
 }
 
+interface TimelineNotification {
+  time: number;
+  order: number;
+  notify: () => void;
+  visual: boolean;
+}
+interface Continuation {
+  passIndex: number;
+  startTime: number;
+  barOccurrenceIndex: number;
+  earliestTime: number;
+}
+
+const PASS_PREPARATION_LEAD_SECONDS = 0.5;
+const MAX_GRACE_LEAD_SECONDS = 0.055;
+
 export class DrumPlayer {
   private backend: DrumPlaybackBackend | null = null;
-  private timers: number[] = [];
+  private timer: number | null = null;
+  private notifications: TimelineNotification[] = [];
+  private notificationOrder = 0;
+  private continuation: Continuation | null = null;
+  private activeIntervals: Array<{start: number; end: number}> = [];
+  private retiredActiveSeconds = 0;
+  private readonly progress: AudioProgressSnapshot;
+  private readonly timerWindow: Pick<Window, "setTimeout" | "clearTimeout">;
+  private reconciling = false;
+  private stoppedPosition: DrumPlaybackPosition | null = null;
+  private readonly stateChanged = () => this.reconcile();
+  private readonly visibilityChanged = () => this.reconcile();
   private stopped = false;
   private initialSecondsPerQuarter = 0;
   private playbackStartTime = 0;
@@ -152,15 +180,41 @@ export class DrumPlayer {
     private readonly createPlaybackBackend: DrumPlaybackBackendFactory = createSynthPlaybackBackend
   ) {
     this.activeClickSubdivision = options.clickSubdivision ?? "beat";
+    this.progress = createAudioProgressIdentity(audioContext);
+    this.timerWindow = options.ownerDocument?.defaultView ?? window;
+    // A player's prepared passes must not observe later mutations of host-owned controls.
+    this.options = {
+      ...options,
+      mutedInstrumentIds: options.mutedInstrumentIds ? new Set(options.mutedInstrumentIds) : undefined,
+      selectedBarIndexes: options.selectedBarIndexes ? [...options.selectedBarIndexes] : undefined,
+      tempoRamp: options.tempoRamp ? {
+        config: {...options.tempoRamp.config, target: options.tempoRamp.config.target.kind === "selected-bars"
+          ? {...options.tempoRamp.config.target, barIndexes: [...options.tempoRamp.config.target.barIndexes]}
+          : {...options.tempoRamp.config.target}},
+        progress: {...options.tempoRamp.progress}
+      } : undefined
+    };
   }
 
   async play(): Promise<void> {
     const backend = this.createPlaybackBackend(this.audioContext);
 
     this.backend = backend;
-    await backend.start();
+    try {
+      await backend.start();
+    } catch {
+      if (!this.stopped && this.backend === backend) this.interrupt("start-failed");
+      return;
+    }
 
     if (this.stopped || this.backend !== backend) {
+      return;
+    }
+
+    this.audioContext.addEventListener("statechange", this.stateChanged);
+    this.options.ownerDocument?.addEventListener("visibilitychange", this.visibilityChanged);
+    if (this.audioContext.state !== "running") {
+      this.interrupt(this.contextInterruptionReason());
       return;
     }
 
@@ -210,6 +264,7 @@ export class DrumPlayer {
       ) * this.initialSecondsPerQuarter;
     const transportStartTime = backend.currentTime + 0.08;
     this.playbackStartTime = transportStartTime + countInDurationSeconds;
+    if (countInDurationSeconds > 0) this.activeIntervals.push({start: transportStartTime, end: this.playbackStartTime});
 
     this.scheduleCountIn(
       transportStartTime,
@@ -225,6 +280,8 @@ export class DrumPlayer {
       this.playbackStartTime,
       normalizeBarOccurrenceIndex(initial.barOccurrenceIndex)
     );
+    this.publishAudioProgress();
+    this.reconcile();
   }
 
   private resolveInitialPosition(): DrumPlaybackPosition {
@@ -256,7 +313,7 @@ export class DrumPlayer {
     const entry = this.roadmap[roadmapEntryIndex];
 
     return {
-      slotIndex: matchingEntryIndex >= 0 ? this.initialSlot : entry.startSlot,
+      slotIndex: matchingEntryIndex >= 0 ? this.initialSlot : entry?.startSlot ?? this.initialSlot,
       roadmapEntryIndex,
       blockPassIndex: 0,
       barOccurrenceIndex: 0
@@ -296,7 +353,6 @@ export class DrumPlayer {
 
     const backend = this.backend;
     const secondsPerQuarter = this.getSecondsPerQuarterForPass(blockPassIndex);
-    this.options.onPassStart?.(this.getPassState(blockPassIndex, false));
     const rampPassState = this.getTempoRampPassStartState(blockPassIndex);
     if (rampPassState) {
       const safeSubdivision = getSafeClickSubdivisionAtTempo(
@@ -306,8 +362,13 @@ export class DrumPlayer {
       );
       this.activeClickSubdivision = safeSubdivision;
       rampPassState.clickSubdivision = safeSubdivision;
-      this.options.onTempoRampPassStart?.(rampPassState);
+
     }
+    const passClickSubdivision = this.activeClickSubdivision;
+    this.enqueue(passStartTime, () => {
+      this.options.onPassStart?.(this.getPassState(blockPassIndex, false));
+      if (rampPassState) this.options.onTempoRampPassStart?.(rampPassState);
+    });
     let occurrenceStartTime = passStartTime;
     let barOccurrenceIndex = firstBarOccurrenceIndex;
 
@@ -348,45 +409,25 @@ export class DrumPlayer {
       barOccurrenceIndex += 1;
     }
 
-    this.timers.push(
-      window.setTimeout(() => {
-        if (this.stopped) {
-          return;
-        }
-
-        const completedRampState = this.getTempoRampPassCompleteState(blockPassIndex);
-        if (completedRampState) {
-          this.options.onTempoRampPassComplete?.(completedRampState);
-        }
-        this.options.onPassComplete?.(this.getPassState(blockPassIndex, true));
-
-        if (this.canContinueAfterPass(blockPassIndex)) {
-          const nextPassIndex = blockPassIndex + 1;
-          let nextPassStartTime = occurrenceStartTime;
-          if (this.options.countInCadence === "every-pass") {
-            const nextSecondsPerQuarter = this.getSecondsPerQuarterForPass(nextPassIndex);
-            this.scheduleCountIn(
-              nextPassStartTime,
-              backend,
-              this.roadmap[0].startSlot,
-              nextSecondsPerQuarter
-            );
-            nextPassStartTime += this.getInterPassCountInDurationSeconds(nextPassIndex);
-          }
-          this.scheduleBlockPass(
-            nextPassIndex,
-            0,
-            this.roadmap[0].startSlot,
-            nextPassStartTime,
-            barOccurrenceIndex
-          );
-        } else {
-          this.stop();
-          this.onEnded();
-        }
-      },
-      Math.max(0, (occurrenceStartTime - backend.currentTime) * 1000))
-    );
+    this.activeIntervals.push({start: passStartTime, end: occurrenceStartTime});
+    const completedRampState = this.getTempoRampPassCompleteState(blockPassIndex);
+    if (completedRampState) completedRampState.clickSubdivision = passClickSubdivision;
+    this.enqueue(occurrenceStartTime, () => {
+      if (completedRampState) this.options.onTempoRampPassComplete?.(completedRampState);
+      this.options.onPassComplete?.(this.getPassState(blockPassIndex, true));
+      if (!this.stopped && !this.canContinueAfterPass(blockPassIndex)) {
+        this.stop();
+        this.onEnded();
+      }
+    });
+    this.continuation = this.canContinueAfterPass(blockPassIndex) ? {
+      passIndex: blockPassIndex + 1,
+      startTime: occurrenceStartTime,
+      barOccurrenceIndex,
+      earliestTime: this.getInterPassCountInDurationSeconds(blockPassIndex + 1) > 0
+        ? occurrenceStartTime
+        : occurrenceStartTime - this.getGraceLeadSeconds()
+    } : null;
   }
 
   private scheduleRoadmapEntry(
@@ -410,19 +451,15 @@ export class DrumPlayer {
         ? this.roadmap[0]
         : undefined;
 
-    this.timers.push(
-      window.setTimeout(() => {
-        if (!this.stopped) {
-          this.onSlotChange(entryStartSlot);
-          this.options.onBarChange?.(entry.barIndex, {
-            barOccurrenceIndex,
-            isGapBar,
-            nextBarIndex: nextEntry?.barIndex ?? null,
-            isNextGapBar: Boolean(nextEntry && isGapClickBar(gapClickMode, barOccurrenceIndex + 1))
-          });
-        }
-      }, Math.max(0, (entryStartTime - backend.currentTime) * 1000))
-    );
+    this.enqueue(entryStartTime, () => {
+      if (this.options.ownerDocument?.visibilityState !== "hidden") this.onSlotChange(entryStartSlot);
+      this.options.onBarChange?.(entry.barIndex, {
+        barOccurrenceIndex,
+        isGapBar,
+        nextBarIndex: nextEntry?.barIndex ?? null,
+        isNextGapBar: Boolean(nextEntry && isGapClickBar(gapClickMode, barOccurrenceIndex + 1))
+      });
+    });
 
     this.block.slots.slice(entryStartSlot, entry.endSlot).forEach((slot) => {
       const slotTime =
@@ -433,13 +470,7 @@ export class DrumPlayer {
         : filterMutedHits(slot.hits, this.options.mutedInstrumentIds);
 
       if (slot.hits.length > 0) {
-        this.timers.push(
-          window.setTimeout(() => {
-            if (!this.stopped) {
-              this.onSlotChange(slot.index);
-            }
-          }, Math.max(0, (slotTime - backend.currentTime) * 1000))
-        );
+        this.enqueue(slotTime, () => this.onSlotChange(slot.index), true);
       }
       backend.scheduleHits(
         writtenHits,
@@ -476,6 +507,7 @@ export class DrumPlayer {
   }
 
   getCurrentPlaybackPosition(): DrumPlaybackPosition {
+    if (this.stoppedPosition) return {...this.stoppedPosition};
     if (!this.backend || this.backend.currentTime <= this.playbackStartTime || this.initialSecondsPerQuarter <= 0) {
       return this.resolveInitialPosition();
     }
@@ -483,19 +515,13 @@ export class DrumPlayer {
     const currentTime = this.backend.currentTime;
     const occurrence = this.scheduledOccurrences.find((candidate) =>
       currentTime >= candidate.startTime && currentTime < candidate.endTime
-    ) ?? this.scheduledOccurrences[this.scheduledOccurrences.length - 1];
+    ) ?? this.scheduledOccurrences.find(candidate => currentTime < candidate.startTime)
+      ?? this.scheduledOccurrences[this.scheduledOccurrences.length - 1];
 
     if (!occurrence) {
       return this.resolveInitialPosition();
     }
 
-    if (currentTime >= occurrence.endTime && this.canContinueAfterPass(occurrence.blockPassIndex)) {
-      return this.getPositionInFuturePass(
-        currentTime - occurrence.endTime,
-        occurrence.blockPassIndex + 1,
-        occurrence.barOccurrenceIndex + 1
-      );
-    }
 
     const elapsedQuarter = Math.max(0, currentTime - occurrence.startTime) / occurrence.secondsPerQuarter;
     const slotIndex = getSlotIndexAtQuarter(
@@ -538,75 +564,6 @@ export class DrumPlayer {
     return this.selectedPlayback
       ? 1
       : this.options.repeatCount ?? DEFAULT_REPEAT_COUNT;
-  }
-
-  private getPositionInFuturePass(
-    elapsedAfterPreviousPass: number,
-    firstBlockPassIndex: number,
-    firstBarOccurrenceIndex: number
-  ): DrumPlaybackPosition {
-    let elapsedInPass = Math.max(0, elapsedAfterPreviousPass);
-    let blockPassIndex = firstBlockPassIndex;
-    let firstOccurrenceInPass = firstBarOccurrenceIndex;
-
-    while (true) {
-      if (this.options.countInCadence === "every-pass") {
-        const countInDuration = this.getInterPassCountInDurationSeconds(blockPassIndex);
-        if (elapsedInPass < countInDuration) {
-          return {
-            slotIndex: this.roadmap[0]?.startSlot ?? this.rangeStartSlot,
-            roadmapEntryIndex: 0,
-            blockPassIndex,
-            barOccurrenceIndex: firstOccurrenceInPass
-          };
-        }
-        elapsedInPass -= countInDuration;
-      }
-      const secondsPerQuarter = this.getSecondsPerQuarterForPass(blockPassIndex);
-      const entryDurations = this.roadmap.map((entry) =>
-        getRangeDurationSecondsAtSecondsPerQuarter(
-          this.block,
-          entry.startSlot,
-          entry.endSlot,
-          secondsPerQuarter
-        )
-      );
-      const passDuration = entryDurations.reduce((sum, duration) => sum + duration, 0);
-
-      if (passDuration <= 0) {
-        return {
-          slotIndex: this.roadmap[0]?.startSlot ?? this.rangeStartSlot,
-          roadmapEntryIndex: 0,
-          blockPassIndex,
-          barOccurrenceIndex: firstOccurrenceInPass
-        };
-      }
-
-      if (elapsedInPass < passDuration || !this.canContinueAfterPass(blockPassIndex)) {
-        for (let roadmapEntryIndex = 0; roadmapEntryIndex < this.roadmap.length; roadmapEntryIndex++) {
-          const entry = this.roadmap[roadmapEntryIndex];
-          const duration = entryDurations[roadmapEntryIndex] ?? 0;
-          if (elapsedInPass < duration || roadmapEntryIndex === this.roadmap.length - 1) {
-            return {
-              slotIndex: getSlotIndexAtQuarter(
-                this.block,
-                getSlotBoundaryQuarter(this.block, entry.startSlot) + Math.min(elapsedInPass, duration) / secondsPerQuarter,
-                entry.startSlot,
-                entry.endSlot
-              ),
-              roadmapEntryIndex,
-              blockPassIndex,
-              barOccurrenceIndex: firstOccurrenceInPass + roadmapEntryIndex
-            };
-          }
-          elapsedInPass -= duration;
-        }
-      }
-
-      elapsedInPass -= passDuration;
-      blockPassIndex += 1;
-      firstOccurrenceInPass += this.roadmap.length;
-    }
   }
 
   private getSecondsPerQuarterForPass(blockPassIndex: number): number {
@@ -701,14 +658,115 @@ export class DrumPlayer {
     return this.getCurrentPlaybackPosition().slotIndex;
   }
 
-  stop(): void {
-    this.stopped = true;
-    this.timers.forEach((timer) => window.clearTimeout(timer));
-    this.timers = [];
+  getAudioProgress(): AudioProgressSnapshot {
+    if (this.backend && !this.stopped) {
+      const now = this.backend.currentTime;
+      this.progress.activeAudioMs = 1000 * (this.retiredActiveSeconds + this.activeIntervals.reduce(
+        (total, interval) => total + Math.max(0, Math.min(now, interval.end) - interval.start), 0
+      ));
+    }
+    return {...this.progress};
+  }
 
+  private publishAudioProgress(): void {
+    const progress = this.getAudioProgress();
+    this.options.onAudioProgress?.(progress);
+  }
+
+  private enqueue(time: number, notify: () => void, visual = false): void {
+    this.notifications.push({time, notify, visual, order: this.notificationOrder++});
+  }
+
+  private getGraceLeadSeconds(): number {
+    if (this.options.metronomeMode === "metronome-only") return 0;
+    // Only the first performed slot can precede a pass's nominal boundary.
+    const hits = this.block.slots[this.roadmap[0]?.startSlot ?? 0]?.hits ?? [];
+    if (hits.some(hit => !this.options.mutedInstrumentIds?.has(hit.instrument.id) && hit.articulation === "drag")) return MAX_GRACE_LEAD_SECONDS;
+    return hits.some(hit => !this.options.mutedInstrumentIds?.has(hit.instrument.id) && hit.articulation === "flam") ? 0.035 : 0;
+  }
+
+  private contextInterruptionReason(): PlaybackInterruptionReason {
+    const state: string = this.audioContext.state;
+    return state === "closed" ? "closed" : state === "suspended" ? "suspended" : "interrupted";
+  }
+
+  /** The only event-delivery path, shared by timer wakes and lifecycle transitions. */
+  reconcile(continuePlayback = true): void {
+    if (this.stopped || !this.backend || this.reconciling) return;
+    this.reconciling = true;
+    try {
+      if (this.timer !== null) this.timerWindow.clearTimeout(this.timer);
+      this.timer = null;
+      const now = this.backend.currentTime;
+      this.publishAudioProgress();
+      this.notifications.sort((left, right) => left.time - right.time || left.order - right.order);
+      while (!this.stopped && this.notifications[0]?.time <= now) {
+        const notification = this.notifications.shift();
+        if (notification && (!notification.visual || this.options.ownerDocument?.visibilityState !== "hidden")) notification.notify();
+      }
+      if (this.stopped || !continuePlayback) return;
+      if (this.audioContext.state !== "running") {
+        this.interrupt(this.contextInterruptionReason());
+        return;
+      }
+      while (this.continuation && this.continuation.earliestTime - now <= PASS_PREPARATION_LEAD_SECONDS) {
+        const next = this.continuation;
+        if (next.earliestTime < this.backend.currentTime) {
+          this.interrupt("missed-deadline");
+          return;
+        }
+        const countIn = this.getInterPassCountInDurationSeconds(next.passIndex);
+        if (countIn > 0) {
+          this.scheduleCountIn(next.startTime, this.backend, this.roadmap[0].startSlot, this.getSecondsPerQuarterForPass(next.passIndex));
+          this.activeIntervals.push({start: next.startTime, end: next.startTime + countIn});
+        }
+        this.scheduleBlockPass(next.passIndex, 0, this.roadmap[0].startSlot, next.startTime + countIn, next.barOccurrenceIndex);
+      }
+      this.notifications.sort((left, right) => left.time - right.time || left.order - right.order);
+      while (this.activeIntervals[0]?.end <= now) {
+        const interval = this.activeIntervals.shift();
+        if (interval) this.retiredActiveSeconds += interval.end - interval.start;
+      }
+      // Retain one preceding occurrence to resolve a paused boundary or count-in gap.
+      while (this.scheduledOccurrences.length > 1 && this.scheduledOccurrences[1].endTime <= now) this.scheduledOccurrences.shift();
+      const nextTime = Math.min(this.notifications[0]?.time ?? Infinity,
+        this.continuation ? this.continuation.earliestTime - PASS_PREPARATION_LEAD_SECONDS : Infinity);
+      if (Number.isFinite(nextTime)) {
+        this.timer = this.timerWindow.setTimeout(() => {
+          this.timer = null;
+          this.reconcile();
+        }, Math.max(10, Math.ceil((nextTime - this.backend.currentTime) * 1000)));
+      }
+    } finally {
+      this.reconciling = false;
+    }
+  }
+
+  private interrupt(reason: PlaybackInterruptionReason): void {
+    const position = this.getCurrentPlaybackPosition();
+    this.stop();
+    this.options.onInterrupted?.(reason, position);
+  }
+
+  stop(): void {
+    if (this.stopped) return;
+    this.reconcile(false);
+    if (this.stopped) return;
+    this.stoppedPosition = this.getCurrentPlaybackPosition();
+    this.publishAudioProgress();
+    this.stopped = true;
+    if (this.timer !== null) this.timerWindow.clearTimeout(this.timer);
+    this.timer = null;
+    this.notifications = [];
+    this.continuation = null;
+    this.activeIntervals = [];
+    this.scheduledOccurrences = [];
+    this.audioContext.removeEventListener("statechange", this.stateChanged);
+    this.options.ownerDocument?.removeEventListener("visibilitychange", this.visibilityChanged);
     this.backend?.stop();
     this.backend = null;
   }
+
 }
 
 function clampSlotBoundary(slotIndex: number, slotCount: number): number {

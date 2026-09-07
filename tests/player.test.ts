@@ -26,6 +26,18 @@ import {
 import { buildPlaybackRoadmap, buildSelectedPlaybackRoadmap, DrumPlayer } from "../src/player";
 import { DrumHit } from "../src/types";
 
+function testAudioContext(): AudioContext {
+  return Object.assign(new EventTarget(), {state: "running"}) as unknown as AudioContext;
+}
+
+function advancePlayback(player: DrumPlayer, backend: FakePlaybackBackend, seconds: number): void {
+  const end = backend.currentTime + seconds;
+  while (backend.currentTime < end - 1e-9) {
+    backend.currentTime = Math.min(end, backend.currentTime + 0.01);
+    player.reconcile();
+  }
+}
+
 class FakePlaybackBackend implements DrumPlaybackBackend {
   currentTime = 10;
   started = false;
@@ -118,7 +130,7 @@ describe("DrumPlayer", () => {
 HH | x---
 BD | o---`);
     const backend = new FakePlaybackBackend();
-    const audioContext = {} as AudioContext;
+    const audioContext = testAudioContext();
     const factory = vi.fn((receivedAudioContext: AudioContext) => {
       expect(receivedAudioContext).toBe(audioContext);
       return backend;
@@ -146,7 +158,7 @@ BD | o---`);
 HH | 3(xxx)`);
     const backend = new FakePlaybackBackend();
     const player = new DrumPlayer(
-      {} as AudioContext,
+      testAudioContext(),
       block,
       vi.fn(),
       vi.fn(),
@@ -176,7 +188,7 @@ HH | 3(xxx)`);
 SD | z---`);
     const backend = new FakePlaybackBackend();
     const player = new DrumPlayer(
-      {} as AudioContext,
+      testAudioContext(),
       block,
       vi.fn(),
       vi.fn(),
@@ -208,7 +220,7 @@ SD | z---`);
 HH | x---`);
     const backend = new FakePlaybackBackend();
     const player = new DrumPlayer(
-      {} as AudioContext,
+      testAudioContext(),
       block,
       vi.fn(),
       vi.fn(),
@@ -231,7 +243,7 @@ HH | x---`);
     const onPassComplete = vi.fn();
     const onEnded = vi.fn();
     const player = new DrumPlayer(
-      {} as AudioContext,
+      testAudioContext(),
       block,
       onEnded,
       vi.fn(),
@@ -246,13 +258,14 @@ HH | x---`);
 
     await player.play();
     expect(notationSchedules(backend)[0].slotDuration).toBeCloseTo(60 / 90 / 4);
+    advancePlayback(player, backend, 0.09);
     expect(onPassStart).toHaveBeenCalledWith({ passIndex: 0, completedPasses: 0, tempoBpm: 90 });
 
-    scheduledTimers[scheduledTimers.length - 1]?.();
+    advancePlayback(player, backend, 60 / 90);
     expect(onPassComplete).toHaveBeenCalledWith({ passIndex: 0, completedPasses: 1, tempoBpm: 90 });
     expect(onPassStart).toHaveBeenLastCalledWith({ passIndex: 1, completedPasses: 1, tempoBpm: 90 });
 
-    scheduledTimers[scheduledTimers.length - 1]?.();
+    advancePlayback(player, backend, 60 / 90);
     expect(onPassComplete).toHaveBeenLastCalledWith({ passIndex: 1, completedPasses: 2, tempoBpm: 90 });
     expect(onEnded).toHaveBeenCalledTimes(1);
   });
@@ -261,7 +274,7 @@ HH | x---`);
     const block = parseDrumBlock("Tempo: 120\nHH | x---------------");
     const backend = new FakePlaybackBackend();
     const player = new DrumPlayer(
-      {} as AudioContext,
+      testAudioContext(),
       block,
       vi.fn(),
       vi.fn(),
@@ -276,7 +289,7 @@ HH | x---`);
 
     await player.play();
     expect(metronomeSchedules(backend)).toHaveLength(4);
-    scheduledTimers[scheduledTimers.length - 1]?.();
+    advancePlayback(player, backend, 8.08);
     expect(metronomeSchedules(backend)).toHaveLength(8);
     expect(metronomeSchedules(backend).every((entry) => entry.hits[0]?.velocity !== 0.45)).toBe(true);
     const secondPassStart = notationSchedules(backend)[16].time;
@@ -287,7 +300,7 @@ HH | x---`);
     const block = parseDrumBlock("Tempo: 120\nHH | x---");
     const backend = new FakePlaybackBackend();
     const player = new DrumPlayer(
-      {} as AudioContext,
+      testAudioContext(),
       block,
       vi.fn(),
       vi.fn(),
@@ -310,7 +323,7 @@ HH | x---`);
     );
 
     await player.play();
-    scheduledTimers[scheduledTimers.length - 1]?.();
+    advancePlayback(player, backend, 5.08);
 
     const secondCountIn = metronomeSchedules(backend).slice(4);
     expect(secondCountIn).toHaveLength(4);
@@ -327,7 +340,7 @@ HH | x---`);
     const onPassComplete = vi.fn();
     const onEnded = vi.fn();
     const player = new DrumPlayer(
-      {} as AudioContext,
+      testAudioContext(),
       block,
       onEnded,
       vi.fn(),
@@ -351,11 +364,12 @@ HH | x---`);
 
     await player.play();
 
+    advancePlayback(player, backend, 0.09);
     expect(factory).toHaveBeenCalledTimes(1);
     expect(onPassStart.mock.calls[0]?.[0]).toMatchObject({ tempoBpm: 60, passInStep: 1 });
     expect(notationSchedules(backend)[0].slotDuration).toBeCloseTo(0.25);
 
-    scheduledTimers[scheduledTimers.length - 1]?.();
+    advancePlayback(player, backend, 1);
 
     expect(onPassComplete.mock.calls[0]?.[0]).toMatchObject({ completedPasses: 1, tempoBpm: 70 });
     expect(onPassStart.mock.calls[1]?.[0]).toMatchObject({ tempoBpm: 70, atCeiling: true });
@@ -368,7 +382,7 @@ HH | x---`);
       roadmapEntryIndex: 0
     });
 
-    scheduledTimers[scheduledTimers.length - 1]?.();
+    advancePlayback(player, backend, 60 / 70);
 
     expect(onPassComplete.mock.calls[1]?.[0]).toMatchObject({ completedPasses: 2, completed: true });
     expect(onEnded).toHaveBeenCalledTimes(1);
@@ -379,7 +393,7 @@ HH | x---`);
 HH | x---`);
     const backend = new FakePlaybackBackend();
     const player = new DrumPlayer(
-      {} as AudioContext,
+      testAudioContext(),
       block,
       vi.fn(),
       vi.fn(),
@@ -411,7 +425,7 @@ HH | x---`);
     const backend = new FakePlaybackBackend();
     const onPassStart = vi.fn();
     const player = new DrumPlayer(
-      {} as AudioContext,
+      testAudioContext(),
       block,
       vi.fn(),
       vi.fn(),
@@ -435,6 +449,7 @@ HH | x---`);
 
     await player.play();
 
+    advancePlayback(player, backend, 0.09);
     expect(onPassStart).toHaveBeenCalledWith(expect.objectContaining({
       tempoBpm: 260,
       clickSubdivision: "3-per-beat"
@@ -447,7 +462,7 @@ HH | x---`);
 SD | z--o`);
     const backend = new FakePlaybackBackend();
     const player = new DrumPlayer(
-      {} as AudioContext,
+      testAudioContext(),
       block,
       vi.fn(),
       vi.fn(),
@@ -468,7 +483,7 @@ Grid: 16
 SD | d-d-d-d-d-d-d-d-`);
     const backend = new FakePlaybackBackend();
     const player = new DrumPlayer(
-      {} as AudioContext,
+      testAudioContext(),
       block,
       vi.fn(),
       vi.fn(),
@@ -696,7 +711,7 @@ Time: 3/4
 HH | x-----------`);
     const backend = new FakePlaybackBackend();
     const player = new DrumPlayer(
-      {} as AudioContext,
+      testAudioContext(),
       block,
       vi.fn(),
       vi.fn(),
@@ -720,7 +735,7 @@ Time: 3/4
 HH | x-----------`);
     const backend = new FakePlaybackBackend();
     const player = new DrumPlayer(
-      {} as AudioContext,
+      testAudioContext(),
       block,
       vi.fn(),
       vi.fn(),
@@ -741,7 +756,7 @@ HH | x---------------`);
     const onSlotChange = vi.fn();
     const onBarChange = vi.fn();
     const player = new DrumPlayer(
-      {} as AudioContext,
+      testAudioContext(),
       block,
       vi.fn(),
       onSlotChange,
@@ -770,7 +785,7 @@ HH | x---------------`);
 HH | x---------------`);
     const backend = new FakePlaybackBackend();
     const player = new DrumPlayer(
-      {} as AudioContext,
+      testAudioContext(),
       block,
       vi.fn(),
       vi.fn(),
@@ -791,7 +806,7 @@ HH | x---------------`);
 HH | x---------------`);
     const backend = new FakePlaybackBackend();
     const player = new DrumPlayer(
-      {} as AudioContext,
+      testAudioContext(),
       block,
       vi.fn(),
       vi.fn(),
@@ -802,8 +817,8 @@ HH | x---------------`);
     await player.play();
     expect(metronomeSchedules(backend)).toHaveLength(8);
 
-    const firstPassTimers = [...scheduledTimers];
-    firstPassTimers[firstPassTimers.length - 1]();
+    advancePlayback(player, backend, 7.3);
+
     expect(metronomeSchedules(backend)).toHaveLength(8);
   });
 
@@ -812,7 +827,7 @@ HH | x---------------`);
 HH | x---------------`);
     const backend = new FakePlaybackBackend();
     const player = new DrumPlayer(
-      {} as AudioContext,
+      testAudioContext(),
       block,
       vi.fn(),
       vi.fn(),
@@ -830,7 +845,7 @@ HH | x---------------`);
 HH | x---------------`);
     const backend = new FakePlaybackBackend();
     const player = new DrumPlayer(
-      {} as AudioContext,
+      testAudioContext(),
       block,
       vi.fn(),
       vi.fn(),
@@ -851,7 +866,7 @@ HH | x---------------`);
     const onEnded = vi.fn();
     const onSlotChange = vi.fn();
     const player = new DrumPlayer(
-      {} as AudioContext,
+      testAudioContext(),
       block,
       onEnded,
       onSlotChange,
@@ -873,7 +888,7 @@ HH | x---------------`);
 BD | o---------------`);
     const backend = new FakePlaybackBackend();
     const player = new DrumPlayer(
-      {} as AudioContext,
+      testAudioContext(),
       block,
       vi.fn(),
       vi.fn(),
@@ -899,7 +914,7 @@ BD | o---------------`);
     const block = parseDrumBlock("Time: 4/4\nHH | x---------------");
     const backend = new FakePlaybackBackend();
     const player = new DrumPlayer(
-      {} as AudioContext,
+      testAudioContext(),
       block,
       vi.fn(),
       vi.fn(),
@@ -924,7 +939,7 @@ BD | o---------------`);
     const backend = new FakePlaybackBackend();
     const onBarChange = vi.fn();
     const player = new DrumPlayer(
-      {} as AudioContext,
+      testAudioContext(),
       block,
       vi.fn(),
       vi.fn(),
@@ -938,10 +953,7 @@ BD | o---------------`);
     );
 
     await player.play();
-    const firstPassTimers = [...scheduledTimers];
-    firstPassTimers.slice(0, -1).forEach((timer) => timer());
-    firstPassTimers[firstPassTimers.length - 1]();
-    scheduledTimers.slice(firstPassTimers.length).forEach((timer) => timer());
+    advancePlayback(player, backend, 9.7);
 
     expect(metronomeSchedules(backend)).toHaveLength(8);
     expect(onBarChange.mock.calls.map(([barIndex, state]) => [
@@ -961,7 +973,7 @@ BD | o---------------`);
     const backend = new FakePlaybackBackend();
     const onBarChange = vi.fn();
     const player = new DrumPlayer(
-      {} as AudioContext,
+      testAudioContext(),
       block,
       vi.fn(),
       vi.fn(),
@@ -970,7 +982,7 @@ BD | o---------------`);
     );
 
     await player.play();
-    scheduledTimers[0]();
+    advancePlayback(player, backend, 0.09);
 
     expect(onBarChange).toHaveBeenCalledWith(0, expect.objectContaining({
       barOccurrenceIndex: 0,
@@ -986,7 +998,7 @@ BD | o---------------`);
     const backend = new FakePlaybackBackend();
     const onSlotChange = vi.fn();
     const player = new DrumPlayer(
-      {} as AudioContext,
+      testAudioContext(),
       block,
       vi.fn(),
       onSlotChange,
@@ -1001,7 +1013,7 @@ BD | o---------------`);
 
     expect(notationSchedules(backend).every((entry) => entry.hits.length === 0)).toBe(true);
     expect(metronomeSchedules(backend)).toHaveLength(4);
-    [...scheduledTimers].forEach((timer) => timer());
+    advancePlayback(player, backend, 0.3);
     expect(onSlotChange).toHaveBeenCalledWith(1);
   });
 
@@ -1009,7 +1021,7 @@ BD | o---------------`);
     const block = parseDrumBlock("HH | ----------------");
     const backend = new FakePlaybackBackend();
     const player = new DrumPlayer(
-      {} as AudioContext,
+      testAudioContext(),
       block,
       vi.fn(),
       vi.fn(),
@@ -1031,7 +1043,7 @@ BD | o---------------`);
     const block = parseDrumBlock("HH | xxxxxxxxxxxxxxxx");
     const backend = new FakePlaybackBackend();
     const player = new DrumPlayer(
-      {} as AudioContext,
+      testAudioContext(),
       block,
       vi.fn(),
       vi.fn(),
@@ -1053,7 +1065,7 @@ Time: 4/4
 HH | 3@2(xxx)`);
     const backend = new FakePlaybackBackend();
     const player = new DrumPlayer(
-      {} as AudioContext,
+      testAudioContext(),
       block,
       vi.fn(),
       vi.fn(),
@@ -1080,7 +1092,7 @@ Time: 4/4
 HH | 3@2(xxx)`);
     const backend = new FakePlaybackBackend();
     const player = new DrumPlayer(
-      {} as AudioContext,
+      testAudioContext(),
       block,
       vi.fn(),
       vi.fn(),
@@ -1106,7 +1118,7 @@ BD | o---
 BD2 | o---`);
     const backend = new FakePlaybackBackend();
     const player = new DrumPlayer(
-      {} as AudioContext,
+      testAudioContext(),
       block,
       vi.fn(),
       vi.fn(),
@@ -1135,7 +1147,7 @@ BD | o---`);
     const backend = new FakePlaybackBackend();
     const onSlotChange = vi.fn();
     const player = new DrumPlayer(
-      {} as AudioContext,
+      testAudioContext(),
       block,
       vi.fn(),
       onSlotChange,
@@ -1146,7 +1158,7 @@ BD | o---`);
     await player.play();
 
     expect(backend.scheduled[0].hits).toEqual([]);
-    scheduledTimers[1]();
+    advancePlayback(player, backend, 0.09);
     expect(onSlotChange).toHaveBeenCalledWith(0);
   });
 
@@ -1154,9 +1166,10 @@ BD | o---`);
     const block = parseDrumBlock(`Tempo: 100
 HH | ---- | ---- | ----`);
     const backend = new FakePlaybackBackend();
-    const onBarChange = vi.fn();
+    const barTimes: number[] = [];
+    const onBarChange = vi.fn(() => barTimes.push(backend.currentTime));
     const player = new DrumPlayer(
-      {} as AudioContext,
+      testAudioContext(),
       block,
       vi.fn(),
       vi.fn(),
@@ -1166,12 +1179,10 @@ HH | ---- | ---- | ----`);
 
     await player.play();
 
-    scheduledTimers.forEach((timer) => timer());
+    advancePlayback(player, backend, 1.9);
 
     expect(onBarChange.mock.calls.map(([barIndex]) => barIndex)).toEqual([0, 1, 2]);
-    expect(scheduledTimerDelays.some((delay) => Math.abs(delay - 80) < 0.01)).toBe(true);
-    expect(scheduledTimerDelays.some((delay) => Math.abs(delay - 680) < 0.01)).toBe(true);
-    expect(scheduledTimerDelays.some((delay) => Math.abs(delay - 1280) < 0.01)).toBe(true);
+    [10.08, 10.68, 11.28].forEach((expected, index) => expect(Math.abs(barTimes[index] - expected)).toBeLessThan(0.011));
   });
 
   it("reports the active bar for a mid-bar resume", async () => {
@@ -1180,7 +1191,7 @@ HH | xxxx | xxxx | xxxx`);
     const backend = new FakePlaybackBackend();
     const onBarChange = vi.fn();
     const player = new DrumPlayer(
-      {} as AudioContext,
+      testAudioContext(),
       block,
       vi.fn(),
       vi.fn(),
@@ -1190,7 +1201,7 @@ HH | xxxx | xxxx | xxxx`);
 
     await player.play();
 
-    scheduledTimers.forEach((timer) => timer());
+    advancePlayback(player, backend, 1);
 
     expect(onBarChange.mock.calls.map(([barIndex]) => barIndex)).toEqual([1, 2]);
   });
@@ -1201,7 +1212,7 @@ HH | xxxx | xxxx`);
     const backend = new FakePlaybackBackend();
     const onBarChange = vi.fn();
     const player = new DrumPlayer(
-      {} as AudioContext,
+      testAudioContext(),
       block,
       vi.fn(),
       vi.fn(),
@@ -1211,12 +1222,7 @@ HH | xxxx | xxxx`);
 
     await player.play();
 
-    const firstPassTimers = [...scheduledTimers];
-    const firstPassEndTimer = firstPassTimers[firstPassTimers.length - 1];
-    firstPassTimers.slice(0, -1).forEach((timer) => timer());
-    firstPassEndTimer();
-    const secondPassTimers = scheduledTimers.slice(firstPassTimers.length);
-    secondPassTimers.slice(0, -1).forEach((timer) => timer());
+    advancePlayback(player, backend, 1.5);
 
     expect(onBarChange.mock.calls.map(([barIndex]) => barIndex)).toEqual([1, 0, 1]);
   });
@@ -1227,7 +1233,7 @@ HH | xxxx | xxxx`);
     const backend = new FakePlaybackBackend();
     const onBarChange = vi.fn();
     const player = new DrumPlayer(
-      {} as AudioContext,
+      testAudioContext(),
       block,
       vi.fn(),
       vi.fn(),
@@ -1242,12 +1248,7 @@ HH | xxxx | xxxx`);
 
     await player.play();
 
-    const firstPassTimers = [...scheduledTimers];
-    const firstPassEndTimer = firstPassTimers[firstPassTimers.length - 1];
-    firstPassTimers.slice(0, -1).forEach((timer) => timer());
-    firstPassEndTimer();
-    const secondPassTimers = scheduledTimers.slice(firstPassTimers.length);
-    secondPassTimers.slice(0, -1).forEach((timer) => timer());
+    advancePlayback(player, backend, 1.5);
 
     expect(onBarChange.mock.calls.map(([barIndex]) => barIndex)).toEqual([1, 0, 1]);
     expect(metronomeSchedules(backend).length).toBeGreaterThan(0);
@@ -1257,7 +1258,7 @@ HH | xxxx | xxxx`);
     const block = parseDrumBlock("HH | ---- | ----");
     const backend = new FakePlaybackBackend();
     const player = new DrumPlayer(
-      {} as AudioContext,
+      testAudioContext(),
       block,
       vi.fn(),
       vi.fn(),
@@ -1274,8 +1275,7 @@ HH | xxxx | xxxx`);
     await player.play();
 
     expect(backend.scheduled.every((entry) => entry.hits.length === 0)).toBe(true);
-    const firstPassEndTimer = scheduledTimers[scheduledTimers.length - 1];
-    firstPassEndTimer();
+    advancePlayback(player, backend, 0.54);
 
     expect(metronomeSchedules(backend)).toHaveLength(1);
     expect(metronomeSchedules(backend)[0].hits[0].velocity).toBe(1);
@@ -1286,7 +1286,7 @@ HH | xxxx | xxxx`);
 HH | xxxx`);
     const backend = new FakePlaybackBackend();
     const player = new DrumPlayer(
-      {} as AudioContext,
+      testAudioContext(),
       block,
       vi.fn(),
       vi.fn(),
@@ -1326,7 +1326,7 @@ HH | xxxx`);
 HH | xxxx`);
     const backend = new FakePlaybackBackend();
     const player = new DrumPlayer(
-      {} as AudioContext,
+      testAudioContext(),
       block,
       vi.fn(),
       vi.fn(),
@@ -1392,7 +1392,7 @@ describe("section-repeat playback roadmap", () => {
     const backend = new FakePlaybackBackend();
     const onBarChange = vi.fn();
     const player = new DrumPlayer(
-      {} as AudioContext,
+      testAudioContext(),
       block,
       vi.fn(),
       vi.fn(),
@@ -1401,7 +1401,7 @@ describe("section-repeat playback roadmap", () => {
     );
 
     await player.play();
-    sectionScheduledTimers.forEach((timer) => timer());
+    advancePlayback(player, backend, 20);
 
     expect(onBarChange.mock.calls.map(([barIndex]) => barIndex)).toEqual([2, 3, 1, 2, 3, 4]);
   });
@@ -1411,7 +1411,7 @@ describe("section-repeat playback roadmap", () => {
     const backend = new FakePlaybackBackend();
     const onBarChange = vi.fn();
     const player = new DrumPlayer(
-      {} as AudioContext,
+      testAudioContext(),
       block,
       vi.fn(),
       vi.fn(),
@@ -1420,7 +1420,7 @@ describe("section-repeat playback roadmap", () => {
     );
 
     await player.play();
-    sectionScheduledTimers.forEach((timer) => timer());
+    advancePlayback(player, backend, 20);
 
     expect(onBarChange.mock.calls.map(([barIndex]) => barIndex)).toEqual([2]);
   });
@@ -1432,7 +1432,7 @@ HH | xxxx ]`);
     const backend = new FakePlaybackBackend();
     const onBarChange = vi.fn();
     const player = new DrumPlayer(
-      {} as AudioContext,
+      testAudioContext(),
       block,
       vi.fn(),
       vi.fn(),
@@ -1441,7 +1441,7 @@ HH | xxxx ]`);
     );
 
     await player.play();
-    sectionScheduledTimers.forEach((timer) => timer());
+    advancePlayback(player, backend, 20);
 
     expect(onBarChange.mock.calls.map(([barIndex]) => barIndex)).toEqual([
       0, 1, 2, 3, 4,
@@ -1453,7 +1453,7 @@ HH | xxxx ]`);
     const block = parseDrumBlock("Tempo: 100\nHH [ xxxx | xxxx ]");
     const backend = new FakePlaybackBackend();
     const player = new DrumPlayer(
-      {} as AudioContext,
+      testAudioContext(),
       block,
       vi.fn(),
       vi.fn(),
@@ -1477,7 +1477,7 @@ HH | xxxx ]`);
     const secondTraversalBackend = new FakePlaybackBackend();
     const secondTraversalBars = vi.fn();
     const secondTraversalPlayer = new DrumPlayer(
-      {} as AudioContext,
+      testAudioContext(),
       block,
       vi.fn(),
       vi.fn(),
@@ -1493,15 +1493,14 @@ HH | xxxx ]`);
     );
 
     await secondTraversalPlayer.play();
-    const secondTraversalTimers = [...sectionScheduledTimers];
-    secondTraversalTimers.forEach((timer) => timer());
+    advancePlayback(secondTraversalPlayer, secondTraversalBackend, 20);
     expect(secondTraversalBars.mock.calls.map(([barIndex]) => barIndex)).toEqual([0, 1]);
 
     sectionScheduledTimers.length = 0;
     const fallbackBackend = new FakePlaybackBackend();
     const fallbackBars = vi.fn();
     const fallbackPlayer = new DrumPlayer(
-      {} as AudioContext,
+      testAudioContext(),
       block,
       vi.fn(),
       vi.fn(),
@@ -1517,7 +1516,7 @@ HH | xxxx ]`);
     );
 
     await fallbackPlayer.play();
-    sectionScheduledTimers.forEach((timer) => timer());
+    advancePlayback(fallbackPlayer, fallbackBackend, 20);
     expect(fallbackBars.mock.calls.map(([barIndex]) => barIndex)).toEqual([0, 1, 0, 1]);
   });
 
@@ -1526,7 +1525,7 @@ HH | xxxx ]`);
     const backend = new FakePlaybackBackend();
     const onBarChange = vi.fn();
     const player = new DrumPlayer(
-      {} as AudioContext,
+      testAudioContext(),
       block,
       vi.fn(),
       vi.fn(),
@@ -1540,8 +1539,7 @@ HH | xxxx ]`);
     );
 
     await player.play();
-    const firstPassTimers = [...sectionScheduledTimers];
-    firstPassTimers.slice(0, -1).forEach((timer) => timer());
+    advancePlayback(player, backend, 0.4);
 
     expect(onBarChange.mock.calls.map(([barIndex]) => barIndex)).toEqual([1]);
   });
@@ -1593,7 +1591,7 @@ HH [ xxxx | x--- ] --x-`);
     const onBarChange = vi.fn();
     const onEnded = vi.fn();
     const player = new DrumPlayer(
-      {} as AudioContext,
+      testAudioContext(),
       block,
       onEnded,
       vi.fn(),
@@ -1602,7 +1600,7 @@ HH [ xxxx | x--- ] --x-`);
     );
 
     await player.play();
-    selectionTimers.slice().forEach((timer) => timer());
+    advancePlayback(player, backend, 20);
 
     expect(onBarChange.mock.calls.map(([barIndex]) => barIndex)).toEqual([0, 2]);
     expect(onEnded).toHaveBeenCalledTimes(1);
@@ -1612,7 +1610,7 @@ HH [ xxxx | x--- ] --x-`);
     const block = parseDrumBlock("HH | xxxx | x--- | --x-");
     const backend = new FakePlaybackBackend();
     const player = new DrumPlayer(
-      {} as AudioContext,
+      testAudioContext(),
       block,
       vi.fn(),
       vi.fn(),
@@ -1655,7 +1653,7 @@ Time: 6/8
 HH | x-----------`);
     const backend = new FakePlaybackBackend();
     const player = new DrumPlayer(
-      {} as AudioContext,
+      testAudioContext(),
       block,
       vi.fn(),
       vi.fn(),

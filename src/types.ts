@@ -1,3 +1,5 @@
+import type { AudioProgressSnapshot, PlaybackInterruptionReason } from "./audio-progress";
+
 export interface DrumBlockHeader {
   tempo: number;
   timeSignature: string;
@@ -134,6 +136,9 @@ export interface DrumBarClipboardRow {
 }
 
 export interface PlaybackOptions {
+  ownerDocument?: Document;
+  onAudioProgress?: (progress: AudioProgressSnapshot) => void;
+  onInterrupted?: (reason: PlaybackInterruptionReason, position: DrumPlaybackPosition) => void;
   startSlot?: number;
   endSlot?: number;
   initialSlot?: number;
@@ -214,7 +219,7 @@ export interface RepetitionGoalProgress {
 export interface PracticeRunMetrics {
   startedAtEpochMs: number;
   elapsedActiveMs: number;
-  activeSinceClockMs: number | null;
+  activeAudioAnchor: AudioProgressSnapshot | null;
   startBpm: number;
   endBpm: number;
   performedPasses: number;

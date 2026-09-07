@@ -206,7 +206,7 @@ describe("DrumTransportSessionStore", () => {
     const metrics = {
       startedAtEpochMs: 100,
       elapsedActiveMs: 500,
-      activeSinceClockMs: null,
+      activeAudioAnchor: null,
       startBpm: 90,
       endBpm: 95,
       performedPasses: 3,

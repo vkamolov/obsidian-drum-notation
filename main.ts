@@ -103,6 +103,7 @@ import {
   MIN_REPETITION_GOAL_PASSES,
   createDefaultRepetitionGoalConfig,
   createPracticeClock,
+  checkpointPracticeRunMetrics,
   createPracticeRunMetrics,
   createPracticeRunSummary,
   createTapTempoState,
@@ -177,6 +178,7 @@ import {
   PracticeTarget,
   PracticeSelection,
   PracticeRunMetrics,
+  PlaybackOptions,
   PracticeRunSummary,
   RepetitionGoalConfig,
   RepetitionGoalProgress,
@@ -322,6 +324,7 @@ export default class DrumNotationPlugin extends Plugin {
     authoringDefaults: { ...DEFAULT_DRUM_AUTHORING_DEFAULTS }
   };
   private activePlayer: DrumPlayer | null = null;
+  private playbackStartGeneration = 0;
   private activePlaybackReset: (() => void) | null = null;
   private activePlaybackOwner: symbol | null = null;
   private activePracticeSessionKey: string | null = null;
@@ -337,7 +340,7 @@ export default class DrumNotationPlugin extends Plugin {
   private readonly screenWakeLock = new ScreenWakeLockController(() => {
     new Notice("Could not keep the screen awake. Playback will continue normally.");
   });
-  private readonly practiceClock = createPracticeClock();
+  private readonly practiceClock = createPracticeClock(() => this.activePlayer?.getAudioProgress() ?? null);
   private lastInteractedControllerOwner: symbol | null = null;
 
   async onload(): Promise<void> {
@@ -647,6 +650,7 @@ export default class DrumNotationPlugin extends Plugin {
     const renderOwner = Symbol("drum-notation-render");
     const playbackBackendFactory = (audioContext: AudioContext) => this.createPlaybackBackend(audioContext);
     let publishingPracticeSession = false;
+    let renderDisposed = false;
 
     const makePracticeSession = (): DrumTransportSession => ({
       body: sourceBody,
@@ -674,7 +678,16 @@ export default class DrumNotationPlugin extends Plugin {
       }
 
       publishingPracticeSession = true;
-      this.transportSessions.set(practiceSessionKey, makePracticeSession());
+      const session = makePracticeSession();
+      if (this.activePlayer && this.activePracticeSessionKey === practiceSessionKey && this.activePlaybackOwner !== renderOwner) {
+        const owned = this.transportSessions.get(practiceSessionKey, sourceBody);
+        if (owned) {
+          session.tempoRampRunMetrics = owned.tempoRampRunMetrics;
+          session.tempoRamp = {...session.tempoRamp, progress: {...owned.tempoRamp.progress}};
+          session.repetitionGoal = {...session.repetitionGoal, progress: {...owned.repetitionGoal.progress}, runMetrics: owned.repetitionGoal.runMetrics};
+        }
+      }
+      this.transportSessions.set(practiceSessionKey, session);
       publishingPracticeSession = false;
     };
 
@@ -891,6 +904,7 @@ export default class DrumNotationPlugin extends Plugin {
     };
 
     const settleTrackedRun = (status: PracticeRunMetrics["status"] = "paused"): void => {
+      if (this.activePlayer && this.activePracticeSessionKey === practiceSessionKey && this.activePlaybackOwner !== renderOwner) return;
       if (tempoRamp.armed && tempoRampRunMetrics?.status === "running") {
         tempoRampRunMetrics = settlePracticeRunMetrics(tempoRampRunMetrics, this.practiceClock, status);
       }
@@ -1664,6 +1678,34 @@ export default class DrumNotationPlugin extends Plugin {
       publishPracticeSession();
     };
 
+    const getLifecyclePlaybackOptions = (): Pick<PlaybackOptions, "ownerDocument" | "onAudioProgress" | "onInterrupted"> => {
+      let started = false;
+      return {
+        ownerDocument: root.ownerDocument,
+        onAudioProgress: (progress) => {
+          if (this.activePlaybackOwner !== renderOwner || this.activePlayer?.getAudioProgress().generation !== progress.generation) return;
+          const clock = {...this.practiceClock, audioProgress: () => progress};
+          const update = (metrics: PracticeRunMetrics) => started
+            ? checkpointPracticeRunMetrics(metrics, progress)
+            : resumePracticeRunMetrics(metrics, getCurrentEffectiveTempo(), clock);
+          if (tempoRamp.armed && tempoRampRunMetrics) tempoRampRunMetrics = update(tempoRampRunMetrics);
+          if (repetitionGoal.armed && repetitionGoal.runMetrics) repetitionGoal = {...repetitionGoal, runMetrics: update(repetitionGoal.runMetrics)};
+          started = true;
+          publishPracticeSession();
+        },
+        onInterrupted: (reason, position) => {
+          const mode = transportMode;
+          stopLocalPlayback();
+          pendingPlaybackResume = {mode, position};
+          new Notice(reason === "missed-deadline"
+            ? "Playback paused because scheduling fell behind. Press Play to resume."
+            : "Audio was interrupted. Press Play to resume your practice.");
+        }
+      };
+    };
+
+    let pendingPlaybackResume: {mode: DrumTransportMode; position: DrumPlaybackPosition} | null = null;
+
     const getTempoRampPlaybackOptions = () => {
       if (!tempoRamp.armed || !tempoRamp.config) {
         return {};
@@ -1699,6 +1741,7 @@ export default class DrumNotationPlugin extends Plugin {
     };
 
     const stopLocalPlayback = () => {
+      pendingPlaybackResume = null;
       settleTrackedRun();
       this.stopActivePlayer(renderOwner);
       clearTransportHighlights();
@@ -1712,7 +1755,10 @@ export default class DrumNotationPlugin extends Plugin {
     };
 
     const prepareTransportStart = async (recoverBeforeStart: boolean): Promise<boolean> => {
+      if (renderDisposed) return false;
+      pendingPlaybackResume = null;
       this.stopActivePlayer();
+      const generation = this.playbackStartGeneration;
       clearTransportHighlights();
       visuals.clearCursor();
       clearRepeatProgress();
@@ -1733,7 +1779,7 @@ export default class DrumNotationPlugin extends Plugin {
         new Notice(AUDIO_RECOVERY_NOTICE);
       }
 
-      return recovered;
+      return recovered && generation === this.playbackStartGeneration && !renderDisposed;
     };
 
     const startPlayback = async (
@@ -1791,6 +1837,7 @@ export default class DrumNotationPlugin extends Plugin {
           clickSubdivision,
           gapClickMode,
           onBarChange: handleBarChange,
+          ...getLifecyclePlaybackOptions(),
           ...getTempoRampPlaybackOptions()
         },
         playbackBackendFactory
@@ -1876,6 +1923,7 @@ export default class DrumNotationPlugin extends Plugin {
           clickSubdivision,
           gapClickMode,
           onBarChange: handleBarChange,
+          ...getLifecyclePlaybackOptions(),
           ...getTempoRampPlaybackOptions()
         },
         playbackBackendFactory
@@ -1950,6 +1998,7 @@ export default class DrumNotationPlugin extends Plugin {
           clickSubdivision,
           gapClickMode,
           onBarChange: handleBarChange,
+          ...getLifecyclePlaybackOptions(),
           ...getTempoRampPlaybackOptions()
         },
         playbackBackendFactory
@@ -2032,6 +2081,7 @@ export default class DrumNotationPlugin extends Plugin {
           clickSubdivision,
           gapClickMode,
           onBarChange: handleBarChange,
+          ...getLifecyclePlaybackOptions(),
           ...getTempoRampPlaybackOptions()
         },
         playbackBackendFactory
@@ -2195,6 +2245,7 @@ export default class DrumNotationPlugin extends Plugin {
           clickSubdivision,
           gapClickMode,
           onBarChange: handleBarChange,
+          ...getLifecyclePlaybackOptions(),
           onPassComplete: (state) => {
             const completedPasses = Math.min(
               config.totalPasses,
@@ -2230,6 +2281,20 @@ export default class DrumNotationPlugin extends Plugin {
       void this.screenWakeLock.start(createScreenWakeLockTarget(root.ownerDocument));
       void this.activePlayer.play();
       return true;
+    };
+
+    const resumeInterruptedPlayback = async (): Promise<void> => {
+      const pending = pendingPlaybackResume;
+      if (!pending) return;
+      pendingPlaybackResume = null;
+      const position = tempoRamp.armed ? {...pending.position, blockPassIndex: 0} : pending.position;
+      let started: boolean;
+      if (repetitionGoal.armed) started = await startRepetitionGoal(true, true, position);
+      else if (pending.mode === "loop-bar") started = await startLoopBar(barIndexForSlot(block, position.slotIndex), position.slotIndex, true, true, position);
+      else if (pending.mode === "loop-selection") started = await startLoopSelection(position.slotIndex, true, true, position);
+      else if (pending.mode === "loop-all") started = await startLoopAll(position.slotIndex, true, true, position);
+      else started = await startPlayback(position.slotIndex, true, true, position, pending.mode === "play-selection");
+      if (!started && !renderDisposed) pendingPlaybackResume = pending;
     };
 
     const openRepetitionGoalSetup = async () => {
@@ -3180,6 +3245,8 @@ export default class DrumNotationPlugin extends Plugin {
         this.lastInteractedControllerOwner = renderOwner;
         if (this.activePlaybackOwner === renderOwner && this.activePlayer) {
           stopLocalPlayback();
+        } else if (pendingPlaybackResume) {
+          void resumeInterruptedPlayback();
         } else {
           void (repetitionGoal.armed
             ? startRepetitionGoal(true, true)
@@ -3353,6 +3420,7 @@ export default class DrumNotationPlugin extends Plugin {
     observer.observe(notationViewport);
 
     child.register(() => {
+      renderDisposed = true;
       visibilityObserver?.disconnect();
       observer.disconnect();
       if (resizeTimer !== null) {
@@ -3385,6 +3453,7 @@ export default class DrumNotationPlugin extends Plugin {
     });
 
     playButton.addEventListener("click", () => {
+      if (pendingPlaybackResume) { void resumeInterruptedPlayback(); return; }
       void (repetitionGoal.armed
         ? startRepetitionGoal(true, true)
         : tempoRamp.armed
@@ -3657,10 +3726,11 @@ export default class DrumNotationPlugin extends Plugin {
   }
 
   private stopActivePlayer(owner?: symbol): void {
-    if (owner && this.activePlaybackOwner !== owner) {
+    if (owner && this.activePlaybackOwner !== null && this.activePlaybackOwner !== owner) {
       return;
     }
 
+    this.playbackStartGeneration += 1;
     const reset = this.activePlaybackReset;
 
     this.activePlayer?.stop();

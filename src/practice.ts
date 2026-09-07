@@ -379,14 +379,16 @@ function normalizePracticeRunSummary(summary: PracticeRunSummary | null | undefi
 }
 
 function clonePracticeRunMetrics(metrics: PracticeRunMetrics | null): PracticeRunMetrics | null {
-  return metrics ? { ...metrics } : null;
+  return metrics ? { ...metrics, activeAudioAnchor: metrics.activeAudioAnchor ? {...metrics.activeAudioAnchor} : null } : null;
 }
 
 function practiceRunMetricsEqual(left: PracticeRunMetrics | null, right: PracticeRunMetrics | null): boolean {
   if (left === null || right === null) return left === right;
   return left.startedAtEpochMs === right.startedAtEpochMs &&
     left.elapsedActiveMs === right.elapsedActiveMs &&
-    left.activeSinceClockMs === right.activeSinceClockMs &&
+    left.activeAudioAnchor?.contextId === right.activeAudioAnchor?.contextId &&
+    left.activeAudioAnchor?.generation === right.activeAudioAnchor?.generation &&
+    left.activeAudioAnchor?.activeAudioMs === right.activeAudioAnchor?.activeAudioMs &&
     left.startBpm === right.startBpm &&
     left.endBpm === right.endBpm &&
     left.performedPasses === right.performedPasses &&

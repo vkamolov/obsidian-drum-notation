@@ -1,3 +1,4 @@
+import { normalizeAudioProgress, sameAudioProgressOwner, type AudioProgressSnapshot } from "./audio-progress";
 import {
   CountInCadence,
   PracticeRunMetrics,
@@ -16,6 +17,7 @@ export const TAP_TEMPO_RESET_MS = 2500;
 export const TAP_TEMPO_MAX_INTERVALS = 5;
 
 export interface PracticeClock {
+  audioProgress?(): AudioProgressSnapshot | null;
   wallNowMs(): number;
   monotonicNowMs(): number;
 }
@@ -45,12 +47,13 @@ export type PracticeLogPathResult =
   | { ok: true; path: string }
   | { ok: false; message: string };
 
-export function createPracticeClock(): PracticeClock {
+export function createPracticeClock(audioProgress?: () => AudioProgressSnapshot | null): PracticeClock {
   const hasMonotonicClock = typeof performance !== "undefined" &&
     Number.isFinite(performance.timeOrigin) &&
     typeof performance.now === "function";
 
   return {
+    audioProgress,
     wallNowMs: () => Date.now(),
     monotonicNowMs: () => hasMonotonicClock
       ? performance.timeOrigin + performance.now()
@@ -184,7 +187,7 @@ export function createPracticeRunMetrics(
   return {
     startedAtEpochMs: clock.wallNowMs(),
     elapsedActiveMs: 0,
-    activeSinceClockMs: clock.monotonicNowMs(),
+    activeAudioAnchor: normalizeAudioProgress(clock.audioProgress?.()),
     startBpm: normalizedBpm,
     endBpm: normalizedBpm,
     performedPasses: 0,
@@ -201,7 +204,7 @@ export function resumePracticeRunMetrics(
   return {
     ...settled,
     endBpm: normalizeExactTempoBpm(bpm) ?? settled.endBpm,
-    activeSinceClockMs: clock.monotonicNowMs(),
+    activeAudioAnchor: normalizeAudioProgress(clock.audioProgress?.()),
     status: "running"
   };
 }
@@ -211,14 +214,24 @@ export function settlePracticeRunMetrics(
   clock: PracticeClock,
   status: PracticeRunMetrics["status"] = "paused"
 ): PracticeRunMetrics {
-  const elapsed = metrics.activeSinceClockMs === null
-    ? 0
-    : Math.max(0, clock.monotonicNowMs() - metrics.activeSinceClockMs);
+  const settled = checkpointPracticeRunMetrics(metrics, clock.audioProgress?.() ?? null);
+  return {...settled, activeAudioAnchor: null, status};
+}
+
+/** Only progress from the same live context and playback generation can extend an interval. */
+export function checkpointPracticeRunMetrics(
+  metrics: PracticeRunMetrics,
+  progress: AudioProgressSnapshot | null
+): PracticeRunMetrics {
+  if (metrics.status !== "running") return metrics;
+  const anchor = metrics.activeAudioAnchor;
+  if (!progress || (anchor && !sameAudioProgressOwner(anchor, progress))) {
+    return {...metrics, activeAudioAnchor: null, status: "paused"};
+  }
   return {
     ...metrics,
-    elapsedActiveMs: metrics.elapsedActiveMs + elapsed,
-    activeSinceClockMs: null,
-    status
+    elapsedActiveMs: metrics.elapsedActiveMs + (anchor ? Math.max(0, progress.activeAudioMs - anchor.activeAudioMs) : 0),
+    activeAudioAnchor: {...progress}
   };
 }
 
@@ -239,9 +252,7 @@ export function normalizePracticeRunMetrics(value: PracticeRunMetrics | null | u
   return {
     startedAtEpochMs: Math.max(0, finiteNumber(value.startedAtEpochMs)),
     elapsedActiveMs: Math.max(0, finiteNumber(value.elapsedActiveMs)),
-    activeSinceClockMs: value.activeSinceClockMs === null
-      ? null
-      : Math.max(0, finiteNumber(value.activeSinceClockMs)),
+    activeAudioAnchor: normalizeAudioProgress(value.activeAudioAnchor),
     startBpm,
     endBpm: normalizeExactTempoBpm(value.endBpm) ?? startBpm,
     performedPasses: Math.max(0, Math.round(finiteNumber(value.performedPasses))),

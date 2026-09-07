@@ -66,6 +66,7 @@ import {
   MIN_REPETITION_GOAL_PASSES,
   createDefaultRepetitionGoalConfig,
   createPracticeClock,
+  checkpointPracticeRunMetrics,
   createPracticeRunMetrics,
   createPracticeRunSummary,
   createTapTempoState,
@@ -126,6 +127,7 @@ import {
   PlaybackBarState,
   PlaybackPassState,
   PracticeRunMetrics,
+  PlaybackOptions,
   PracticeRunSummary,
   PracticeTarget,
   PracticeSelection,
@@ -318,7 +320,9 @@ let repetitionGoal: {
 };
 let completedSummary: PracticeRunSummary | null = null;
 let completedSummaryHandled = false;
-const practiceClock = createPracticeClock();
+const practiceClock = createPracticeClock(() => player?.getAudioProgress() ?? null);
+let playbackStartGeneration = 0;
+let pendingPlaybackResume: {mode: DrumTransportMode; position: DrumPlaybackPosition} | null = null;
 let activePlaybackBarIndex: number | null = null;
 let activePlaybackBarState: PlaybackBarState | null = null;
 let keepScreenAwakeDuringPlayback = true;
@@ -1329,6 +1333,8 @@ function finalizeCompletedTempoRamp(): void {
 }
 
 function stopPlayback(settleSession = true): void {
+  pendingPlaybackResume = null;
+  playbackStartGeneration += 1;
   if (settleSession) settleTrackedRun();
   player?.stop();
   player = null;
@@ -1348,12 +1354,14 @@ function stopPlayback(settleSession = true): void {
 
 async function preparePlaybackStart(recoverBeforeStart: boolean): Promise<boolean> {
   stopPlayback(false);
+  const generation = playbackStartGeneration;
 
   if (!recoverBeforeStart) {
     return true;
   }
 
-  return recoverPlaybackAudio();
+  const recovered = await recoverPlaybackAudio();
+  return recovered && generation === playbackStartGeneration;
 }
 
 function handleTempoRampPassStart(passState: TempoRampPassState): void {
@@ -1379,6 +1387,33 @@ function handleTempoRampPassComplete(passState: TempoRampPassState): void {
   activeTempoRampPass = { ...passState };
   if (currentBlock) syncPlaybackControls(currentBlock);
   refreshPracticeStatus();
+}
+
+function getLifecyclePlaybackOptions(): Pick<PlaybackOptions, "ownerDocument" | "onAudioProgress" | "onInterrupted"> {
+  let started = false;
+  return {
+    ownerDocument: document,
+    onAudioProgress: (progress) => {
+      if (!currentBlock || player?.getAudioProgress().generation !== progress.generation) return;
+      const clock = {...practiceClock, audioProgress: () => progress};
+      const update = (metrics: PracticeRunMetrics) => started
+        ? checkpointPracticeRunMetrics(metrics, progress)
+        : resumePracticeRunMetrics(metrics, getCurrentEffectiveTempo(currentBlock!), clock);
+      if (tempoRamp.armed && tempoRampRunMetrics) tempoRampRunMetrics = update(tempoRampRunMetrics);
+      if (repetitionGoal.armed && repetitionGoal.runMetrics) repetitionGoal = {...repetitionGoal, runMetrics: update(repetitionGoal.runMetrics)};
+      started = true;
+    },
+    onInterrupted: (reason, position) => {
+      const mode = transportMode;
+      stopPlayback();
+      pendingPlaybackResume = {mode, position};
+      audioRecoveryWarning = reason === "missed-deadline"
+        ? "Playback paused because scheduling fell behind. Press Play to resume."
+        : "Audio was interrupted. Press Play to resume your practice.";
+      if (currentBlock) renderNotes(currentBlock, editor.value);
+      refreshPracticeStatus();
+    }
+  };
 }
 
 function getTempoRampPlaybackOptions() {
@@ -1454,6 +1489,7 @@ async function play(
       countInCadence: "transport-start",
       clickSubdivision,
       gapClickMode,
+      ...getLifecyclePlaybackOptions(),
       onBarChange: (barIndex, state) => handlePlaybackBarChange(block, barIndex, state),
       ...getTempoRampPlaybackOptions()
     },
@@ -1545,6 +1581,7 @@ async function startLoopBar(
       countInCadence,
       clickSubdivision,
       gapClickMode,
+      ...getLifecyclePlaybackOptions(),
       onBarChange: (nextBarIndex, state) => handlePlaybackBarChange(block, nextBarIndex, state),
       ...getTempoRampPlaybackOptions()
     },
@@ -1607,6 +1644,7 @@ async function startLoopAll(
       countInCadence,
       clickSubdivision,
       gapClickMode,
+      ...getLifecyclePlaybackOptions(),
       onBarChange: (barIndex, state) => handlePlaybackBarChange(block, barIndex, state),
       ...getTempoRampPlaybackOptions()
     },
@@ -1673,6 +1711,7 @@ async function startLoopSelection(
       countInCadence,
       clickSubdivision,
       gapClickMode,
+      ...getLifecyclePlaybackOptions(),
       onBarChange: (barIndex, state) => handlePlaybackBarChange(block, barIndex, state),
       ...getTempoRampPlaybackOptions()
     },
@@ -1811,6 +1850,7 @@ async function startRepetitionGoal(
       countInCadence,
       clickSubdivision,
       gapClickMode,
+      ...getLifecyclePlaybackOptions(),
       onBarChange: (barIndex, state) => handlePlaybackBarChange(block, barIndex, state),
       onPassComplete: (state: PlaybackPassState) => {
         const completedPasses = Math.min(config.totalPasses, completedBeforeTransport + state.completedPasses);
@@ -1830,6 +1870,21 @@ async function startRepetitionGoal(
   void screenWakeLock.start(createScreenWakeLockTarget(scoreEl?.ownerDocument ?? activeDocument));
   void player.play();
   return true;
+}
+
+async function resumeInterruptedPlayback(): Promise<void> {
+  const pending = pendingPlaybackResume;
+  if (!pending || !currentBlock) return;
+  pendingPlaybackResume = null;
+  const block = currentBlock;
+  const position = tempoRamp.armed ? {...pending.position, blockPassIndex: 0} : pending.position;
+  let started: boolean;
+  if (repetitionGoal.armed) started = await startRepetitionGoal(true, true, position);
+  else if (pending.mode === "loop-bar") started = await startLoopBar(barIndexForSlot(block, position.slotIndex), position.slotIndex, true, true, position);
+  else if (pending.mode === "loop-selection") started = await startLoopSelection(position.slotIndex, true, true, position);
+  else if (pending.mode === "loop-all") started = await startLoopAll(position.slotIndex, true, true, position);
+  else started = await play(position.slotIndex, true, true, position, pending.mode === "play-selection");
+  if (!started && currentBlock === block) pendingPlaybackResume = pending;
 }
 
 function openRepetitionGoalDialog(): void {
@@ -4362,6 +4417,7 @@ function init(): void {
   syncMuteButton();
 
   playBtn.addEventListener("click", () => {
+    if (pendingPlaybackResume) { void resumeInterruptedPlayback(); return; }
     void (repetitionGoal.armed
       ? startRepetitionGoal(true, true)
       : tempoRamp.armed

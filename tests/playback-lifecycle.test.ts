@@ -37,3 +37,94 @@ describe("playback behavior with independent clocks", () => {
     expect(slot).not.toHaveBeenCalled();
   });
 });
+
+describe("audio-time reconciliation", () => {
+  it("re-arms an early wake and credits the boundary exactly once", async () => {
+    const complete = vi.fn(), start = vi.fn();
+    const {environment, player} = setup({onPassComplete: complete, onPassStart: start});
+    await player.play();
+    expect(start).not.toHaveBeenCalled();
+    environment.advanceClocks(1000); environment.deliverNext();
+    expect(complete).not.toHaveBeenCalled();
+    expect(environment.timers.size).toBe(1);
+    environment.runUntil(10.59);
+    expect(start).toHaveBeenCalledTimes(1);
+    expect(complete).toHaveBeenCalledTimes(1);
+    expect(player.getAudioProgress().activeAudioMs).toBeCloseTo(500);
+  });
+  it("continues short loops with future passes prepared before their first sound", async () => {
+    const {environment, player} = setup({loop: true}); await player.play();
+    environment.runUntil(12);
+    expect(environment.scheduled.length).toBeGreaterThan(12);
+    expect(environment.scheduled.every(event => event.submittedAt <= event.time)).toBe(true);
+    expect(environment.timers.size).toBe(1);
+    player.stop();
+  });
+  it("pauses a missed continuation without submitting any overdue audio", async () => {
+    const interrupted = vi.fn(), complete = vi.fn();
+    const {environment, player} = setup({loop: true, onInterrupted: interrupted, onPassComplete: complete});
+    await player.play();
+    environment.advanceAudio(2); environment.advanceClocks(2000); environment.deliverNext();
+    expect(interrupted).toHaveBeenCalledWith("missed-deadline", expect.any(Object));
+    expect(environment.scheduled).toHaveLength(4);
+    expect(complete).toHaveBeenCalledTimes(1);
+    expect(player.getAudioProgress().activeAudioMs).toBeCloseTo(500);
+  });
+  it("settles only performed history when a delayed suspension notification arrives", async () => {
+    const interrupted = vi.fn(), complete = vi.fn();
+    const {environment, player} = setup({loop: true, onInterrupted: interrupted, onPassComplete: complete});
+    await player.play(); environment.runUntil(10.3);
+    environment.setState("suspended", false);
+    environment.advanceClocks(60000); environment.deliverNext();
+    environment.notifyState();
+    expect(interrupted).toHaveBeenCalledTimes(1);
+    expect(complete).not.toHaveBeenCalled();
+    expect(player.getAudioProgress().activeAudioMs).toBeCloseTo(220);
+    expect(environment.timers.size).toBe(0);
+  });
+  it("credits a completed pass before closing a frozen generation", async () => {
+    const complete = vi.fn();
+    const {environment, player} = setup({loop: true, onPassComplete: complete});
+    await player.play(); environment.runUntil(10.3);
+    environment.advanceAudio(0.3); environment.setState("suspended");
+    expect(complete).toHaveBeenCalledTimes(1);
+    expect(player.getAudioProgress().activeAudioMs).toBeCloseTo(520);
+  });
+  it("suppresses hidden visuals while continuing audio and pass accounting", async () => {
+    const environment = new PlaybackEnvironment(), document = new EventTarget();
+    Object.assign(document, {visibilityState: "hidden", defaultView: environment.window});
+    vi.stubGlobal("window", environment.window);
+    const slot = vi.fn(), complete = vi.fn();
+    const player = new DrumPlayer(environment.context, parseDrumBlock("Tempo: 120\nTime: 1/4\nHH | xxxx"), vi.fn(), slot,
+      {loop: true, ownerDocument: document as unknown as Document, onPassComplete: complete}, () => environment.backend);
+    await player.play(); environment.runUntil(11);
+    expect(slot).not.toHaveBeenCalled(); expect(complete).toHaveBeenCalledTimes(1);
+    Object.assign(document, {visibilityState: "visible"}); document.dispatchEvent(new Event("visibilitychange"));
+    environment.runUntil(11.2); expect(slot).toHaveBeenCalled(); player.stop();
+  });
+  it("includes count-in and intentional silence while excluding startup and suspension", async () => {
+    const {environment, player} = setup({countInMode: "1-bar", metronomeMode: "metronome-only", gapClickMode: "1-on-1-off"});
+    await player.play(); environment.runUntil(10.03);
+    expect(player.getAudioProgress().activeAudioMs).toBe(0);
+    environment.runUntil(10.83); expect(player.getAudioProgress().activeAudioMs).toBeCloseTo(750);
+    environment.setState("closed"); environment.advanceClocks(30000);
+    expect(player.getAudioProgress().activeAudioMs).toBeCloseTo(750);
+  });
+  it("ignores a backend start that completes after Stop", async () => {
+    const {environment, player} = setup(); let finish!: () => void;
+    environment.start.mockImplementation(() => new Promise<void>(resolve => { finish = resolve; }));
+    const starting = player.play(); player.stop(); finish(); await starting;
+    expect(environment.scheduled).toHaveLength(0); expect(environment.timers.size).toBe(0);
+  });
+  it.each([10, 100, 1000])("bounds retained work after %i passes", async passes => {
+    const {environment, player} = setup({loop: true}); await player.play();
+    environment.runUntil(10.08 + passes * 0.5);
+    const retained = player as unknown as { notifications: unknown[]; scheduledOccurrences: unknown[]; activeIntervals: unknown[] };
+    expect(retained.notifications.length).toBeLessThan(20);
+    expect(retained.scheduledOccurrences.length).toBeLessThan(5);
+    expect(retained.activeIntervals.length).toBeLessThan(5);
+    expect(environment.timers.size).toBe(1);
+    player.stop();
+    expect(retained.notifications).toHaveLength(0); expect(retained.scheduledOccurrences).toHaveLength(0);
+  });
+});

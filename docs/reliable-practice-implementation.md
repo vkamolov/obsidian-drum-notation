@@ -55,3 +55,18 @@ Do not represent browser emulation as physical-device coverage.
   a pending asynchronous start cannot recreate resources after Stop.
 - Synth lifecycle regressions: 4/4 passed; plugin build passed. Raw comparison reports and
   WAV clips remain in ignored test results. No claim of a listening audition is made.
+
+### Stage 3 scheduling and practice-time checkpoint
+
+- Future passes are prepared with a 500 ms audio-time lead while pass start/completion remains
+  tied to reached audio boundaries. One reconciler handles timers, visibility and context state.
+- Early timer delivery re-arms from the remaining audio delta; late delivery reconciles reached
+  events in order. A missed preparation deadline produces a resumable pause without overdue notes.
+- Hidden pages keep audio and practice accounting active while suppressing cursor work. Suspended,
+  interrupted and closed contexts preserve reached progress and require an explicit resume.
+- Practice duration now uses context/generation-owned cumulative audio progress. Missing or stale
+  anchors restore paused and never borrow wall or monotonic time from another clock.
+- Prepared notifications, occurrences and active intervals remain bounded after 10, 100 and 1,000
+  passes. Start/stop races and passive-renderer publication are guarded.
+- Verification: 649/649 unit tests, plugin build, web build/typecheck, and 38/38 Chromium/WebKit
+  production workflow/CSP tests passed.

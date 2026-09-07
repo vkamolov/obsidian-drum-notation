@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   createDefaultRepetitionGoalConfig,
+  checkpointPracticeRunMetrics,
   createPracticeRunMetrics,
   createPracticeRunSummary,
   createTapTempoState,
@@ -20,6 +21,7 @@ function fakeClock(wall = new Date(2026, 7, 27, 19, 42).getTime(), monotonic = 1
   let wallNow = wall;
   let monotonicNow = monotonic;
   const clock: PracticeClock = {
+    audioProgress: () => ({contextId: 1, generation: 1, activeAudioMs: monotonicNow}),
     wallNowMs: () => wallNow,
     monotonicNowMs: () => monotonicNow
   };
@@ -57,7 +59,7 @@ describe("practice clock and metrics", () => {
     metrics = settlePracticeRunMetrics(metrics, controlled.clock);
 
     expect(metrics.elapsedActiveMs).toBe(2000);
-    expect(metrics.activeSinceClockMs).toBeNull();
+    expect(metrics.activeAudioAnchor).toBeNull();
     expect(metrics.endBpm).toBe(95);
   });
 
@@ -112,7 +114,7 @@ describe("practice log helpers", () => {
   const metrics = {
     ...createPracticeRunMetrics(80, controlled.clock),
     elapsedActiveMs: 252000,
-    activeSinceClockMs: null,
+    activeAudioAnchor: null,
     endBpm: 100,
     performedPasses: 8,
     status: "complete" as const
@@ -251,5 +253,38 @@ describe("practice log helpers", () => {
     expect(normalizePracticeLogPath("Logs/Drums")).toEqual({ ok: true, path: "Logs/Drums.md" });
     expect(normalizePracticeLogPath("../outside.md").ok).toBe(false);
     expect(normalizePracticeLogPath("/absolute.md").ok).toBe(false);
+  });
+});
+
+describe("audio progress restoration", () => {
+  const first = {contextId: 1, generation: 1, activeAudioMs: 0};
+  function metrics() {
+    return createPracticeRunMetrics(100, {wallNowMs: () => 1000, monotonicNowMs: () => 0, audioProgress: () => first});
+  }
+  it("checkpoints repeated snapshots without double counting", () => {
+    let run = metrics();
+    const progress = {...first, activeAudioMs: 500};
+    run = checkpointPracticeRunMetrics(run, progress);
+    run = checkpointPracticeRunMetrics(run, progress);
+    expect(run.elapsedActiveMs).toBe(500);
+    expect(run.activeAudioAnchor).toEqual(progress);
+  });
+  it.each([
+    null,
+    {contextId: 2, generation: 2, activeAudioMs: 100000},
+    {contextId: 1, generation: 2, activeAudioMs: 100000}
+  ])("closes an unavailable or obsolete audio anchor without borrowing another clock", progress => {
+    let run = checkpointPracticeRunMetrics(metrics(), {...first, activeAudioMs: 500});
+    run = checkpointPracticeRunMetrics(run, progress);
+    expect(run.elapsedActiveMs).toBe(500);
+    expect(run.status).toBe("paused");
+    expect(run.activeAudioAnchor).toBeNull();
+  });
+  it("starts a replacement generation from its own checkpoint", () => {
+    const before = checkpointPracticeRunMetrics(metrics(), {...first, activeAudioMs: 500});
+    const next = {contextId: 2, generation: 2, activeAudioMs: 0};
+    const run = resumePracticeRunMetrics(before, 110, {wallNowMs: () => 999999, monotonicNowMs: () => 999999, audioProgress: () => next});
+    expect(checkpointPracticeRunMetrics(run, {...next, activeAudioMs: 250}).elapsedActiveMs).toBe(750);
+    expect(run.startedAtEpochMs).toBe(1000);
   });
 });
