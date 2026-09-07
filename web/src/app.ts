@@ -4665,7 +4665,7 @@ function init(): void {
   const handlePageUnload = () => {
     settleTrackedRun();
     stopPlayback(false);
-    practiceController.dispose();
+    practiceController.dispose(false);
     clearSourceImage();
     void screenWakeLock.destroy();
   };
