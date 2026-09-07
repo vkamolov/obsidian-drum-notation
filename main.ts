@@ -550,9 +550,24 @@ export default class DrumNotationPlugin extends Plugin {
     });
     metronomeBadge.hidden = true;
     const muteButton = makeIconButton("volume-2", "Mute instruments");
-    controls.createSpan({ cls: "drum-notation__control-divider" });
+    const practiceButton = controls.createEl("button", {
+      cls: "drum-notation__button drum-notation__practice-entry",
+      attr: { type: "button", "aria-label": "Practice tools" }
+    });
+    setIcon(practiceButton, "dumbbell");
+    practiceButton.createSpan({ text: "Practice" });
+    const exitPracticeButton = controls.createEl("button", {
+      cls: "drum-notation__button drum-notation__practice-entry",
+      attr: { type: "button", "aria-label": "Exit Practice view" }
+    });
+    setIcon(exitPracticeButton, "log-out");
+    exitPracticeButton.createSpan({ text: "Exit" });
+    exitPracticeButton.hidden = true;
+    controls.createSpan({ cls: "drum-notation__control-divider drum-notation__practice-secondary" });
     const editButton = makeIconButton("pencil", "Edit notation");
     const createButton = makeIconButton("square-plus", "Create first bar");
+    editButton.addClass("drum-notation__practice-secondary");
+    createButton.addClass("drum-notation__practice-secondary");
 
     const tipEl = root.createDiv({ cls: "drum-notation__tip" });
     const warningsEl = root.createDiv({ cls: "drum-notation__warnings" });
@@ -655,6 +670,7 @@ export default class DrumNotationPlugin extends Plugin {
       block.bars.length
     );
     let selectionModeOpen = restoredPracticeSession?.selectionModeOpen ?? false;
+    let practiceViewOpen = restoredPracticeSession?.practiceViewOpen ?? false;
     let resizeTimer: number | null = null;
     let writebackTimer: number | null = null;
     let hasPendingWriteback = false;
@@ -680,6 +696,7 @@ export default class DrumNotationPlugin extends Plugin {
       mutedInstrumentIds: [...mutedInstrumentIds],
       selection: practiceSelection,
       selectionModeOpen,
+      practiceViewOpen,
       currentBarIndex: selectedBarIndex,
       tempoRamp,
       tempoRampRunMetrics,
@@ -2838,6 +2855,128 @@ export default class DrumNotationPlugin extends Plugin {
       menu.showAtMouseEvent(event);
     };
 
+    const syncPracticeView = () => {
+      root.toggleClass("is-practice-view", practiceViewOpen);
+      practiceButton.toggleClass("is-active", practiceViewOpen);
+      practiceButton.empty();
+      setIcon(practiceButton, "dumbbell");
+      practiceButton.createSpan({ text: "Practice" });
+      practiceButton.setAttribute("aria-label", "Open Practice tools");
+      practiceButton.setAttribute("aria-pressed", practiceViewOpen ? "true" : "false");
+      exitPracticeButton.hidden = !practiceViewOpen;
+    };
+
+    const setPracticeViewOpen = (open: boolean) => {
+      practiceViewOpen = open;
+      if (open && gridEditor) {
+        exitEditMode();
+      }
+      syncPracticeView();
+      publishPracticeSession();
+    };
+
+    const openPracticeMenu = (event: MouseEvent) => {
+      const menu = new Menu();
+      const selectedCount = practiceSelection.barIndexes.length;
+      const isPlaying = this.activePlaybackOwner === renderOwner && this.activePlayer !== null;
+
+      menu.addItem((item) => {
+        item
+          .setTitle(practiceViewOpen ? "Exit Practice view" : "Enter Practice view")
+          .setIcon(practiceViewOpen ? "log-out" : "maximize-2")
+          .setChecked(practiceViewOpen)
+          .onClick(() => setPracticeViewOpen(!practiceViewOpen));
+      });
+
+      menu.addSeparator();
+      if (repetitionGoal.armed && repetitionGoal.config) {
+        menu.addItem((item) => {
+          item
+            .setTitle(`${isPlaying ? "Pause" : "Resume"} goal · ${repetitionGoal.progress.completedPasses}/${repetitionGoal.config!.totalPasses}`)
+            .setIcon(isPlaying ? "pause" : "play")
+            .onClick(() => isPlaying ? stopLocalPlayback() : void startRepetitionGoal(true, true));
+        });
+      } else if (tempoRamp.armed && tempoRamp.config) {
+        menu.addItem((item) => {
+          item
+            .setTitle(`${isPlaying ? "Pause" : "Resume"} tempo ramp`)
+            .setIcon(isPlaying ? "pause" : "play")
+            .onClick(() => isPlaying ? stopLocalPlayback() : void startArmedTempoRamp(true, true));
+        });
+      }
+      menu.addItem((item) => {
+        item
+          .setTitle("Practice repetitions…")
+          .setIcon("target")
+          .onClick(() => void openRepetitionGoalSetup());
+      });
+      menu.addItem((item) => {
+        item
+          .setTitle("Tempo ramp…")
+          .setIcon("trending-up")
+          .onClick(() => void openTempoRampSetup());
+      });
+      menu.addItem((item) => {
+        item
+          .setTitle(isPlaying ? "Tap tempo… · Stop playback first" : "Tap tempo…")
+          .setIcon("hand")
+          .setDisabled(isPlaying)
+          .onClick(openTapTempo);
+      });
+
+      menu.addSeparator();
+      menu.addItem((item) => {
+        item
+          .setTitle(selectionModeOpen ? "Done selecting bars" : `Select practice bars${selectedCount ? ` · ${selectedCount} selected` : ""}`)
+          .setIcon(selectionModeOpen ? "check" : "list-checks")
+          .setChecked(selectionModeOpen)
+          .onClick(() => setSelectionModeOpen(!selectionModeOpen));
+      });
+      menu.addItem((item) => {
+        item
+          .setTitle("Clear selected bars")
+          .setIcon("x")
+          .setDisabled(selectedCount === 0)
+          .onClick(clearPracticeSelection);
+      });
+      menu.addItem((item) => {
+        item
+          .setTitle(`Click and count-in… · ${getMetronomeModeLabel(metronomeMode)} · ${getCountInModeLabel(countInMode)}`)
+          .setIcon("timer")
+          .onClick(() => openMetronomeMenu(event));
+      });
+
+      if (repetitionGoal.runMetrics && !repetitionGoal.progress.completed) {
+        menu.addItem((item) => item.setTitle("Finish session and view summary").setIcon("flag").onClick(() => {
+          finishRepetitionGoalEarly();
+          openPracticeSummary();
+        }));
+      } else if (tempoRampRunMetrics && tempoRamp.armed && !tempoRamp.progress.completed) {
+        menu.addItem((item) => item.setTitle("Finish tempo ramp and view summary").setIcon("flag").onClick(() => {
+          finishTempoRampSessionEarly();
+          openPracticeSummary();
+        }));
+      } else if (completedSummary) {
+        menu.addItem((item) => item.setTitle("View practice summary").setIcon("clipboard-list").onClick(openPracticeSummary));
+      }
+
+      const editAvailability = getCurrentEditAvailability();
+      menu.addSeparator();
+      menu.addItem((item) => {
+        item
+          .setTitle(editAvailability.ok ? "Edit notes visually" : editAvailability.reason)
+          .setIcon("pencil")
+          .setDisabled(!editAvailability.ok)
+          .onClick(() => {
+            setPracticeViewOpen(false);
+            enterEditMode();
+          });
+      });
+      menu.showAtMouseEvent(event);
+    };
+
+    syncPracticeView();
+
     const schedulePlaybackRestart = (
       wasPlaying: boolean,
       previousTransportMode: DrumTransportMode,
@@ -3355,9 +3494,11 @@ export default class DrumNotationPlugin extends Plugin {
           session.mutedInstrumentIds.forEach((instrumentId) => mutedInstrumentIds.add(instrumentId));
           practiceSelection = nextSelection;
           selectionModeOpen = gridEditor ? false : session.selectionModeOpen;
+          practiceViewOpen = session.practiceViewOpen;
           selectedBarIndex = clampBarIndex(block, session.currentBarIndex);
           currentSlotIndex = block.bars[selectedBarIndex]?.startSlot ?? currentSlotIndex;
           updateHeader();
+          syncPracticeView();
           renderFirstRunTip();
           renderBarSelectors();
         })
@@ -3476,6 +3617,8 @@ export default class DrumNotationPlugin extends Plugin {
 
     metronomeButton.addEventListener("click", openMetronomeMenu);
     muteButton.addEventListener("click", openMuteMenu);
+    practiceButton.addEventListener("click", openPracticeMenu);
+    exitPracticeButton.addEventListener("click", () => setPracticeViewOpen(false));
 
     editButton.addEventListener("click", () => {
       if (gridEditor) {

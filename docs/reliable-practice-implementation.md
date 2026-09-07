@@ -12,7 +12,7 @@ sample mix and advanced-notation gates are unchanged. Implementation branch:
 - [x] 4a. Explicit structural edit results and shared capabilities.
 - [x] 4b. Native web dialogs with keyboard/focus behavior.
 - [x] 5. Shared practice coordination and guarded explicit summary persistence.
-- [ ] 6. Discoverable Practice tools and session-local Practice view.
+- [x] 6. Discoverable Practice tools and session-local Practice view.
 - [ ] 7. Conditional web-font experiment (retain inline packaging unless gates pass).
 - [ ] Final automated verification and documented manual coverage.
 
@@ -107,3 +107,17 @@ Do not represent browser emulation as physical-device coverage.
   `vault.process`. Score writeback and its expected-source conflict check remain separate.
 - Verification: 658/658 unit tests, plugin build and web typecheck passed; the focused Chromium/
   WebKit practice workflows passed after the playground migration.
+
+### Stage 6 daily-practice interface checkpoint
+
+- Both hosts now provide a visible Practice entry for phrase selection, repetition goals, tempo
+  ramps, tap tempo, click/count-in setup, session control and summaries. Existing Loop, Speed and
+  keyboard entry points remain available.
+- Practice view is session-local. The playground collapses setup, source, editor and export panels;
+  Obsidian applies the focused layout only to the selected rendered drums block. Transport, tempo,
+  progress, Finish & summary and Exit remain available.
+- Practice-view primary controls meet a 44 px minimum target. Keyboard focus and Escape restoration
+  remain visible and deterministic, and unavailable visual editing explains the Reading-view path.
+- Verification: 659/659 unit tests, plugin build, web build/typecheck and all 40 Chromium/WebKit
+  production workflow/CSP tests passed. The Practice-view browser check covers light/dark state,
+  widths of 390, 650 and 1,280 px, and 200% page zoom.

@@ -701,8 +701,14 @@ body.pg-verify-workspace-maximized .pg-verify-resizer::before {
   flex: 0 0 auto;
 }
 
-.pg-btn:hover {
+.pg-btn:hover,
+.pg-btn:focus-visible {
   border-color: var(--pg-accent);
+}
+
+.pg-btn:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--pg-accent) 45%, transparent);
+  outline-offset: 2px;
 }
 
 .pg-btn:disabled {
@@ -759,7 +765,8 @@ body.pg-verify-workspace-maximized .pg-verify-resizer::before {
 .pg-mute-control,
 .pg-metronome-control,
 .pg-loop-control,
-.pg-speed-control {
+.pg-speed-control,
+.pg-practice-control {
   position: relative;
 }
 
@@ -770,7 +777,8 @@ body.pg-verify-workspace-maximized .pg-verify-resizer::before {
 .pg-mute-menu,
 .pg-metronome-menu,
 .pg-loop-menu,
-.pg-speed-menu {
+.pg-speed-menu,
+.pg-practice-menu {
   position: absolute;
   z-index: 20;
   top: calc(100% + 0.35rem);
@@ -787,8 +795,15 @@ body.pg-verify-workspace-maximized .pg-verify-resizer::before {
 .pg-mute-menu[hidden],
 .pg-metronome-menu[hidden],
 .pg-loop-menu[hidden],
-.pg-speed-menu[hidden] {
+.pg-speed-menu[hidden],
+.pg-practice-menu[hidden] {
   display: none;
+}
+
+.pg-practice-menu {
+  min-width: 17rem;
+  max-height: min(34rem, 76vh);
+  overflow-y: auto;
 }
 
 .pg-speed-menu {
@@ -903,6 +918,44 @@ body.pg-verify-workspace-maximized .pg-verify-resizer::before {
 
 body.pg-verifying .pg-main {
   grid-template-columns: minmax(15rem, 0.8fr) minmax(0, 1fr) minmax(0, 1.35fr);
+}
+
+body.pg-practice-view {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+body.pg-practice-view .pg-toolbar-row--setup,
+body.pg-practice-view .pg-mode-switch,
+body.pg-practice-view .pg-action-group--editing,
+body.pg-practice-view .pg-action-group--export,
+body.pg-practice-view .pg-pane--source,
+body.pg-practice-view .pg-pane--editor,
+body.pg-practice-view .pg-footer {
+  display: none;
+}
+
+body.pg-practice-view .pg-main {
+  grid-row: 2;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+body.pg-practice-view .pg-pane--preview {
+  min-height: 0;
+}
+
+body.pg-practice-view .pg-action-group {
+  min-height: 0;
+  padding: 0;
+  border-left: 0;
+}
+
+body.pg-practice-view .pg-action-group__controls .pg-btn {
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+}
+
+body.pg-practice-view .pg-preview-scroll {
+  padding: 1rem clamp(0.5rem, 3vw, 2rem);
 }
 
 body.pg-verify-workspace-maximized .pg-main {

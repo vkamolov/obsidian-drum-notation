@@ -228,6 +228,9 @@ const metronomeBtn = $<HTMLButtonElement>("pg-metronome");
 const metronomeMenu = $<HTMLDivElement>("pg-metronome-menu");
 const muteBtn = $<HTMLButtonElement>("pg-mute");
 const muteMenu = $<HTMLDivElement>("pg-mute-menu");
+const practiceBtn = $<HTMLButtonElement>("pg-practice");
+const exitPracticeBtn = $<HTMLButtonElement>("pg-exit-practice");
+const practiceMenu = $<HTMLDivElement>("pg-practice-menu");
 const editBtn = $<HTMLButtonElement>("pg-edit");
 const editRoot = $<HTMLDivElement>("pg-edit-root");
 const copyBlockBtn = $<HTMLButtonElement>("pg-copy-block");
@@ -352,6 +355,7 @@ let keepScreenAwakeDuringPlayback = true;
 const mutedInstrumentIds = new Set<string>();
 let practiceSelection: PracticeSelection = { barIndexes: [] };
 let selectionModeOpen = false;
+let practiceViewOpen = false;
 let gridEditor: GridEditorHandle | null = null;
 let isApplyingGridEdit = false;
 let audioRecoveryWarning: string | null = null;
@@ -2433,6 +2437,7 @@ function setSpeedMenuOpen(open: boolean): void {
   speedMenu.hidden = !open;
   speedBtn.setAttribute("aria-expanded", open ? "true" : "false");
   if (open) {
+    setPracticeMenuOpen(false);
     setLoopMenuOpen(false);
     setMetronomeMenuOpen(false);
     setMuteMenuOpen(false);
@@ -2605,6 +2610,125 @@ function openTempoRampDialog(): void {
   });
 }
 
+function syncPracticeButton(): void {
+  const text = practiceBtn.createSpan({ cls: "pg-btn__label", text: "Practice" });
+  practiceBtn.replaceChildren(createIconSvg("dumbbell"), text);
+  practiceBtn.classList.toggle("is-active", practiceViewOpen);
+  practiceBtn.setAttribute("aria-pressed", practiceViewOpen ? "true" : "false");
+  practiceBtn.setAttribute("aria-label", "Open Practice tools");
+  exitPracticeBtn.hidden = !practiceViewOpen;
+}
+
+function setPracticeViewOpen(open: boolean): void {
+  if (practiceViewOpen === open) return;
+  if (open && verificationActive) {
+    exitVerificationModeToDraft();
+  }
+  if (open && gridEditor) {
+    exitEditMode();
+  }
+  practiceViewOpen = open;
+  activeDocument.body.classList.toggle("pg-practice-view", open);
+  syncPracticeButton();
+  setPracticeMenuOpen(false);
+}
+
+function renderPracticeMenu(): void {
+  practiceMenu.empty();
+  const selectedCount = practiceSelection.barIndexes.length;
+  const addItem = (
+    label: string,
+    checked: boolean | null,
+    onActivate: () => void,
+    disabled = false
+  ) => {
+    const item = practiceMenu.createEl("button", {
+      cls: "pg-metronome-menu__item",
+      attr: {
+        type: "button",
+        role: checked === null ? "menuitem" : "menuitemcheckbox",
+        ...(checked === null ? {} : { "aria-checked": checked ? "true" : "false" })
+      }
+    });
+    item.createSpan({ cls: "pg-metronome-menu__check", text: checked === true ? "✓" : "" });
+    item.createSpan({ text: label });
+    item.disabled = disabled;
+    item.addEventListener("click", () => {
+      setPracticeMenuOpen(false);
+      onActivate();
+    });
+  };
+
+  addItem(practiceViewOpen ? "Exit Practice view" : "Enter Practice view", practiceViewOpen, () => {
+    setPracticeViewOpen(!practiceViewOpen);
+  });
+
+  practiceMenu.createDiv({ cls: "pg-metronome-menu__label", text: "Target and goals" });
+  addItem(selectionModeOpen ? "Done selecting bars" : `Select practice bars${selectedCount ? ` · ${selectedCount} selected` : ""}`, selectionModeOpen, () => {
+    setSelectionModeOpen(!selectionModeOpen);
+  });
+  addItem("Clear selected bars", null, clearPracticeSelection, selectedCount === 0);
+  addItem("Practice repetitions…", null, openRepetitionGoalDialog);
+  addItem("Tempo ramp…", null, openTempoRampDialog);
+  addItem(player ? "Tap tempo… · Stop playback first" : "Tap tempo…", null, openTapTempoDialog, player !== null);
+
+  practiceMenu.createDiv({ cls: "pg-metronome-menu__label", text: "Click and count-in" });
+  addItem(
+    `Click: ${getMetronomeModeLabel(metronomeMode)} · Count-in: ${getCountInModeLabel(countInMode)} · Subdivision: ${getClickSubdivisionLabel(clickSubdivision)}`,
+    null,
+    () => setMetronomeMenuOpen(true)
+  );
+
+  if (repetitionGoal.armed && repetitionGoal.config) {
+    practiceMenu.createDiv({ cls: "pg-metronome-menu__label", text: "Current session" });
+    addItem(
+      `${player ? "Pause" : "Resume"} goal · ${repetitionGoal.progress.completedPasses}/${repetitionGoal.config.totalPasses}`,
+      player !== null,
+      () => player ? stopPlayback() : void startRepetitionGoal(true, true)
+    );
+  } else if (tempoRamp.armed && tempoRamp.config) {
+    practiceMenu.createDiv({ cls: "pg-metronome-menu__label", text: "Current session" });
+    addItem(
+      `${player ? "Pause" : "Resume"} ramp · ${currentBlock ? getCurrentEffectiveTempo(currentBlock) : tempoRamp.config.startBpm} BPM`,
+      player !== null,
+      () => player ? stopPlayback() : void startArmedTempoRamp(true, true),
+      currentBlock === null
+    );
+  }
+  if (repetitionGoal.runMetrics && !repetitionGoal.progress.completed) {
+    addItem("Finish session and view summary", null, () => {
+      finishRepetitionGoalEarly();
+      openPracticeSummaryDialog();
+    });
+  } else if (tempoRampRunMetrics && tempoRamp.armed && !tempoRamp.progress.completed) {
+    addItem("Finish tempo ramp and view summary", null, () => {
+      finishTempoRampSessionEarly();
+      openPracticeSummaryDialog();
+    });
+  } else if (completedSummary) {
+    addItem("View practice summary", null, openPracticeSummaryDialog);
+  }
+}
+
+function setPracticeMenuOpen(open: boolean): void {
+  practiceMenu.hidden = !open;
+  practiceBtn.setAttribute("aria-expanded", open ? "true" : "false");
+  if (open) {
+    setLoopMenuOpen(false);
+    setSpeedMenuOpen(false);
+    setMetronomeMenuOpen(false);
+    setMuteMenuOpen(false);
+    renderPracticeMenu();
+    const focusFirstItem = () => {
+      if (!practiceMenu.hidden && !practiceMenu.contains(activeDocument.activeElement)) {
+        practiceMenu.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
+      }
+    };
+    focusFirstItem();
+    window.requestAnimationFrame(focusFirstItem);
+  }
+}
+
 function renderLoopMenu(): void {
   const previouslyFocusedIndex = [
     ...loopMenu.querySelectorAll<HTMLButtonElement>("button:not(:disabled)")
@@ -2693,6 +2817,7 @@ function setLoopMenuOpen(open: boolean): void {
   loopMenu.hidden = !open;
   loopAllBtn.setAttribute("aria-expanded", open ? "true" : "false");
   if (open) {
+    setPracticeMenuOpen(false);
     setSpeedMenuOpen(false);
     setMetronomeMenuOpen(false);
     setMuteMenuOpen(false);
@@ -2935,6 +3060,7 @@ function setMetronomeMenuOpen(open: boolean): void {
   metronomeMenu.hidden = !open;
   metronomeBtn.setAttribute("aria-expanded", open ? "true" : "false");
   if (open) {
+    setPracticeMenuOpen(false);
     setSpeedMenuOpen(false);
     setLoopMenuOpen(false);
     setMuteMenuOpen(false);
@@ -3021,6 +3147,7 @@ function setMuteMenuOpen(open: boolean): void {
   muteMenu.hidden = !open;
   muteBtn.setAttribute("aria-expanded", open ? "true" : "false");
   if (open) {
+    setPracticeMenuOpen(false);
     setSpeedMenuOpen(false);
     setLoopMenuOpen(false);
     setMetronomeMenuOpen(false);
@@ -3580,6 +3707,7 @@ function enterVerificationMode(): void {
   if (verificationActive) {
     return;
   }
+  setPracticeViewOpen(false);
   playgroundDraftSnapshot = editor.value;
   verificationActive = true;
   activeDocument.body.classList.add("pg-verifying");
@@ -4438,6 +4566,7 @@ function init(): void {
   decorateButton(loopBtn, "repeat-1");
   decorateButton(loopAllBtn, "repeat");
   decorateButton(editBtn, "pencil");
+  syncPracticeButton();
   syncMetronomeButton();
   syncMuteButton();
 
@@ -4481,6 +4610,13 @@ function init(): void {
             : (activeIndex + 1) % items.length;
     items[nextIndex]?.focus();
   });
+  practiceBtn.addEventListener("click", (event) => {
+    event.stopPropagation();
+    setPracticeMenuOpen(practiceMenu.hidden);
+  });
+  exitPracticeBtn.addEventListener("click", () => setPracticeViewOpen(false));
+  practiceMenu.addEventListener("click", (event) => event.stopPropagation());
+  practiceMenu.addEventListener("keydown", handleMenuArrowNavigation);
   speedBtn.addEventListener("click", (event) => {
     event.stopPropagation();
     setSpeedMenuOpen(speedMenu.hidden);
@@ -4498,6 +4634,7 @@ function init(): void {
   });
   muteMenu.addEventListener("click", (event) => event.stopPropagation());
   activeDocument.addEventListener("click", () => {
+    setPracticeMenuOpen(false);
     setLoopMenuOpen(false);
     setSpeedMenuOpen(false);
     setMetronomeMenuOpen(false);
@@ -4505,13 +4642,17 @@ function init(): void {
   });
   activeDocument.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
+      const returnFocusToPractice = !practiceMenu.hidden && practiceMenu.contains(activeDocument.activeElement);
       const returnFocusToLoop = !loopMenu.hidden && loopMenu.contains(activeDocument.activeElement);
       const returnFocusToSpeed = !speedMenu.hidden && speedMenu.contains(activeDocument.activeElement);
+      setPracticeMenuOpen(false);
       setLoopMenuOpen(false);
       setSpeedMenuOpen(false);
       setMetronomeMenuOpen(false);
       setMuteMenuOpen(false);
-      if (returnFocusToLoop) {
+      if (returnFocusToPractice) {
+        practiceBtn.focus();
+      } else if (returnFocusToLoop) {
         loopAllBtn.focus();
       } else if (returnFocusToSpeed) {
         speedBtn.focus();

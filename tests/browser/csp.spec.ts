@@ -538,6 +538,57 @@ test("tap tempo and finite practice goals produce a page-session summary", async
   await expect(earlySummary).toContainText("Result: Finished early");
 });
 
+test("Practice entry exposes daily tools and a focused responsive score view", async ({ page }) => {
+  await page.goto("/");
+  await page.locator("#pg-theme").click();
+  await expect(page.locator("body")).toHaveClass(/theme-dark/);
+  const practice = page.getByRole("button", { name: "Open Practice tools" });
+  await expect(practice).toBeVisible();
+  await practice.click();
+  const menu = page.locator("#pg-practice-menu");
+  await expect(menu.getByRole("menuitem", { name: "Practice repetitions…" })).toBeVisible();
+  await expect(menu.getByRole("menuitem", { name: "Tempo ramp…" })).toBeVisible();
+  await expect(menu.getByRole("menuitem", { name: "Tap tempo…" })).toBeVisible();
+  await expect(menu.getByRole("menuitem", { name: "Click: Off · Count-in: Off · Subdivision: Beat" })).toBeVisible();
+  await expect(menu.getByRole("menuitemcheckbox", { name: "Select practice bars" })).toBeVisible();
+  await menu.getByRole("menuitemcheckbox", { name: "Enter Practice view" }).click();
+
+  await expect(page.locator("body")).toHaveClass(/pg-practice-view/);
+  await expect(page.locator(".pg-toolbar-row--setup")).toBeHidden();
+  await expect(page.locator(".pg-pane--editor")).toBeHidden();
+  await expect(page.locator(".pg-pane--preview")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Exit" })).toBeVisible();
+  await expect(page.locator("#pg-speed")).toBeVisible();
+
+  for (const width of [390, 650, 1280]) {
+    await page.setViewportSize({ width, height: 800 });
+    const sizes = await page.locator(".pg-action-group__controls .pg-btn:visible").evaluateAll((buttons) =>
+      buttons.map((button) => {
+        const bounds = button.getBoundingClientRect();
+        return { width: bounds.width, height: bounds.height };
+      })
+    );
+    expect(sizes.every((size) => size.width >= 44 && size.height >= 44)).toBe(true);
+  }
+
+  await page.setViewportSize({ width: 650, height: 900 });
+  await page.evaluate(() => {
+    document.body.style.zoom = "2";
+  });
+  await expect(page.locator(".pg-pane--preview")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Exit" })).toBeVisible();
+  await page.evaluate(() => {
+    document.body.style.zoom = "";
+  });
+
+  await practice.click();
+  await expect(page.getByRole("menuitemcheckbox", { name: "Exit Practice view" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(practice).toBeFocused();
+  await page.getByRole("button", { name: "Exit" }).click();
+  await expect(page.locator(".pg-pane--editor")).toBeVisible();
+});
+
 test("wake lock control is disabled when the API is unavailable", async ({ page }) => {
   await page.addInitScript(() => {
     Object.defineProperty(navigator, "wakeLock", {

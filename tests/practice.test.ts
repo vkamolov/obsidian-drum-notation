@@ -23,6 +23,7 @@ function makeSession(overrides: Partial<DrumTransportSession> = {}): DrumTranspo
     mutedInstrumentIds: [],
     selection: { barIndexes: [] },
     selectionModeOpen: false,
+    practiceViewOpen: false,
     currentBarIndex: 0,
     tempoRamp: {
       config: null,
@@ -187,6 +188,15 @@ describe("DrumTransportSessionStore", () => {
     store.set("note.md:4", makeSession({ countInMode: "2-bars" }));
 
     expect(store.get("note.md:4", "HH | xxxx")?.countInMode).toBe("2-bars");
+  });
+
+  it("keeps Practice view scoped to its in-memory score session", () => {
+    const store = new DrumTransportSessionStore();
+    store.set("note.md:4", makeSession({ practiceViewOpen: true }));
+    store.set("note.md:12", makeSession({ body: "SD | o---", practiceViewOpen: false }));
+
+    expect(store.get("note.md:4", "HH | xxxx")?.practiceViewOpen).toBe(true);
+    expect(store.get("note.md:12", "SD | o---")?.practiceViewOpen).toBe(false);
   });
 
   it("normalizes and preserves advanced-click session state", () => {

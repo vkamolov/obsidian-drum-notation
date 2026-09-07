@@ -91,7 +91,7 @@ BD | o-------o-o-----
 ```
 ````
 
-In reading view, the plugin renders the block as page-width percussion staff notation and adds **Play**, **Stop**, **Loop Bar**, phrase/whole-notation loop options, playback-speed, metronome/count-in, instrument-mute, and **Edit** controls. For training, playback speed supports 25–150% of the written tempo; the toolbar offers compact 10% steps, including above-100% tempos for push-tempo practice. The metronome menu offers **Off**, **With drums**, and **Metronome only**, plus optional **1 bar** and **2 bars** count-ins. Count-in sounds even when the metronome is Off. It normally runs once at transport start; **Before every pass** is available for repetition goals, tempo ramps, and loop modes. The first metronome/count-in pulse of each bar is accented. Compound meters use grouped pulses, such as two clicks per bar in 6/8 and four in 12/8. The mute menu lists only instruments used in the current notation and mutes each canonical voice independently.
+In reading view, the plugin renders the block as page-width percussion staff notation and adds **Play**, **Stop**, **Loop Bar**, phrase/whole-notation loop options, playback-speed, metronome/count-in, instrument-mute, **Practice**, and **Edit** controls. **Practice** collects phrase selection, repetition goals, tempo ramps, tap tempo, click/count-in setup, and session summaries in one menu. Its optional Practice view enlarges that score's working area and keeps the transport, tempo, target progress, summary action, and Exit control close at hand. Other rendered drum blocks and the note itself are unaffected. For training, playback speed supports 25–150% of the written tempo; the toolbar offers compact 10% steps, including above-100% tempos for push-tempo practice. The metronome menu offers **Off**, **With drums**, and **Metronome only**, plus optional **1 bar** and **2 bars** count-ins. Count-in sounds even when the metronome is Off. It normally runs once at transport start; **Before every pass** is available for repetition goals, tempo ramps, and loop modes. The first metronome/count-in pulse of each bar is accented. Compound meters use grouped pulses, such as two clicks per bar in 6/8 and four in 12/8. The mute menu lists only instruments used in the current notation and mutes each canonical voice independently.
 
 For timing practice, **Click subdivision** can add 2, 3, or 4 clicks inside each existing metronome pulse. The menu describes the resulting note value when it is unambiguous: three per beat means eighth-note triplets in 4/4, but regular eighths in 6/8. Downbeats, main beats, and subdivisions use progressively lighter click strengths. At extreme tempo/speed combinations, unsafe subdivisions above 16 clicks per second are disabled and an active choice automatically steps down to the fastest safe option.
 
@@ -155,7 +155,12 @@ Stopping playback never clears the selection.
 
 ## Practice Sessions And Logs
 
-Choose **Practice repetitions…** from the Loop menu to drill the captured
+Open **Practice** for the daily-practice controls in one place. In the web
+playground, **Enter Practice view** collapses the setup, source, and editing
+panels so the notation can use the screen; **Exit** restores the workspace.
+The view choice lasts only for that score's current app or page session.
+
+Choose **Practice repetitions…** from the Practice or Loop menu to drill the captured
 current bar, selected phrase, or complete notation for a finite goal of 1–999
 passes. Quick choices cover 4, 8, 16, and 32 passes. **Stop** pauses without
 counting an incomplete pass; Play resumes from the beginning of the target.
