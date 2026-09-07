@@ -66,9 +66,6 @@ import {
   MIN_REPETITION_GOAL_PASSES,
   createDefaultRepetitionGoalConfig,
   createPracticeClock,
-  checkpointPracticeRunMetrics,
-  createPracticeRunMetrics,
-  createPracticeRunSummary,
   createTapTempoState,
   formatActiveSessionTime,
   formatPracticeSummaryMarkdown,
@@ -76,11 +73,12 @@ import {
   normalizeExactTempoBpm,
   normalizeRepetitionGoalConfig,
   normalizeRepetitionGoalProgress,
-  recordPracticePass,
   recordTapTempo,
-  resumePracticeRunMetrics,
-  settlePracticeRunMetrics
 } from "../../src/practice-session";
+import {
+  PracticeSessionController,
+  getPracticeSummaryIdentity
+} from "../../src/practice-controller";
 import { getMeasureRepeatProgress } from "../../src/repeat-progress";
 import {
   createScreenWakeLockTarget,
@@ -327,7 +325,26 @@ let repetitionGoal: {
 let completedSummary: PracticeRunSummary | null = null;
 let completedSummaryHandled = false;
 const practiceClock = createPracticeClock(() => player?.getAudioProgress() ?? null);
-let playbackStartGeneration = 0;
+const practiceController = new PracticeSessionController({
+  state: {
+    read: () => ({
+      tempoRamp,
+      tempoRampRunMetrics,
+      repetitionGoal,
+      completedSummary,
+      completedSummaryHandled
+    }),
+    write: (state) => {
+      tempoRamp = state.tempoRamp;
+      tempoRampRunMetrics = state.tempoRampRunMetrics;
+      repetitionGoal = state.repetitionGoal;
+      completedSummary = state.completedSummary;
+      completedSummaryHandled = state.completedSummaryHandled;
+    }
+  },
+  clock: practiceClock,
+  transport: { audioProgress: () => player?.getAudioProgress() ?? null }
+});
 let pendingPlaybackResume: {mode: DrumTransportMode; position: DrumPlaybackPosition} | null = null;
 let activePlaybackBarIndex: number | null = null;
 let activePlaybackBarState: PlaybackBarState | null = null;
@@ -634,31 +651,15 @@ function formatTempoRampTarget(target: TempoRampTarget): string {
 
 function startOrResumeTrackedRun(kind: PracticeRunSummary["kind"]): void {
   if (!currentBlock) return;
-  const bpm = getCurrentEffectiveTempo(currentBlock);
-  if (kind === "tempo-ramp") {
-    tempoRampRunMetrics = tempoRampRunMetrics
-      ? resumePracticeRunMetrics(tempoRampRunMetrics, bpm, practiceClock)
-      : createPracticeRunMetrics(bpm, practiceClock);
-  } else {
-    repetitionGoal = {
-      ...repetitionGoal,
-      runMetrics: repetitionGoal.runMetrics
-        ? resumePracticeRunMetrics(repetitionGoal.runMetrics, bpm, practiceClock)
-        : createPracticeRunMetrics(bpm, practiceClock)
-    };
-  }
+  practiceController.dispatch({
+    type: "start-or-resume",
+    kind,
+    bpm: getCurrentEffectiveTempo(currentBlock)
+  });
 }
 
 function settleTrackedRun(status: PracticeRunMetrics["status"] = "paused"): void {
-  if (tempoRamp.armed && tempoRampRunMetrics?.status === "running") {
-    tempoRampRunMetrics = settlePracticeRunMetrics(tempoRampRunMetrics, practiceClock, status);
-  }
-  if (repetitionGoal.armed && repetitionGoal.runMetrics?.status === "running") {
-    repetitionGoal = {
-      ...repetitionGoal,
-      runMetrics: settlePracticeRunMetrics(repetitionGoal.runMetrics, practiceClock, status)
-    };
-  }
+  practiceController.dispatch({ type: "settle", status });
 }
 
 function finishTrackedSummary(
@@ -667,26 +668,13 @@ function finishTrackedSummary(
   requestedPasses: number | null,
   completed: boolean
 ): void {
-  const metrics = kind === "tempo-ramp" ? tempoRampRunMetrics : repetitionGoal.runMetrics;
-  if (!metrics) return;
-  completedSummary = createPracticeRunSummary(
+  practiceController.dispatch({
+    type: "finish",
     kind,
     target,
-    metrics,
     requestedPasses,
-    completed,
-    practiceClock
-  );
-  completedSummaryHandled = false;
-  if (kind === "tempo-ramp") {
-    tempoRampRunMetrics = settlePracticeRunMetrics(metrics, practiceClock, "complete");
-  } else {
-    repetitionGoal = {
-      ...repetitionGoal,
-      armed: false,
-      runMetrics: settlePracticeRunMetrics(metrics, practiceClock, "complete")
-    };
-  }
+    completed
+  });
 }
 
 function getTempoRampStatus(): string | null {
@@ -1338,7 +1326,7 @@ function finalizeCompletedTempoRamp(): void {
 
 function stopPlayback(settleSession = true): void {
   pendingPlaybackResume = null;
-  playbackStartGeneration += 1;
+  practiceController.nextTransportGeneration();
   if (settleSession) settleTrackedRun();
   player?.stop();
   player = null;
@@ -1358,14 +1346,14 @@ function stopPlayback(settleSession = true): void {
 
 async function preparePlaybackStart(recoverBeforeStart: boolean): Promise<boolean> {
   stopPlayback(false);
-  const generation = playbackStartGeneration;
+  const generation = practiceController.currentTransportGeneration;
 
   if (!recoverBeforeStart) {
     return true;
   }
 
   const recovered = await recoverPlaybackAudio();
-  return recovered && generation === playbackStartGeneration;
+  return recovered && practiceController.isCurrentTransportGeneration(generation);
 }
 
 function handleTempoRampPassStart(passState: TempoRampPassState): void {
@@ -1399,12 +1387,12 @@ function getLifecyclePlaybackOptions(): Pick<PlaybackOptions, "ownerDocument" | 
     ownerDocument: document,
     onAudioProgress: (progress) => {
       if (!currentBlock || player?.getAudioProgress().generation !== progress.generation) return;
-      const clock = {...practiceClock, audioProgress: () => progress};
-      const update = (metrics: PracticeRunMetrics) => started
-        ? checkpointPracticeRunMetrics(metrics, progress)
-        : resumePracticeRunMetrics(metrics, getCurrentEffectiveTempo(currentBlock!), clock);
-      if (tempoRamp.armed && tempoRampRunMetrics) tempoRampRunMetrics = update(tempoRampRunMetrics);
-      if (repetitionGoal.armed && repetitionGoal.runMetrics) repetitionGoal = {...repetitionGoal, runMetrics: update(repetitionGoal.runMetrics)};
+      practiceController.dispatch({
+        type: "audio-progress",
+        progress,
+        bpm: getCurrentEffectiveTempo(currentBlock),
+        continuing: started
+      });
       started = true;
     },
     onInterrupted: (reason, position) => {
@@ -1432,9 +1420,7 @@ function getTempoRampPlaybackOptions() {
     onTempoRampPassStart: handleTempoRampPassStart,
     onTempoRampPassComplete: handleTempoRampPassComplete,
     onPassComplete: (state: PlaybackPassState) => {
-      if (tempoRampRunMetrics) {
-        tempoRampRunMetrics = recordPracticePass(tempoRampRunMetrics, state.tempoBpm);
-      }
+      practiceController.dispatch({ type: "record-pass", kind: "tempo-ramp", bpm: state.tempoBpm });
     }
   };
 }
@@ -1860,11 +1846,9 @@ async function startRepetitionGoal(
         const completedPasses = Math.min(config.totalPasses, completedBeforeTransport + state.completedPasses);
         repetitionGoal = {
           ...repetitionGoal,
-          progress: { completedPasses, completed: completedPasses >= config.totalPasses },
-          runMetrics: repetitionGoal.runMetrics
-            ? recordPracticePass(repetitionGoal.runMetrics, state.tempoBpm)
-            : null
+          progress: { completedPasses, completed: completedPasses >= config.totalPasses }
         };
+        practiceController.dispatch({ type: "record-pass", kind: "repetition-goal", bpm: state.tempoBpm });
         refreshPracticeStatus();
       }
     },
@@ -2041,25 +2025,33 @@ function openPracticeSummaryDialog(): void {
   const discard = actions.createEl("button", { cls: "pg-btn pg-btn--small", text: "Discard summary", attr: { type: "button" } });
   const remove = () => closePlaygroundDialog(panel);
   copy.addEventListener("click", () => {
-    const formatted = formatPracticeSummaryMarkdown(summary, {
-      sourcePath: "Playground",
-      blockTitle: getTitle(currentBlock!),
-      note: note.value
-    });
-    void writeClipboardText(formatted.markdown)
-      .then(() => {
-        completedSummaryHandled = true;
+    void practiceController.runSummaryAction("copy", async (currentSummary) => {
+      const formatted = formatPracticeSummaryMarkdown(currentSummary, {
+        sourcePath: "Playground",
+        blockTitle: getTitle(currentBlock!),
+        note: note.value
+      });
+      await writeClipboardText(formatted.markdown);
+    }).then((handled) => {
+        if (!handled) return;
         remove();
         refreshPracticeStatus();
       })
       .catch(() => {
+        const formatted = formatPracticeSummaryMarkdown(summary, {
+          sourcePath: "Playground",
+          blockTitle: getTitle(currentBlock!),
+          note: note.value
+        });
         showManualCopyText(formatted.markdown);
       });
   });
   close.addEventListener("click", remove);
   discard.addEventListener("click", () => {
-    completedSummary = null;
-    completedSummaryHandled = false;
+    practiceController.dispatch({
+      type: "summary-discarded",
+      identity: getPracticeSummaryIdentity(summary) ?? undefined
+    });
     remove();
     refreshPracticeStatus();
   });
@@ -4673,6 +4665,7 @@ function init(): void {
   const handlePageUnload = () => {
     settleTrackedRun();
     stopPlayback(false);
+    practiceController.dispose();
     clearSourceImage();
     void screenWakeLock.destroy();
   };
