@@ -228,7 +228,7 @@
   white-space: nowrap;
 }
 
-.drum-notation .drum-notation__practice-entry {
+.drum-notation .drum-notation__button.drum-notation__practice-entry {
   width: auto;
   min-width: 0;
   padding-inline: 0.48rem;

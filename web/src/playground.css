@@ -806,6 +806,10 @@ body.pg-verify-workspace-maximized .pg-verify-resizer::before {
   overflow-y: auto;
 }
 
+.pg-btn--practice-exit[hidden] {
+  display: none;
+}
+
 .pg-speed-menu {
   min-width: 15rem;
   max-height: min(28rem, 70vh);

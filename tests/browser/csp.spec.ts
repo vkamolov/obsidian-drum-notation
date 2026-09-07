@@ -193,6 +193,40 @@ test("Obsidian speed-button labels fit inside their interactive background", asy
   expect(measurements[2].clientWidth).toBeLessThan(measurements[4].clientWidth);
 });
 
+test("Obsidian Practice labels fit and view controls remain scoped to one block", async ({ page }) => {
+  await page.goto("/");
+  const measurements = await page.evaluate(() => {
+    const roots = [false, true].map((focused) => {
+      const root = document.createElement("div");
+      root.className = `drum-notation${focused ? " is-practice-view" : ""}`;
+      for (const label of ["Practice", "Exit"]) {
+        const button = document.createElement("button");
+        button.className = "drum-notation__button drum-notation__practice-entry";
+        button.textContent = label;
+        button.hidden = label === "Exit" && !focused;
+        root.append(button);
+      }
+      document.body.append(root);
+      return root;
+    });
+    const results = roots.map((root) => [...root.querySelectorAll("button")].map((button) => ({
+      width: button.clientWidth,
+      contentWidth: button.scrollWidth,
+      height: button.getBoundingClientRect().height,
+      hidden: getComputedStyle(button).display === "none"
+    })));
+    roots.forEach((root) => root.remove());
+    return results;
+  });
+  expect(measurements[0][0].width).toBeGreaterThanOrEqual(measurements[0][0].contentWidth);
+  expect(measurements[0][1].hidden).toBe(true);
+  for (const button of measurements[1]) {
+    expect(button.hidden).toBe(false);
+    expect(button.width).toBeGreaterThanOrEqual(button.contentWidth);
+    expect(button.height).toBeGreaterThanOrEqual(44);
+  }
+});
+
 test("practice selection supports pointer, keyboard, responsive, and print workflows", async ({ page }) => {
   await page.setViewportSize({ width: 1200, height: 900 });
   await page.goto("/");
@@ -544,6 +578,7 @@ test("Practice entry exposes daily tools and a focused responsive score view", a
   await expect(page.locator("body")).toHaveClass(/theme-dark/);
   const practice = page.getByRole("button", { name: "Open Practice tools" });
   await expect(practice).toBeVisible();
+  await expect(page.locator("#pg-exit-practice")).toBeHidden();
   await practice.click();
   const menu = page.locator("#pg-practice-menu");
   await expect(menu.getByRole("menuitem", { name: "Practice repetitions…" })).toBeVisible();
@@ -587,6 +622,7 @@ test("Practice entry exposes daily tools and a focused responsive score view", a
   await expect(practice).toBeFocused();
   await page.getByRole("button", { name: "Exit" }).click();
   await expect(page.locator(".pg-pane--editor")).toBeVisible();
+  await expect(page.locator("#pg-exit-practice")).toBeHidden();
 });
 
 test("wake lock control is disabled when the API is unavailable", async ({ page }) => {
