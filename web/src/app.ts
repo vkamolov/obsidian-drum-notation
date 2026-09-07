@@ -1897,10 +1897,7 @@ function openRepetitionGoalDialog(): void {
   const block = currentBlock;
   const initial = normalizeRepetitionGoalConfig(repetitionGoal.config, block.bars.length) ??
     createDefaultRepetitionGoalConfig(block.bars.length, practiceSelection.barIndexes, selectedBarIndex);
-  const panel = activeDocument.body.createDiv({
-    cls: "pg-confirm pg-tempo-ramp-dialog",
-    attr: { role: "dialog", "aria-modal": "true", "aria-label": "Practice repetitions" }
-  });
+  const panel = createPlaygroundDialog("Practice repetitions", "pg-tempo-ramp-dialog");
   panel.createEl("h2", { cls: "pg-tempo-ramp-dialog__title", text: "Practice repetitions" });
   const target = panel.createEl("select", { cls: "pg-confirm__number pg-tempo-ramp-dialog__select" });
   target.createEl("option", { value: "current-bar", text: `Current bar (${selectedBarIndex + 1})` });
@@ -1948,7 +1945,7 @@ function openRepetitionGoalDialog(): void {
     submit.disabled = config === null;
     summary.setText(config ? `${config.totalPasses} complete pass${config.totalPasses === 1 ? "" : "es"}` : "Enter a valid repetition goal.");
   }
-  const close = () => panel.remove();
+  const close = () => closePlaygroundDialog(panel);
   target.addEventListener("change", update);
   passes.addEventListener("input", update);
   cancel.addEventListener("click", close);
@@ -1977,12 +1974,6 @@ function openRepetitionGoalDialog(): void {
   };
   submit.addEventListener("click", () => {
     void submitRepetitionGoal();
-  });
-  panel.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") {
-      event.stopPropagation();
-      close();
-    }
   });
   update();
   window.requestAnimationFrame(() => {
@@ -2032,10 +2023,7 @@ function openPracticeSummaryDialog(): void {
   if (!completedSummary || !currentBlock) return;
   dismissPlaygroundConfirm();
   const summary = completedSummary;
-  const panel = activeDocument.body.createDiv({
-    cls: "pg-confirm pg-tempo-ramp-dialog",
-    attr: { role: "dialog", "aria-modal": "true", "aria-label": "Practice summary" }
-  });
+  const panel = createPlaygroundDialog("Practice summary", "pg-tempo-ramp-dialog");
   panel.createEl("h2", { cls: "pg-tempo-ramp-dialog__title", text: "Practice summary" });
   [
     ["Notation", getTitle(currentBlock)],
@@ -2051,7 +2039,7 @@ function openPracticeSummaryDialog(): void {
   copy.disabled = completedSummaryHandled;
   const close = actions.createEl("button", { cls: "pg-btn pg-btn--small", text: "Close", attr: { type: "button" } });
   const discard = actions.createEl("button", { cls: "pg-btn pg-btn--small", text: "Discard summary", attr: { type: "button" } });
-  const remove = () => panel.remove();
+  const remove = () => closePlaygroundDialog(panel);
   copy.addEventListener("click", () => {
     const formatted = formatPracticeSummaryMarkdown(summary, {
       sourcePath: "Playground",
@@ -2074,12 +2062,6 @@ function openPracticeSummaryDialog(): void {
     completedSummaryHandled = false;
     remove();
     refreshPracticeStatus();
-  });
-  panel.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") {
-      event.stopPropagation();
-      remove();
-    }
   });
 }
 
@@ -2309,10 +2291,7 @@ function openTapTempoDialog(): void {
   if (player) return;
   dismissPlaygroundConfirm();
   let state = createTapTempoState();
-  const panel = activeDocument.body.createDiv({
-    cls: "pg-confirm pg-tempo-ramp-dialog",
-    attr: { role: "dialog", "aria-modal": "true", "aria-label": "Tap tempo" }
-  });
+  const panel = createPlaygroundDialog("Tap tempo", "pg-tempo-ramp-dialog");
   panel.createEl("h2", { cls: "pg-tempo-ramp-dialog__title", text: "Tap tempo" });
   const measured = panel.createEl("p", {
     cls: "pg-confirm__message",
@@ -2341,7 +2320,7 @@ function openTapTempoDialog(): void {
     use.disabled = true;
     tap.focus();
   });
-  const close = () => panel.remove();
+  const close = () => closePlaygroundDialog(panel);
   cancel.addEventListener("click", close);
   use.addEventListener("click", () => {
     if (state.bpm === null) return;
@@ -2349,10 +2328,7 @@ function openTapTempoDialog(): void {
     close();
   });
   panel.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") {
-      event.stopPropagation();
-      close();
-    } else if ((event.key === " " || event.key === "Enter") && event.target === tap && !event.repeat) {
+    if ((event.key === " " || event.key === "Enter") && event.target === tap && !event.repeat) {
       event.preventDefault();
       record();
     }
@@ -2509,10 +2485,7 @@ function openTempoRampDialog(): void {
   const preservedValues = normalizeTempoRampConfigValues(tempoRamp.config);
   const initial = normalizeTempoRampConfig(tempoRamp.config, block) ??
     (preservedValues ? { ...preservedValues, target: defaultConfig.target } : defaultConfig);
-  const panel = activeDocument.body.createDiv({
-    cls: "pg-confirm pg-tempo-ramp-dialog",
-    attr: { role: "dialog", "aria-modal": "true", "aria-label": "Tempo ramp trainer" }
-  });
+  const panel = createPlaygroundDialog("Tempo ramp trainer", "pg-tempo-ramp-dialog");
   panel.createEl("h2", { cls: "pg-tempo-ramp-dialog__title", text: "Tempo ramp trainer" });
   panel.createEl("p", {
     cls: "pg-confirm__message",
@@ -2596,7 +2569,7 @@ function openTempoRampDialog(): void {
       ? `${getTempoRampPreview(config).join(" → ")} BPM · ${config.passesPerStep} pass${config.passesPerStep === 1 ? "" : "es"} each`
       : "Enter a valid ascending tempo ladder.");
   };
-  const close = () => panel.remove();
+  const close = () => closePlaygroundDialog(panel);
   [target, start, step, passes, ceiling, ending].forEach((control) => {
     control.addEventListener("input", update);
     control.addEventListener("change", update);
@@ -2628,10 +2601,7 @@ function openTempoRampDialog(): void {
     void submitTempoRamp();
   });
   panel.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") {
-      event.stopPropagation();
-      close();
-    } else if (event.key === "Enter" && !(event.target instanceof HTMLButtonElement) && !submit.disabled) {
+    if (event.key === "Enter" && !(event.target instanceof HTMLButtonElement) && !submit.disabled) {
       event.preventDefault();
       submit.click();
     }
@@ -4085,22 +4055,95 @@ function dismissManualCopyText(): void {
   activeDocument.querySelector(".pg-copy-fallback")?.remove();
 }
 
+const playgroundDialogStack: HTMLDialogElement[] = [];
+
+function getDialogFocusableElements(dialog: HTMLDialogElement): HTMLElement[] {
+  return [...dialog.querySelectorAll<HTMLElement>(
+    'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])'
+  )].filter((element) => !element.hidden && element.getAttribute("aria-hidden") !== "true");
+}
+
+function focusDialogFallback(dialog?: HTMLDialogElement): void {
+  const target = dialog?.open
+    ? getDialogFocusableElements(dialog)[0] ?? dialog
+    : activeDocument.querySelector<HTMLElement>("#pg-play") ?? activeDocument.body;
+  target.focus();
+}
+
+function canRestoreDialogFocus(element: HTMLElement | null): element is HTMLElement {
+  if (!element?.isConnected || element.closest("[hidden]")) {
+    return false;
+  }
+  const style = window.getComputedStyle(element);
+  return style.display !== "none" && style.visibility !== "hidden";
+}
+
+function createPlaygroundDialog(label: string, extraClass = ""): HTMLDialogElement {
+  const activeElement = activeDocument.activeElement;
+  const focusOrigin = activeElement instanceof HTMLElement && activeElement !== activeDocument.body
+    ? activeElement
+    : null;
+  const panel = activeDocument.body.createEl("dialog", {
+    cls: ["pg-confirm", extraClass].filter(Boolean).join(" "),
+    attr: { "aria-label": label }
+  });
+
+  playgroundDialogStack.push(panel);
+  panel.addEventListener("keydown", (event) => {
+    if (event.key !== "Tab") {
+      return;
+    }
+    const focusable = getDialogFocusableElements(panel);
+    if (focusable.length === 0) {
+      event.preventDefault();
+      panel.focus();
+      return;
+    }
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && activeDocument.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && activeDocument.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  });
+  panel.addEventListener("close", () => {
+    const index = playgroundDialogStack.lastIndexOf(panel);
+    if (index !== -1) {
+      playgroundDialogStack.splice(index, 1);
+    }
+    panel.remove();
+    window.requestAnimationFrame(() => {
+      if (canRestoreDialogFocus(focusOrigin)) {
+        focusOrigin.focus();
+        if (activeDocument.activeElement === focusOrigin) {
+          return;
+        }
+      }
+      focusDialogFallback(playgroundDialogStack[playgroundDialogStack.length - 1]);
+    });
+  }, { once: true });
+  panel.showModal();
+  return panel;
+}
+
+function closePlaygroundDialog(panel: HTMLDialogElement): void {
+  if (panel.open) {
+    panel.close();
+  } else {
+    panel.remove();
+  }
+}
+
 function dismissPlaygroundConfirm(): void {
-  activeDocument.querySelector(".pg-confirm")?.remove();
+  [...playgroundDialogStack].reverse().forEach(closePlaygroundDialog);
 }
 
 function confirmPlaygroundAction(message: string): Promise<boolean> {
-  dismissPlaygroundConfirm();
-
   return new Promise((resolve) => {
-    const panel = activeDocument.body.createDiv({
-      cls: "pg-confirm",
-      attr: {
-        role: "dialog",
-        "aria-modal": "true",
-        "aria-label": "Confirm action"
-      }
-    });
+    const panel = createPlaygroundDialog("Confirm action");
     panel.createEl("p", { cls: "pg-confirm__message", text: message });
     const actions = panel.createDiv({ cls: "pg-confirm__actions" });
     const cancel = actions.createEl("button", {
@@ -4115,18 +4158,16 @@ function confirmPlaygroundAction(message: string): Promise<boolean> {
     });
 
     const finish = (value: boolean): void => {
-      panel.remove();
+      closePlaygroundDialog(panel);
       resolve(value);
     };
 
+    panel.addEventListener("cancel", (event) => {
+      event.preventDefault();
+      finish(false);
+    }, { once: true });
     cancel.addEventListener("click", () => finish(false));
     confirm.addEventListener("click", () => finish(true));
-    panel.addEventListener("keydown", (event) => {
-      if (event.key === "Escape") {
-        event.stopPropagation();
-        finish(false);
-      }
-    });
 
     window.requestAnimationFrame(() => cancel.focus());
   });
@@ -4139,14 +4180,7 @@ function requestPlaygroundRepeatAction(
 
   return new Promise((resolve) => {
     const isEditing = request.mode === "edit";
-    const panel = activeDocument.body.createDiv({
-      cls: "pg-confirm",
-      attr: {
-        role: "dialog",
-        "aria-modal": "true",
-        "aria-label": isEditing ? "Edit repeat bar" : "Add repeat bar"
-      }
-    });
+    const panel = createPlaygroundDialog(isEditing ? "Edit repeat bar" : "Add repeat bar");
     panel.createEl("p", {
       cls: "pg-confirm__message",
       text: isEditing
@@ -4195,10 +4229,14 @@ function requestPlaygroundRepeatAction(
       confirm.disabled = readCount() === null;
     };
     const finish = (value: RepeatBarDialogResult | null): void => {
-      panel.remove();
+      closePlaygroundDialog(panel);
       resolve(value);
     };
 
+    panel.addEventListener("cancel", (event) => {
+      event.preventDefault();
+      finish(null);
+    }, { once: true });
     input.addEventListener("input", updateValidity);
     cancel.addEventListener("click", () => finish(null));
     confirm.addEventListener("click", () => {
@@ -4209,10 +4247,7 @@ function requestPlaygroundRepeatAction(
       }
     });
     panel.addEventListener("keydown", (event) => {
-      if (event.key === "Escape") {
-        event.stopPropagation();
-        finish(null);
-      } else if (event.key === "Enter") {
+      if (event.key === "Enter") {
         const count = readCount();
         if (count !== null) {
           event.preventDefault();

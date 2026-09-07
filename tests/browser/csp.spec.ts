@@ -401,7 +401,12 @@ test("tempo ramp setup runs exact BPM stages and preserves completed progress", 
   await dialog.getByRole("button", { name: "Start ramp" }).click();
   const replaceRamp = page.getByRole("dialog", { name: "Confirm action" });
   await expect(replaceRamp).toBeVisible();
+  await expect(replaceRamp.getByRole("button", { name: "Cancel" })).toBeFocused();
   await replaceRamp.getByRole("button", { name: "Cancel" }).click();
+  await expect(replaceRamp).toBeHidden();
+  await expect(dialog).toBeVisible();
+  await expect.poll(() => dialog.evaluate((element) => element.contains(element.ownerDocument.activeElement))).toBe(true);
+  await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
   await speed.click();
   await page.getByRole("menuitem", { name: "Tempo ramp…" }).click();
@@ -428,10 +433,37 @@ test("tap tempo and finite practice goals produce a page-session summary", async
   await page.getByRole("menuitemradio", { name: "Before every pass" }).click();
   await expect(page.locator("#pg-metronome")).toHaveAttribute("aria-label", /Count-in timing: Before every pass/);
 
+  await page.locator("#pg-speed").focus();
   await page.locator("#pg-speed").click();
   await page.getByRole("menuitem", { name: "Tap tempo…" }).click();
   const tapDialog = page.getByRole("dialog", { name: "Tap tempo" });
   const tapButton = tapDialog.getByRole("button", { name: "Tap" });
+  await expect(tapButton).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(tapDialog.getByRole("button", { name: "Cancel" })).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(tapButton).toBeFocused();
+  await page.evaluate(() => {
+    const speedButton = document.querySelector<HTMLElement>("#pg-speed");
+    if (!speedButton) return;
+    (window as Window & { __detachedSpeedButton?: HTMLElement }).__detachedSpeedButton = speedButton;
+    speedButton.remove();
+  });
+  await page.keyboard.press("Escape");
+  await expect(tapDialog).toBeHidden();
+  await expect(page.locator("#pg-play")).toBeFocused();
+
+  await page.evaluate(() => {
+    const saved = (window as Window & { __detachedSpeedButton?: HTMLElement }).__detachedSpeedButton;
+    const anchor = document.querySelector("#pg-metronome");
+    if (saved && anchor?.parentElement) {
+      anchor.parentElement.insertBefore(saved, anchor);
+    }
+  });
+
+  await page.locator("#pg-speed").click();
+  await page.getByRole("menuitem", { name: "Tap tempo…" }).click();
+  await expect(tapButton).toBeFocused();
   await tapButton.click();
   await page.waitForTimeout(500);
   await tapButton.click();
@@ -466,6 +498,10 @@ test("tap tempo and finite practice goals produce a page-session summary", async
   const replaceGoal = page.getByRole("dialog", { name: "Confirm action" });
   await expect(replaceGoal).toBeVisible();
   await replaceGoal.getByRole("button", { name: "Cancel" }).click();
+  await expect(replaceGoal).toBeHidden();
+  await expect(goalDialog).toBeVisible();
+  await expect.poll(() => goalDialog.evaluate((element) => element.contains(element.ownerDocument.activeElement))).toBe(true);
+  await page.keyboard.press("Escape");
   await expect(goalDialog).toBeHidden();
   await page.getByRole("button", { name: "Loop options" }).click();
   await page.getByRole("menuitem", { name: "Practice repetitions…" }).click();

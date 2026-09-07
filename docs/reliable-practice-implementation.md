@@ -10,7 +10,7 @@ sample mix and advanced-notation gates are unchanged. Implementation branch:
 - [x] 2. Random-source seam, conditional noise caching, completed-voice cleanup.
 - [x] 3. Advance pass preparation, reconciliation, lifecycle and audio-time restoration.
 - [x] 4a. Explicit structural edit results and shared capabilities.
-- [ ] 4b. Native web dialogs with keyboard/focus behavior.
+- [x] 4b. Native web dialogs with keyboard/focus behavior.
 - [ ] 5. Shared practice coordination and guarded explicit summary persistence.
 - [ ] 6. Discoverable Practice tools and session-local Practice view.
 - [ ] 7. Conditional web-font experiment (retain inline packaging unless gates pass).
@@ -80,3 +80,14 @@ Do not represent browser emulation as physical-device coverage.
 - Time-signature edits retain their tuplet-aware relative/absolute span behavior and reject written-
   beat overflow. Advanced source structure remains available through text editing.
 - Verification: 652/652 unit tests, plugin build and web build/typecheck passed.
+
+### Stage 4b web dialog checkpoint
+
+- Repetition goals, tempo ramps, tap tempo, summaries, repeat counts and confirmations now use
+  modal native `dialog` elements through one helper. The page is inert while each modal is open.
+- Keyboard focus stays within the active dialog. Escape closes or cancels it, then focus returns to
+  the opener when possible and to Play when the opener has disappeared.
+- Replacement confirmations stack over setup dialogs. Cancelling returns to the preserved setup
+  inputs instead of discarding them. Obsidian continues to use its native modal classes.
+- Chromium and WebKit browser coverage exercises initial focus, Tab wrapping, Escape, nested
+  confirmation cancellation and missing-trigger restoration.
