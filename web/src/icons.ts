@@ -38,6 +38,18 @@ const ICON_SHAPES: Record<string, IconShape[]> = {
     { tag: "path", attrs: { d: "M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" } },
     { tag: "line", attrs: { x1: "4", x2: "4", y1: "22", y2: "15" } }
   ],
+  check: [{ tag: "path", attrs: { d: "M20 6 9 17l-5-5" } }],
+  "list-checks": [
+    { tag: "path", attrs: { d: "m3 17 2 2 4-4" } },
+    { tag: "path", attrs: { d: "m3 7 2 2 4-4" } },
+    { tag: "path", attrs: { d: "M13 6h8" } },
+    { tag: "path", attrs: { d: "M13 12h8" } },
+    { tag: "path", attrs: { d: "M13 18h8" } }
+  ],
+  x: [
+    { tag: "path", attrs: { d: "M18 6 6 18" } },
+    { tag: "path", attrs: { d: "m6 6 12 12" } }
+  ],
   "volume-2": [
     { tag: "polygon", attrs: { points: "11 5 6 9 2 9 2 15 6 15 11 19 11 5" } },
     { tag: "path", attrs: { d: "M15.54 8.46a5 5 0 0 1 0 7.07" } },
