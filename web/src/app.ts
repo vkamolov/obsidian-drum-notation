@@ -1328,7 +1328,8 @@ function finalizeCompletedTempoRamp(): void {
   }
 }
 
-function stopPlayback(_settleSession = true): void {
+// Settlement is unconditional and owned by practiceController.shutdown(); there is no non-settling stop.
+function stopPlayback(): void {
   if (practiceController.lifecycleState === "draining") return;
   pendingPlaybackResume = null;
   practiceController.shutdown();
@@ -1349,7 +1350,7 @@ function stopPlayback(_settleSession = true): void {
 
 async function preparePlaybackStart(recoverBeforeStart: boolean): Promise<boolean> {
   if (!practiceController.acceptsStarts) return false;
-  stopPlayback(false);
+  stopPlayback();
   const generation = practiceController.currentTransportGeneration;
 
   if (!recoverBeforeStart) {
@@ -2124,7 +2125,7 @@ async function restartPlaybackForControlChange(): Promise<void> {
 
   const currentPosition = player.getCurrentPlaybackPosition();
   if (repetitionGoal.armed) {
-    stopPlayback(false);
+    stopPlayback();
     await startRepetitionGoal(true, false, { ...currentPosition, blockPassIndex: 0 });
     return;
   }
@@ -2135,7 +2136,7 @@ async function restartPlaybackForControlChange(): Promise<void> {
   const previousTransportMode = transportMode;
   const restartBarIndex = barIndexForSlot(currentBlock, restartSlotIndex);
 
-  stopPlayback(false);
+  stopPlayback();
   if (previousTransportMode === "loop-selection") {
     const selected = tempoRamp.armed && tempoRamp.config?.target.kind === "selected-bars"
       ? tempoRamp.config.target.barIndexes
