@@ -9,6 +9,7 @@ import {
   Notice,
   Plugin,
   PluginSettingTab,
+  addIcon,
   setIcon,
   setTooltip,
   Setting,
@@ -98,6 +99,7 @@ import {
   resolvePracticeControllerTarget,
   togglePracticeRegion
 } from "./src/practice";
+import { PRACTICE_ICON_ID, practiceIconSvgContent } from "./src/practice-icon";
 import {
   CancellationGeneration,
   PracticeSessionController,
@@ -347,6 +349,7 @@ export default class DrumNotationPlugin extends Plugin {
   private lastInteractedControllerOwner: symbol | null = null;
 
   async onload(): Promise<void> {
+    addIcon(PRACTICE_ICON_ID, practiceIconSvgContent());
     await this.loadSettings();
     await this.screenWakeLock.setEnabled(this.settings.keepScreenAwakeDuringPlayback);
     this.addSettingTab(new DrumNotationSettingTab(this.app, this));
@@ -555,10 +558,9 @@ export default class DrumNotationPlugin extends Plugin {
       cls: "drum-notation__button drum-notation__practice-entry",
       attr: { type: "button", "aria-label": "Practice tools" }
     });
-    setIcon(practiceButton, "dumbbell");
-    practiceButton.createSpan({ text: "Practice" });
+    setIcon(practiceButton, PRACTICE_ICON_ID);
     const exitPracticeButton = controls.createEl("button", {
-      cls: "drum-notation__button drum-notation__practice-entry",
+      cls: "drum-notation__button drum-notation__practice-entry drum-notation__practice-entry--labeled",
       attr: { type: "button", "aria-label": "Exit Practice view" }
     });
     setIcon(exitPracticeButton, "log-out");
@@ -2892,8 +2894,7 @@ export default class DrumNotationPlugin extends Plugin {
       root.toggleClass("is-practice-view", practiceViewOpen);
       practiceButton.toggleClass("is-active", practiceViewOpen);
       practiceButton.empty();
-      setIcon(practiceButton, "dumbbell");
-      practiceButton.createSpan({ text: "Practice" });
+      setIcon(practiceButton, PRACTICE_ICON_ID);
       practiceButton.setAttribute("aria-label", "Open Practice tools");
       practiceButton.setAttribute("aria-pressed", practiceViewOpen ? "true" : "false");
       exitPracticeButton.hidden = !practiceViewOpen;

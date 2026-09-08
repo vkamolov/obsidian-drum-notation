@@ -156,6 +156,7 @@ import {
   RepeatBarDialogResult
 } from "../../src/editor-grid";
 import { createIconSvg } from "./icons";
+import { PRACTICE_ICON_ID } from "../../src/practice-icon";
 import {
   compareReportCore,
   detectRasterImageKind,
@@ -2618,7 +2619,7 @@ function openTempoRampDialog(): void {
 
 function syncPracticeButton(): void {
   const text = practiceBtn.createSpan({ cls: "pg-btn__label", text: "Practice" });
-  practiceBtn.replaceChildren(createIconSvg("dumbbell"), text);
+  practiceBtn.replaceChildren(createIconSvg(PRACTICE_ICON_ID), text);
   practiceBtn.classList.toggle("is-active", practiceViewOpen);
   practiceBtn.setAttribute("aria-pressed", practiceViewOpen ? "true" : "false");
   practiceBtn.setAttribute("aria-label", "Open Practice tools");

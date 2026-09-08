@@ -130,7 +130,6 @@
 }
 
 .drum-notation__practice-action {
-  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -140,13 +139,12 @@
   text-align: center;
 }
 
+/* The icon stays in flow so it cannot overlap a long label, and so justify-content
+   centres the icon and label together rather than centring the label alone. */
 .drum-notation__practice-action svg {
-  position: absolute;
-  inset-inline-start: 0.42rem;
-  top: 50%;
+  flex: 0 0 auto;
   width: 0.9rem;
   height: 0.9rem;
-  transform: translateY(-50%);
 }
 
 .drum-notation__practice-action > span {
@@ -157,12 +155,6 @@
   min-width: 0;
   padding-inline: 0.52rem;
   gap: 0.4rem;
-}
-
-.drum-notation__practice-action--labeled-icon svg {
-  position: static;
-  flex: 0 0 auto;
-  transform: none;
 }
 
 .drum-notation__warnings[hidden] {
@@ -228,13 +220,18 @@
   white-space: nowrap;
 }
 
+/* Practice is icon-only and keeps the shared toolbar button size; only the labelled
+   variant (Exit) widens to fit its text. */
 .drum-notation .drum-notation__button.drum-notation__practice-entry {
-  width: auto;
-  min-width: 0;
-  padding-inline: 0.48rem;
   gap: 0.3rem;
   font-size: var(--font-smallest);
   white-space: nowrap;
+}
+
+.drum-notation .drum-notation__button.drum-notation__practice-entry--labeled {
+  width: auto;
+  min-width: 0;
+  padding-inline: 0.48rem;
 }
 
 .drum-notation .drum-notation__practice-entry svg {
@@ -371,9 +368,15 @@
   height: 2.75rem;
 }
 
-.drum-notation.is-practice-view .drum-notation__speed,
+.drum-notation.is-practice-view .drum-notation__speed {
+  width: auto;
+  min-height: 2.75rem;
+}
+
+/* Keep a 44px target in Practice view for the icon-only entry as well as the labelled one. */
 .drum-notation.is-practice-view .drum-notation__practice-entry {
   width: auto;
+  min-width: 2.75rem;
   min-height: 2.75rem;
 }
 
@@ -801,11 +804,6 @@ body.is-mobile .drum-notation__speed {
 
   .drum-notation__practice-action--labeled-icon {
     padding-inline: 0.42rem;
-  }
-
-  .drum-notation__practice-action svg {
-    position: static;
-    transform: none;
   }
 }
 

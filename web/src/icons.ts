@@ -2,11 +2,13 @@
 // setIcon (play / square / repeat-1 / repeat / timer / pencil). Hand-inlined so the web
 // app stays dependency-free while looking the same as the plugin toolbar.
 
+import { PRACTICE_ICON_ID, PRACTICE_ICON_SHAPES } from "../../src/practice-icon";
+
 const SVG_NS = "http://www.w3.org/2000/svg";
 const activeDocument: Document = window.document;
 
 type IconShape = {
-  tag: "circle" | "line" | "path" | "polygon" | "rect";
+  tag: "circle" | "ellipse" | "line" | "path" | "polygon" | "rect";
   attrs: Record<string, string>;
 };
 
@@ -18,6 +20,7 @@ const REPEAT_SHAPES: IconShape[] = [
 ];
 
 const ICON_SHAPES: Record<string, IconShape[]> = {
+  [PRACTICE_ICON_ID]: PRACTICE_ICON_SHAPES.map((shape) => ({ tag: shape.tag, attrs: { ...shape.attrs } })),
   play: [{ tag: "polygon", attrs: { points: "6 3 20 12 6 21 6 3" } }],
   square: [{ tag: "rect", attrs: { width: "18", height: "18", x: "3", y: "3", rx: "2" } }],
   repeat: REPEAT_SHAPES,
