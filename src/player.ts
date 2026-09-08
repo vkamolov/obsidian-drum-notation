@@ -1,3 +1,4 @@
+import { getGraceStrokes, MAX_GRACE_LEAD_SECONDS } from "./grace";
 import { createAudioProgressIdentity, type AudioProgressSnapshot, type PlaybackInterruptionReason } from "./audio-progress";
 import {
   getRangeDurationSecondsAtSecondsPerQuarter,
@@ -144,7 +145,6 @@ interface Continuation {
 }
 
 const PASS_PREPARATION_LEAD_SECONDS = 0.5;
-const MAX_GRACE_LEAD_SECONDS = 0.055;
 
 export class DrumPlayer {
   private backend: DrumPlaybackBackend | null = null;
@@ -424,9 +424,8 @@ export class DrumPlayer {
       passIndex: blockPassIndex + 1,
       startTime: occurrenceStartTime,
       barOccurrenceIndex,
-      earliestTime: this.getInterPassCountInDurationSeconds(blockPassIndex + 1) > 0
-        ? occurrenceStartTime
-        : occurrenceStartTime - this.getGraceLeadSeconds()
+      earliestTime: occurrenceStartTime + Math.min(0,
+        this.getInterPassCountInDurationSeconds(blockPassIndex + 1) - this.getGraceLeadSeconds(blockPassIndex + 1))
     } : null;
   }
 
@@ -677,12 +676,27 @@ export class DrumPlayer {
     this.notifications.push({time, notify, visual, order: this.notificationOrder++});
   }
 
-  private getGraceLeadSeconds(): number {
+  private getGraceLeadSeconds(passIndex: number): number {
     if (this.options.metronomeMode === "metronome-only") return 0;
-    // Only the first performed slot can precede a pass's nominal boundary.
-    const hits = this.block.slots[this.roadmap[0]?.startSlot ?? 0]?.hits ?? [];
-    if (hits.some(hit => !this.options.mutedInstrumentIds?.has(hit.instrument.id) && hit.articulation === "drag")) return MAX_GRACE_LEAD_SECONDS;
-    return hits.some(hit => !this.options.mutedInstrumentIds?.has(hit.instrument.id) && hit.articulation === "flam") ? 0.035 : 0;
+    const secondsPerQuarter = this.getSecondsPerQuarterForPass(passIndex);
+    let elapsed = 0;
+    let earliest = 0;
+    // Walk the performed prefix, including entry/repeat boundaries and leading rests.
+    for (const entry of this.roadmap) {
+      const origin = getSlotBoundaryQuarter(this.block, entry.startSlot);
+      for (let index = entry.startSlot; index < entry.endSlot; index++) {
+        const slot = this.block.slots[index];
+        const offset = elapsed + (slot.startQuarter - origin) * secondsPerQuarter;
+        if (offset >= MAX_GRACE_LEAD_SECONDS) return -earliest;
+        for (const hit of slot.hits) {
+          if (this.options.mutedInstrumentIds?.has(hit.instrument.id)) continue;
+          for (const stroke of getGraceStrokes(hit.articulation)) earliest = Math.min(earliest, offset + stroke.offset);
+        }
+      }
+      elapsed += getRangeDurationSecondsAtSecondsPerQuarter(this.block, entry.startSlot, entry.endSlot, secondsPerQuarter);
+      if (elapsed >= MAX_GRACE_LEAD_SECONDS) break;
+    }
+    return -earliest;
   }
 
   private contextInterruptionReason(): PlaybackInterruptionReason {

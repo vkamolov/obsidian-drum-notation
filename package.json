@@ -30,9 +30,16 @@
     "check:third-party": "node tools/check-third-party.mjs",
     "security:style-sinks": "node tools/check-style-sinks.mjs",
     "sound:capture": "node tools/sound-reference.mjs capture",
+    "check:sound-provenance": "node tools/check-sound-provenance.mjs",
+    "sound:runner:install": "npm ci --prefix tools/audio/reference-runner --ignore-scripts",
+    "sound:browsers:install": "node tools/audio/reference-runner/install-browsers.mjs",
+    "sound:reconstruct": "node tools/audio/reference-runner/run.mjs reconstruct",
     "sound:seam": "node tools/sound-reference.mjs seam",
     "sound:compare": "node tools/sound-reference.mjs compare",
-    "font:experiment": "node tools/font-experiment/benchmark.mjs"
+    "font:experiment": "node tools/font-experiment/benchmark.mjs",
+    "web:test:navigation": "playwright test --config playwright.navigation.config.ts",
+    "sound:preflight": "node tools/audio/reference-runner/run.mjs preflight",
+    "sound:archive": "node tools/audio/reference-runner/run.mjs"
   },
   "keywords": [
     "obsidian",

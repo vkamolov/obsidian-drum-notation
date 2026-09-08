@@ -40,6 +40,7 @@ jobs:
           npm run check:agent-plugin
           npm run security:style-sinks
           npm run check:third-party
+          npm run check:sound-provenance
 
       - name: Package and verify OpenAI directory submission
         run: |
@@ -50,4 +51,6 @@ jobs:
         run: npx playwright install --with-deps chromium webkit
 
       - name: Test production CSP and verifier
-        run: npm run web:test:csp
+        run: |
+          npm run web:test:csp
+          npm run web:test:navigation

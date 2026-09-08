@@ -325,6 +325,7 @@ export default class DrumNotationPlugin extends Plugin {
     authoringDefaults: { ...DEFAULT_DRUM_AUTHORING_DEFAULTS }
   };
   private activePlayer: DrumPlayer | null = null;
+  private activePracticeController: PracticeSessionController | null = null;
   private readonly playbackStartGeneration = new CancellationGeneration();
   private activePlaybackReset: (() => void) | null = null;
   private activePlaybackOwner: symbol | null = null;
@@ -655,7 +656,8 @@ export default class DrumNotationPlugin extends Plugin {
         }
       },
       clock: this.practiceClock,
-      transport: { audioProgress: () => this.activePlayer?.getAudioProgress() ?? null }
+      transport: { audioProgress: () => this.activePlayer?.getAudioProgress() ?? null },
+      checkpoint: () => publishPracticeSession()
     });
     const hasMatchingActivePlayer = this.activePlayer !== null &&
       this.activePracticeSessionKey === practiceSessionKey;
@@ -705,7 +707,7 @@ export default class DrumNotationPlugin extends Plugin {
       completedSummaryHandled
     });
 
-    const publishPracticeSession = () => {
+    const publishPracticeSession = (): undefined => {
       if (!practiceSessionKey) {
         return;
       }
@@ -720,10 +722,31 @@ export default class DrumNotationPlugin extends Plugin {
           session.repetitionGoal = {...session.repetitionGoal, progress: {...owned.repetitionGoal.progress}, runMetrics: owned.repetitionGoal.runMetrics};
         }
       }
-      this.transportSessions.set(practiceSessionKey, session);
-      publishingPracticeSession = false;
+      try { return this.transportSessions.set(practiceSessionKey, session); }
+      finally { publishingPracticeSession = false; }
     };
 
+    const shutdownStatus = root.createSpan({attr: {role: "status", "aria-live": "polite"}});
+    shutdownStatus.hidden = true;
+    const transportDisabledBeforeDrain = new Map<HTMLButtonElement, boolean>();
+    const unsubscribeLifecycle = practiceController.subscribe(snapshot => {
+      const draining = snapshot.lifecycle === "draining";
+      root.setAttribute("aria-busy", String(draining));
+      shutdownStatus.hidden = !draining;
+      shutdownStatus.setText(draining ? "Stopping…" : "");
+      for (const button of [playButton, loopButton, loopAllButton]) {
+        if (draining) {
+          if (!transportDisabledBeforeDrain.has(button)) transportDisabledBeforeDrain.set(button, button.disabled);
+          button.disabled = true;
+          button.setAttribute("aria-description", "Stopping…");
+        } else if (transportDisabledBeforeDrain.has(button)) {
+          button.disabled = transportDisabledBeforeDrain.get(button) ?? false;
+          transportDisabledBeforeDrain.delete(button);
+          button.removeAttribute("aria-description");
+        }
+      }
+    });
+    child.register(unsubscribeLifecycle);
     ctx.addChild(child);
 
     const getCurrentSection = () => ctx.getSectionInfo(el) ?? initialSection;
@@ -1686,7 +1709,7 @@ export default class DrumNotationPlugin extends Plugin {
       return {
         ownerDocument: root.ownerDocument,
         onAudioProgress: (progress) => {
-          if (this.activePlaybackOwner !== renderOwner || this.activePlayer?.getAudioProgress().generation !== progress.generation) return;
+          if (!practiceController.acceptsAudioProgress(progress)) return;
           practiceController.dispatch({
             type: "audio-progress",
             progress,
@@ -1743,8 +1766,8 @@ export default class DrumNotationPlugin extends Plugin {
 
     const stopLocalPlayback = () => {
       pendingPlaybackResume = null;
-      settleTrackedRun();
-      this.stopActivePlayer(renderOwner);
+      if (this.activePlaybackOwner === renderOwner) this.stopActivePlayer(renderOwner);
+      else settleTrackedRun();
       clearTransportHighlights();
       transportMode = "idle";
       activePlaybackBarIndex = null;
@@ -1756,7 +1779,7 @@ export default class DrumNotationPlugin extends Plugin {
     };
 
     const prepareTransportStart = async (recoverBeforeStart: boolean): Promise<boolean> => {
-      if (renderDisposed) return false;
+      if (renderDisposed || !practiceController.acceptsStarts) return false;
       pendingPlaybackResume = null;
       this.stopActivePlayer();
       const generation = this.playbackStartGeneration.current;
@@ -1859,6 +1882,8 @@ export default class DrumNotationPlugin extends Plugin {
         handleBarChange(barIndexForSlot(block, currentSlotIndex));
       }
       void this.screenWakeLock.start(createScreenWakeLockTarget(root.ownerDocument));
+      practiceController.bindTransport(this.activePlayer);
+      this.activePracticeController = practiceController;
       void this.activePlayer.play();
       return true;
     };
@@ -1940,6 +1965,8 @@ export default class DrumNotationPlugin extends Plugin {
         renderFirstRunTip();
       };
       void this.screenWakeLock.start(createScreenWakeLockTarget(root.ownerDocument));
+      practiceController.bindTransport(this.activePlayer);
+      this.activePracticeController = practiceController;
       void this.activePlayer.play();
       return true;
     };
@@ -2018,6 +2045,8 @@ export default class DrumNotationPlugin extends Plugin {
         handleBarChange(barIndexForSlot(block, currentSlotIndex));
       }
       void this.screenWakeLock.start(createScreenWakeLockTarget(root.ownerDocument));
+      practiceController.bindTransport(this.activePlayer);
+      this.activePracticeController = practiceController;
       void this.activePlayer.play();
       return true;
     };
@@ -2101,6 +2130,8 @@ export default class DrumNotationPlugin extends Plugin {
         handleBarChange(barIndexForSlot(block, currentSlotIndex));
       }
       void this.screenWakeLock.start(createScreenWakeLockTarget(root.ownerDocument));
+      practiceController.bindTransport(this.activePlayer);
+      this.activePracticeController = practiceController;
       void this.activePlayer.play();
       return true;
     };
@@ -2284,6 +2315,8 @@ export default class DrumNotationPlugin extends Plugin {
       };
       renderFirstRunTip();
       void this.screenWakeLock.start(createScreenWakeLockTarget(root.ownerDocument));
+      practiceController.bindTransport(this.activePlayer);
+      this.activePracticeController = practiceController;
       void this.activePlayer.play();
       return true;
     };
@@ -3576,9 +3609,8 @@ export default class DrumNotationPlugin extends Plugin {
       if (this.lastInteractedControllerOwner === renderOwner) {
         this.lastInteractedControllerOwner = null;
       }
-      settleTrackedRun();
-      practiceController.dispose(false);
-      this.stopActivePlayer(renderOwner);
+      if (this.activePlaybackOwner === renderOwner) this.stopActivePlayer(renderOwner, true);
+      else practiceController.dispose(false);
       this.stopActivePreview(renderOwner);
     });
 
@@ -3851,21 +3883,28 @@ export default class DrumNotationPlugin extends Plugin {
     return { controller: resolution.value, ambiguous: resolution.ambiguous };
   }
 
-  private stopActivePlayer(owner?: symbol): void {
-    if (owner && this.activePlaybackOwner !== null && this.activePlaybackOwner !== owner) {
+  private stopActivePlayer(owner?: symbol, disposeController = false): void {
+    if (owner && this.activePlaybackOwner !== owner) return;
+    const controller = this.activePracticeController;
+    if (controller?.lifecycleState === "draining") {
+      if (disposeController) controller.dispose();
       return;
     }
-
     this.playbackStartGeneration.invalidate();
     const reset = this.activePlaybackReset;
-
-    this.activePlayer?.stop();
-    this.activePlayer = null;
-    this.activePlaybackReset = null;
-    this.activePlaybackOwner = null;
-    this.activePracticeSessionKey = null;
-    void this.screenWakeLock.stop();
-    reset?.();
+    const player = this.activePlayer;
+    try {
+      if (controller) controller.shutdown(disposeController ? "disposed" : "active");
+      else player?.stop();
+    } finally {
+      this.activePlayer = null;
+      this.activePracticeController = null;
+      this.activePlaybackReset = null;
+      this.activePlaybackOwner = null;
+      this.activePracticeSessionKey = null;
+      void this.screenWakeLock.stop();
+      reset?.();
+    }
   }
 
   private async previewSlot(block: DrumBlock, slot: DrumSlot, owner: symbol, legendContainer?: HTMLElement): Promise<void> {

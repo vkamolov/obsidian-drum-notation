@@ -7,3 +7,4 @@ web/dist/
 dist/
 test-results/
 playwright-report/
+.artifacts/

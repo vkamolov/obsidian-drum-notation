@@ -2,6 +2,7 @@ import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
   testDir: "tests/browser",
+  testIgnore: "cached-navigation.spec.ts",
   timeout: 30_000,
   workers: 1,
   reporter: "line",

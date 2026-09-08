@@ -1,3 +1,4 @@
+import { getGraceStrokes } from "./grace";
 import { DrumHit, DrumPlaybackKind } from "./types";
 import { DrumPlaybackBackend, DrumPlaybackBackendFactory } from "./playback";
 
@@ -113,13 +114,8 @@ export class DrumSynth implements DrumPlaybackBackend {
   }
 
   scheduleHit(hit: DrumHit, time: number, slotDuration = 0, noteDuration = slotDuration): void {
-    if (hit.articulation === "flam") {
-      this.scheduleInstrument(hit.instrument.playback, Math.max(0, time - 0.035), hit.velocity * 0.45);
-    }
-
-    if (hit.articulation === "drag") {
-      this.scheduleInstrument(hit.instrument.playback, Math.max(0, time - 0.055), hit.velocity * 0.34);
-      this.scheduleInstrument(hit.instrument.playback, Math.max(0, time - 0.028), hit.velocity * 0.43);
+    for (const stroke of getGraceStrokes(hit.articulation)) {
+      this.scheduleInstrument(hit.instrument.playback, Math.max(0, time + stroke.offset), hit.velocity * stroke.velocity);
     }
 
     if (hit.articulation === "diddle") {

@@ -1,3 +1,4 @@
+import { getGraceStrokes } from "../../src/grace";
 import { vi } from "vitest";
 import type { DrumHit } from "../../src/types";
 import type { DrumPlaybackBackend } from "../../src/playback";
@@ -12,6 +13,7 @@ export class PlaybackEnvironment {
   readonly timers = new Map<number, { callback: () => void; deadline: number }>();
   readonly events = new EventTarget();
   readonly scheduled: Array<{ hits: DrumHit[]; time: number; submittedAt: number; duration: number }> = [];
+  readonly sourceStarts: Array<{time: number; submittedAt: number}> = [];
   readonly stop = vi.fn();
   readonly start = vi.fn(async () => {});
   readonly backend: DrumPlaybackBackend;
@@ -34,6 +36,10 @@ export class PlaybackEnvironment {
       stop: this.stop,
       scheduleHits(hits, time, duration = 0) {
         environment.scheduled.push({hits, time, submittedAt: environment.audioTime, duration});
+        for (const hit of hits) {
+          for (const stroke of getGraceStrokes(hit.articulation)) environment.sourceStarts.push({time: Math.max(0, time + stroke.offset), submittedAt: environment.audioTime});
+          environment.sourceStarts.push({time, submittedAt: environment.audioTime});
+        }
       }
     };
     this.context = {

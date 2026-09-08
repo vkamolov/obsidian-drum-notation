@@ -1,0 +1,14 @@
+{
+  "name": "drum-sound-reference-runner",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "browsers:install": "node install-browsers.mjs",
+    "reconstruct": "node run.mjs reconstruct"
+  },
+  "dependencies": {
+    "@playwright/test": "1.62.1",
+    "esbuild": "0.25.12"
+  }
+}

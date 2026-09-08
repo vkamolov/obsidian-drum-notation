@@ -20,16 +20,40 @@ export interface PracticeControllerState {
   completedSummaryHandled: boolean;
 }
 
-export type PracticeControllerSnapshot = Readonly<PracticeControllerState>;
+export type PracticeLifecycleState = "active" | "draining" | "disposed";
+export type PracticeControllerSnapshot = Readonly<PracticeControllerState> & { readonly lifecycle: PracticeLifecycleState };
 
 export interface PracticeControllerStatePort {
   read(): PracticeControllerState;
-  write(state: PracticeControllerState): void;
+  write(state: PracticeControllerState): undefined;
 }
 
 export interface PracticeTransportPort {
   audioProgress(): AudioProgressSnapshot | null;
-  cancel?(): void;
+}
+
+export interface PracticePlayerPort {
+  getAudioProgress(): AudioProgressSnapshot;
+  stop(): void;
+}
+
+type TransportBinding = { player: PracticePlayerPort; contextId: number; generation: number };
+type ControllerLifecycle =
+  | { state: "active" }
+  | { state: "draining"; destination: "active" | "disposed"; binding: TransportBinding | null; failed: boolean }
+  | { state: "disposed" };
+
+export class PracticeCheckpointError extends Error {
+  constructor(port: "state.write" | "checkpoint") {
+    super(`Practice ${port} must complete synchronously and return undefined.`);
+    this.name = "PracticeCheckpointError";
+  }
+}
+
+function requireSynchronousReturn(value: unknown, port: "state.write" | "checkpoint"): void {
+  // The guard detects a contract violation; it cannot undo asynchronous work or make a faulty adapter safe.
+  // Never inspect, stringify, invoke or await the returned value (including its .then property).
+  if (value !== undefined) throw new PracticeCheckpointError(port);
 }
 
 export interface PracticeLifecyclePort {
@@ -58,6 +82,7 @@ export interface PracticeSessionControllerOptions {
   clock: PracticeClock;
   transport?: PracticeTransportPort;
   lifecycle?: PracticeLifecyclePort;
+  checkpoint?: (snapshot: PracticeControllerSnapshot) => undefined;
 }
 
 /**
@@ -71,9 +96,13 @@ export class PracticeSessionController {
   private transportGeneration = 0;
   private observedSummaryIdentity: string | null;
   private summaryRevision = 0;
-  private disposed = false;
+  private lifecycle: ControllerLifecycle = { state: "active" };
+  private binding: TransportBinding | null = null;
+  private confirmedState: PracticeControllerState;
+  private checkpointFailed = false;
 
   constructor(private readonly options: PracticeSessionControllerOptions) {
+    this.confirmedState = cloneState(options.state.read());
     this.observedSummaryIdentity = getPracticeSummaryIdentity(options.state.read().completedSummary);
     if (this.observedSummaryIdentity) {
       this.summaryRevision = 1;
@@ -82,17 +111,34 @@ export class PracticeSessionController {
       if (event === "dispose") {
         this.dispose();
       } else {
-        this.dispatch({ type: "settle" });
+        this.shutdown();
       }
     }) ?? null;
   }
 
   getSnapshot(): PracticeControllerSnapshot {
-    return cloneState(this.options.state.read());
+    const state = this.lifecycle.state === "disposed" || this.checkpointFailed
+      ? this.confirmedState : this.options.state.read();
+    return { ...cloneState(state), lifecycle: this.lifecycle.state };
+  }
+
+  get lifecycleState(): PracticeLifecycleState { return this.lifecycle.state; }
+  get acceptsStarts(): boolean { return this.lifecycle.state === "active" && !this.checkpointFailed; }
+
+  bindTransport(player: PracticePlayerPort): void {
+    if (this.lifecycle.state !== "active" || this.checkpointFailed) return;
+    const {contextId, generation} = player.getAudioProgress();
+    this.binding = {player, contextId, generation};
+  }
+
+  acceptsAudioProgress(progress: AudioProgressSnapshot): boolean {
+    const binding = this.lifecycle.state === "draining" ? this.lifecycle.binding : this.binding;
+    return this.lifecycle.state !== "disposed" && !this.checkpointFailed && binding !== null &&
+      binding.contextId === progress.contextId && binding.generation === progress.generation;
   }
 
   subscribe(listener: PracticeSessionListener): () => void {
-    if (this.disposed) {
+    if (this.lifecycle.state === "disposed") {
       return () => undefined;
     }
     this.listeners.add(listener);
@@ -100,8 +146,19 @@ export class PracticeSessionController {
   }
 
   dispatch(command: PracticeSessionCommand): PracticeControllerSnapshot {
-    if (this.disposed) {
+    if (this.lifecycle.state === "disposed" || this.checkpointFailed) {
       return this.getSnapshot();
+    }
+    if (command.type === "audio-progress" && this.binding && !this.acceptsAudioProgress(command.progress)) return this.getSnapshot();
+    if (this.lifecycle.state === "draining") {
+      switch (command.type) {
+        case "audio-progress":
+          if (!this.acceptsAudioProgress(command.progress)) return this.getSnapshot();
+          break;
+        case "record-pass": case "finish": case "settle": break;
+        case "start-or-resume": case "summary-handled": case "summary-discarded":
+          return this.getSnapshot();
+      }
     }
 
     const current = this.options.state.read();
@@ -192,7 +249,7 @@ export class PracticeSessionController {
   }
 
   isCurrentTransportGeneration(generation: number): boolean {
-    return !this.disposed && generation === this.transportGeneration;
+    return this.lifecycle.state === "active" && !this.checkpointFailed && generation === this.transportGeneration;
   }
 
   runSummaryAction(
@@ -201,7 +258,7 @@ export class PracticeSessionController {
   ): Promise<boolean> {
     const summary = this.options.state.read().completedSummary;
     const identity = getPracticeSummaryIdentity(summary);
-    if (!summary || !identity || this.disposed) {
+    if (!summary || !identity || this.lifecycle.state !== "active" || this.checkpointFailed) {
       return Promise.resolve(false);
     }
 
@@ -228,29 +285,85 @@ export class PracticeSessionController {
   }
 
   dispose(settle = true): void {
-    if (this.disposed) return;
-    if (settle) {
-      this.dispatch({ type: "settle" });
+    this.shutdown("disposed", settle);
+  }
+
+  /** Drains the captured player before publishing its final synchronous checkpoint. */
+  shutdown(destination: "active" | "disposed" = "active", settle = true): PracticeControllerSnapshot {
+    if (this.lifecycle.state === "disposed" || this.checkpointFailed && this.lifecycle.state !== "draining") return this.getSnapshot();
+    if (this.lifecycle.state === "draining") {
+      if (!this.lifecycle.failed && destination === "disposed") this.lifecycle.destination = "disposed";
+      return this.getSnapshot();
     }
-    this.disposed = true;
+    if (destination === "active" && !this.binding) {
+      const state = this.options.state.read();
+      if (state.tempoRampRunMetrics?.status !== "running" && state.repetitionGoal.runMetrics?.status !== "running") {
+        this.nextTransportGeneration();
+        return this.getSnapshot();
+      }
+    }
+    const drain: Extract<ControllerLifecycle, {state: "draining"}> = {
+      state: "draining", destination, binding: settle ? this.binding : null, failed: false
+    };
+    this.lifecycle = drain;
     this.nextTransportGeneration();
-    this.options.transport?.cancel?.();
-    this.unsubscribeLifecycle?.();
-    this.listeners.clear();
+    let stopped = false;
+    try {
+      this.notifyListeners();
+      if (settle) {
+        drain.binding?.player.stop();
+        stopped = true;
+        this.dispatch({type: "settle"});
+        if (this.options.checkpoint) {
+          requireSynchronousReturn(this.options.checkpoint(this.getSnapshot()), "checkpoint");
+        }
+      }
+      this.confirmedState = cloneState(this.options.state.read());
+    } catch (error) {
+      drain.failed = true;
+      this.checkpointFailed = true;
+      throw error;
+    } finally {
+      // A writer can throw from a reached-boundary callback before player.stop reaches cancellation.
+      try { if (settle && !stopped) drain.binding?.player.stop(); }
+      finally {
+        this.binding = null;
+        this.lifecycle = {state: drain.destination};
+        if (drain.destination === "disposed") {
+          this.unsubscribeLifecycle?.();
+          this.listeners.clear();
+        } else {
+          this.notifyListeners();
+        }
+      }
+    }
+    return this.getSnapshot();
   }
 
   private clockForTransport(): PracticeClock {
+    const binding = this.lifecycle.state === "draining" ? this.lifecycle.binding : this.binding;
+    if (binding) return {...this.options.clock, audioProgress: () => binding.player.getAudioProgress()};
     return this.options.transport
       ? { ...this.options.clock, audioProgress: () => this.options.transport?.audioProgress() ?? null }
       : this.options.clock;
   }
 
   private commit(state: PracticeControllerState): PracticeControllerSnapshot {
-    this.options.state.write(cloneState(state));
+    try {
+      requireSynchronousReturn(this.options.state.write(cloneState(state)), "state.write");
+    } catch (error) {
+      this.checkpointFailed = true;
+      if (this.lifecycle.state === "draining") this.lifecycle.failed = true;
+      throw error;
+    }
+    this.confirmedState = cloneState(state);
     this.observeSummaryRevision();
-    const snapshot = cloneState(state);
-    this.listeners.forEach((listener) => listener(snapshot));
-    return snapshot;
+    this.notifyListeners();
+    return this.getSnapshot();
+  }
+
+  private notifyListeners(): void {
+    this.listeners.forEach(listener => listener(this.getSnapshot()));
   }
 
   private observeSummaryRevision(): number {

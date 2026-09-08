@@ -303,3 +303,16 @@ describe("DrumTransportSessionStore", () => {
     expect(store.size).toBe(1);
   });
 });
+
+it("publishes the Obsidian in-memory checkpoint before returning, with no deferred mutation", async () => {
+  const store = new DrumTransportSessionStore();
+  const session = makeSession({currentBarIndex: 1});
+  const listener = vi.fn(); store.subscribe("checkpoint", listener);
+  expect(store.set("checkpoint", session)).toBeUndefined();
+  expect(store.get("checkpoint", session.body)).toEqual(session);
+  expect(listener).toHaveBeenCalledOnce();
+  const confirmed = store.get("checkpoint", session.body);
+  await Promise.resolve();
+  expect(store.get("checkpoint", session.body)).toEqual(confirmed);
+  expect(listener).toHaveBeenCalledOnce();
+});

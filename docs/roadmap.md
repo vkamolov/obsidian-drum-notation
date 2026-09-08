@@ -12,7 +12,7 @@ feedback. Completeness is not a reason.
 | | |
 |---|---|
 | **Published** | `1.11.0` — Practice Sessions and Logs |
-| **In development** | `1.11.1` — newest-first logs and focused practice-toolbar corrections |
+| **In development** | `1.11.1` — newest-first logs, practice-toolbar corrections and playback reliability remediation |
 | **Blocked on evidence** | `1.12.0` — scope undecidable until the chart pilot runs |
 | **Chart pilot** | `agent-plugin/drum-notation-importer/pilot/` — `status: not-started`, `completed: 0` |
 
@@ -21,6 +21,10 @@ transport restoration, hands-free commands, one/two-bar count-in, screen wake lo
 and gap click, the exact-BPM tempo ramp trainer, and the current advanced notation foundation
 (tuplets, mixed meters, split voicing, section repeats, visual editing, PDF export and
 printed-score import).
+
+The [playback remediation record](technical-review-remediation-plan.md) tracks the
+shared shutdown, cached navigation, grace timing and reproducible sound evidence
+corrections under the pre-pilot maintenance exception.
 
 ## Planning principles
 

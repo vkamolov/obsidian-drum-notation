@@ -128,3 +128,39 @@ describe("audio-time reconciliation", () => {
     expect(retained.notifications).toHaveLength(0); expect(retained.scheduledOccurrences).toHaveLength(0);
   });
 });
+
+describe("grace preparation deadlines", () => {
+  it.each(["-r------", "-f------", "r-------"])("accounts for grace strokes after leading rests: %s", async pattern => {
+    const environment = new PlaybackEnvironment();
+    vi.stubGlobal("window", environment.window);
+    const interrupted = vi.fn();
+    const player = new DrumPlayer(environment.context, parseDrumBlock(`Tempo: 240\nTime: 1/4\nGrid: 32\nSD | ${pattern}`), vi.fn(), vi.fn(), {loop: true, onInterrupted: interrupted}, () => environment.backend);
+    await player.play();
+    // First continuation is eagerly prepared; the next starts at 10.58.
+    player.reconcile();
+    const count = environment.sourceStarts.length;
+    environment.audioTime = pattern === "-f------" ? 10.578 : 10.57;
+    player.reconcile();
+    expect(interrupted).toHaveBeenCalledWith("missed-deadline", expect.any(Object));
+    expect(environment.sourceStarts).toHaveLength(count);
+    expect(environment.sourceStarts.every(source => source.submittedAt <= source.time)).toBe(true);
+  });
+  it("submits the independently calculated drag strokes when on time", async () => {
+    const environment = new PlaybackEnvironment(); vi.stubGlobal("window", environment.window);
+    const player = new DrumPlayer(environment.context, parseDrumBlock("Tempo: 240\nTime: 1/4\nGrid: 32\nSD | -r------"), vi.fn(), vi.fn(), {loop: true}, () => environment.backend);
+    await player.play(); environment.runUntil(10.3);
+    expect(environment.sourceStarts.some(source => Math.abs(source.time - 10.55625) < 1e-8)).toBe(true);
+    expect(environment.sourceStarts.some(source => Math.abs(source.time - 10.58325) < 1e-8)).toBe(true);
+    expect(environment.sourceStarts.every(source => source.submittedAt <= source.time)).toBe(true);
+    player.stop();
+  });
+});
+
+it.each([{mutedInstrumentIds: new Set(["snare"])}, {metronomeMode: "metronome-only" as const}])("does not impose a grace deadline for inaudible hits (%j)", async options => {
+  const environment = new PlaybackEnvironment(); vi.stubGlobal("window", environment.window);
+  const interrupted = vi.fn();
+  const player = new DrumPlayer(environment.context, parseDrumBlock("Tempo: 240\nTime: 1/4\nGrid: 32\nSD | -r------"), vi.fn(), vi.fn(), {loop: true, ...options, onInterrupted: interrupted}, () => environment.backend);
+  await player.play(); player.reconcile(); environment.audioTime = 10.57; player.reconcile();
+  expect(interrupted).not.toHaveBeenCalled();
+  environment.audioTime = 20; player.reconcile(); expect(interrupted).toHaveBeenCalledWith("missed-deadline", expect.any(Object));
+});

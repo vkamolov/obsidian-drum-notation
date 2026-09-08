@@ -20,7 +20,8 @@ sample mix and advanced-notation gates are unchanged. Implementation branch:
 ## Validation records
 
 Record commands, outcomes and actual coverage here as each stage is completed. Large raw sound
-references and listening clips belong in ignored `test-results/`, not release bundles.
+references and listening clips now belong in ignored `.artifacts/sound-references/`, not release bundles.
+See the remediation record below for the loss of the original raw audio.
 Do not regenerate sound baselines after production synthesis changes.
 
 ## Release boundary
@@ -163,3 +164,11 @@ mobile testing, or native Obsidian checks. Before publication, record:
 No release was published, and browser viewport emulation is not claimed as mobile
 hardware coverage. These are publication gates, separate from the completed code
 implementation and the unchanged chart-pilot requirements.
+
+## Playback reliability remediation — September 2026
+
+The follow-up correction is implemented in the working branch. See
+[the remediation completion record](technical-review-remediation-plan.md) for the
+shutdown, cached-navigation, grace-deadline and sound-provenance changes, actual
+verification results and remaining publication gates. Earlier raw-audio claims
+above describe the original capture, not files still available today.

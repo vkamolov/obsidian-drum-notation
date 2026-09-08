@@ -1,4 +1,5 @@
-import { build } from 'esbuild';
+import { loadRuntime } from './reference-runner/runtime.mjs';
+const {build} = await loadRuntime();
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import assert from 'node:assert/strict';

@@ -1328,11 +1328,10 @@ function finalizeCompletedTempoRamp(): void {
   }
 }
 
-function stopPlayback(settleSession = true): void {
+function stopPlayback(_settleSession = true): void {
+  if (practiceController.lifecycleState === "draining") return;
   pendingPlaybackResume = null;
-  practiceController.nextTransportGeneration();
-  if (settleSession) settleTrackedRun();
-  player?.stop();
+  practiceController.shutdown();
   player = null;
   void screenWakeLock.stop();
   transportMode = "idle";
@@ -1349,6 +1348,7 @@ function stopPlayback(settleSession = true): void {
 }
 
 async function preparePlaybackStart(recoverBeforeStart: boolean): Promise<boolean> {
+  if (!practiceController.acceptsStarts) return false;
   stopPlayback(false);
   const generation = practiceController.currentTransportGeneration;
 
@@ -1390,7 +1390,7 @@ function getLifecyclePlaybackOptions(): Pick<PlaybackOptions, "ownerDocument" | 
   return {
     ownerDocument: document,
     onAudioProgress: (progress) => {
-      if (!currentBlock || player?.getAudioProgress().generation !== progress.generation) return;
+      if (!currentBlock || !practiceController.acceptsAudioProgress(progress)) return;
       practiceController.dispatch({
         type: "audio-progress",
         progress,
@@ -1493,6 +1493,7 @@ async function play(
     handlePlaybackBarChange(block, barIndexForSlot(block, currentSlotIndex));
   }
   void screenWakeLock.start(createScreenWakeLockTarget(scoreEl?.ownerDocument ?? activeDocument));
+  practiceController.bindTransport(player);
   void player.play();
   return true;
 }
@@ -1582,6 +1583,7 @@ async function startLoopBar(
     createPlaybackBackend
   );
   void screenWakeLock.start(createScreenWakeLockTarget(scoreEl?.ownerDocument ?? activeDocument));
+  practiceController.bindTransport(player);
   void player.play();
   return true;
 }
@@ -1648,6 +1650,7 @@ async function startLoopAll(
     handlePlaybackBarChange(block, barIndexForSlot(block, currentSlotIndex));
   }
   void screenWakeLock.start(createScreenWakeLockTarget(scoreEl?.ownerDocument ?? activeDocument));
+  practiceController.bindTransport(player);
   void player.play();
   return true;
 }
@@ -1715,6 +1718,7 @@ async function startLoopSelection(
     handlePlaybackBarChange(block, barIndexForSlot(block, currentSlotIndex));
   }
   void screenWakeLock.start(createScreenWakeLockTarget(scoreEl?.ownerDocument ?? activeDocument));
+  practiceController.bindTransport(player);
   void player.play();
   return true;
 }
@@ -1860,6 +1864,7 @@ async function startRepetitionGoal(
   );
   refreshPracticeStatus();
   void screenWakeLock.start(createScreenWakeLockTarget(scoreEl?.ownerDocument ?? activeDocument));
+  practiceController.bindTransport(player);
   void player.play();
   return true;
 }
@@ -4803,15 +4808,52 @@ function init(): void {
       renderVerificationSignals();
     }
   });
-  const handlePageUnload = () => {
-    settleTrackedRun();
-    stopPlayback(false);
-    practiceController.dispose(false);
-    clearSourceImage();
-    void screenWakeLock.destroy();
+  const handlePageHide = (event: PageTransitionEvent) => {
+    const pending = pendingPlaybackResume;
+    const playing = player;
+    const mode = transportMode;
+    // Accounting is synchronous. Resource release does not delay the checkpoint.
+    stopPlayback();
+    if (event.persisted) {
+      pendingPlaybackResume = playing && !completedSummary?.completed
+        ? {mode, position: playing.getCurrentPlaybackPosition()}
+        : pending;
+    } else {
+      practiceController.dispose(false);
+      clearSourceImage();
+      void screenWakeLock.destroy();
+    }
   };
-  window.addEventListener("pagehide", handlePageUnload);
-  window.addEventListener("beforeunload", handlePageUnload);
+  window.addEventListener("pagehide", handlePageHide);
+  window.addEventListener("pageshow", (event: PageTransitionEvent) => {
+    if (!event.persisted) return;
+    settleTrackedRun();
+    if (currentBlock) syncPlaybackControls(currentBlock);
+    refreshPracticeStatus();
+  });
+  const shutdownStatus = activeDocument.createElement("span");
+  shutdownStatus.setAttribute("role", "status");
+  shutdownStatus.setAttribute("aria-live", "polite");
+  shutdownStatus.hidden = true;
+  playBtn.parentElement?.append(shutdownStatus);
+  const disabledBeforeDrain = new Map<HTMLButtonElement, boolean>();
+  practiceController.subscribe(snapshot => {
+    const draining = snapshot.lifecycle === "draining";
+    shutdownStatus.hidden = !draining;
+    shutdownStatus.textContent = draining ? "Stopping…" : "";
+    for (const button of [playBtn, loopBtn, loopAllBtn]) {
+      button.setAttribute("aria-busy", String(draining));
+      if (draining) {
+        if (!disabledBeforeDrain.has(button)) disabledBeforeDrain.set(button, button.disabled);
+        button.disabled = true;
+        button.setAttribute("aria-description", "Stopping…");
+      } else if (disabledBeforeDrain.has(button)) {
+        button.disabled = disabledBeforeDrain.get(button) ?? false;
+        disabledBeforeDrain.delete(button);
+        button.removeAttribute("aria-description");
+      }
+    }
+  });
   window.addEventListener("resize", reconcileVerificationPanelHeight);
 
   // Refit the score to the pane width (debounced; skip no-op width changes).

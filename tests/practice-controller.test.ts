@@ -189,8 +189,10 @@ describe("PracticeSessionController", () => {
     const listener = vi.fn();
     harness.controller.subscribe(listener);
     harness.controller.dispose();
+    const notificationsAfterDisposal = listener.mock.calls.length;
     harness.controller.dispatch({ type: "record-pass", kind: "tempo-ramp", bpm: 90 });
-    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener).toHaveBeenCalledTimes(notificationsAfterDisposal);
+    expect(harness.controller.lifecycleState).toBe("disposed");
   });
 
   it("coalesces the same summary across host views and allows retry after failure", async () => {

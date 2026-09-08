@@ -1,0 +1,277 @@
+{
+  "schemaVersion": 1,
+  "baseline": {
+    "path": "tests/fixtures/sound/baseline.json",
+    "sha256": "fc9aa45d94e6512b63521a02ed5979a3338e6040d8d081e32298bf13e9036731"
+  },
+  "original": {
+    "revision": "4c65f4a781c8cb0a19310d0079d0da2c9f844116",
+    "sourcePath": "src/synth.ts",
+    "sourceHash": "cb2e98e47df81639e70f7f1d82d51168ef7610f3e07fb6a654d41ba99f132031",
+    "createdAt": "2026-09-07T05:10:58.619Z",
+    "os": null,
+    "architecture": null,
+    "executable": null
+  },
+  "capture": {
+    "revision": "d858041a8b95d99d02a574a9bb14b3a30feb2f1b",
+    "files": {
+      "tools/audio/render-reference.ts": "699433317fe085e2a42c2aa2219d1fe3568b7016ddea9c2ba88bb9055efa863a",
+      "tools/sound-reference.mjs": "0252037fb83dd248e7253feed526b10125f012f5920bb049463b165e6a7ea436",
+      "src/kit.ts": "6ede5d0959b9f326ff767ab5657c9e5f91d862dabb90fdcff7909e3584e2d51b",
+      "src/types.ts": "869f5ac166eb9266171e1309e6f4ff8cccb7ce7e0caaef182981417482cc8a3e",
+      "package.json": "4d3556f1471608203d266218aea27c17770a52e8c6a7bf474b338253e8ad0995",
+      "package-lock.json": "52257c2387cae89848a3454f8ccabe76753de040bb36005282467329b282b238"
+    }
+  },
+  "runner": {
+    "packageVersion": "1.62.1",
+    "files": {
+      "package.json": "33e2f3e00aba384938375d21f164480b38ea671d159f28995b6832c4ec416461",
+      "package-lock.json": "eb871adaf8442d8ad0aa29149e3c4acc1bd93210b1040bf8158362db99daa908",
+      "runtime.mjs": "517ff31a18e7688bce99e274460f057f8fd58a99681f0c23fef53eaea3f567b6",
+      "run.mjs": "ae0553ef8a422561699444b5b448633500ac0c8b05363405bc5e6d46b51fe994",
+      "install-browsers.mjs": "577870996c8577be2e0c973b49ee3d3c1c48221b3e386710d77fb57f4e98d562",
+      "browser-identity.mjs": "2e260c261598a789a91ce355aed054ab20ec3af221b6a02168e44b194253c3ff"
+    },
+    "packages": {
+      "node_modules/@playwright/test": {
+        "version": "1.62.1",
+        "integrity": "sha512-DTcUc8qii+cpHvtOwggMtBRMjKZHXYWdw8syRYu2vtzuq4Wxphqq4NfCs5Zt44L6mA8rfDfj+PHnxFc/FeK6mQ=="
+      },
+      "node_modules/esbuild": {
+        "version": "0.25.12",
+        "integrity": "sha512-bbPBYYrtZbkt6Os6FiTLCTFxvq4tt3JKall1vRwshA3fdVztsLAatFaZobhkBC8/BrPetoa0oksYoKXoG4ryJg=="
+      },
+      "node_modules/playwright": {
+        "version": "1.62.1",
+        "integrity": "sha512-0M+L3LAD8/nm554LOla9Ayx0j0tmFZ0FBcoQ7F1VuVHpM/XpiC8RcDzBQB8W5+hA8L22THxELzeF+2WcUzvcLg=="
+      },
+      "node_modules/@esbuild/aix-ppc64": {
+        "version": "0.25.12",
+        "integrity": "sha512-Hhmwd6CInZ3dwpuGTF8fJG6yoWmsToE+vYgD4nytZVxcu1ulHpUQRAB1UJ8+N1Am3Mz4+xOByoQoSZf4D+CpkA=="
+      },
+      "node_modules/@esbuild/android-arm": {
+        "version": "0.25.12",
+        "integrity": "sha512-VJ+sKvNA/GE7Ccacc9Cha7bpS8nyzVv0jdVgwNDaR4gDMC/2TTRc33Ip8qrNYUcpkOHUT5OZ0bUcNNVZQ9RLlg=="
+      },
+      "node_modules/@esbuild/android-arm64": {
+        "version": "0.25.12",
+        "integrity": "sha512-6AAmLG7zwD1Z159jCKPvAxZd4y/VTO0VkprYy+3N2FtJ8+BQWFXU+OxARIwA46c5tdD9SsKGZ/1ocqBS/gAKHg=="
+      },
+      "node_modules/@esbuild/android-x64": {
+        "version": "0.25.12",
+        "integrity": "sha512-5jbb+2hhDHx5phYR2By8GTWEzn6I9UqR11Kwf22iKbNpYrsmRB18aX/9ivc5cabcUiAT/wM+YIZ6SG9QO6a8kg=="
+      },
+      "node_modules/@esbuild/darwin-arm64": {
+        "version": "0.25.12",
+        "integrity": "sha512-N3zl+lxHCifgIlcMUP5016ESkeQjLj/959RxxNYIthIg+CQHInujFuXeWbWMgnTo4cp5XVHqFPmpyu9J65C1Yg=="
+      },
+      "node_modules/@esbuild/darwin-x64": {
+        "version": "0.25.12",
+        "integrity": "sha512-HQ9ka4Kx21qHXwtlTUVbKJOAnmG1ipXhdWTmNXiPzPfWKpXqASVcWdnf2bnL73wgjNrFXAa3yYvBSd9pzfEIpA=="
+      },
+      "node_modules/@esbuild/freebsd-arm64": {
+        "version": "0.25.12",
+        "integrity": "sha512-gA0Bx759+7Jve03K1S0vkOu5Lg/85dou3EseOGUes8flVOGxbhDDh/iZaoek11Y8mtyKPGF3vP8XhnkDEAmzeg=="
+      },
+      "node_modules/@esbuild/freebsd-x64": {
+        "version": "0.25.12",
+        "integrity": "sha512-TGbO26Yw2xsHzxtbVFGEXBFH0FRAP7gtcPE7P5yP7wGy7cXK2oO7RyOhL5NLiqTlBh47XhmIUXuGciXEqYFfBQ=="
+      },
+      "node_modules/@esbuild/linux-arm": {
+        "version": "0.25.12",
+        "integrity": "sha512-lPDGyC1JPDou8kGcywY0YILzWlhhnRjdof3UlcoqYmS9El818LLfJJc3PXXgZHrHCAKs/Z2SeZtDJr5MrkxtOw=="
+      },
+      "node_modules/@esbuild/linux-arm64": {
+        "version": "0.25.12",
+        "integrity": "sha512-8bwX7a8FghIgrupcxb4aUmYDLp8pX06rGh5HqDT7bB+8Rdells6mHvrFHHW2JAOPZUbnjUpKTLg6ECyzvas2AQ=="
+      },
+      "node_modules/@esbuild/linux-ia32": {
+        "version": "0.25.12",
+        "integrity": "sha512-0y9KrdVnbMM2/vG8KfU0byhUN+EFCny9+8g202gYqSSVMonbsCfLjUO+rCci7pM0WBEtz+oK/PIwHkzxkyharA=="
+      },
+      "node_modules/@esbuild/linux-loong64": {
+        "version": "0.25.12",
+        "integrity": "sha512-h///Lr5a9rib/v1GGqXVGzjL4TMvVTv+s1DPoxQdz7l/AYv6LDSxdIwzxkrPW438oUXiDtwM10o9PmwS/6Z0Ng=="
+      },
+      "node_modules/@esbuild/linux-mips64el": {
+        "version": "0.25.12",
+        "integrity": "sha512-iyRrM1Pzy9GFMDLsXn1iHUm18nhKnNMWscjmp4+hpafcZjrr2WbT//d20xaGljXDBYHqRcl8HnxbX6uaA/eGVw=="
+      },
+      "node_modules/@esbuild/linux-ppc64": {
+        "version": "0.25.12",
+        "integrity": "sha512-9meM/lRXxMi5PSUqEXRCtVjEZBGwB7P/D4yT8UG/mwIdze2aV4Vo6U5gD3+RsoHXKkHCfSxZKzmDssVlRj1QQA=="
+      },
+      "node_modules/@esbuild/linux-riscv64": {
+        "version": "0.25.12",
+        "integrity": "sha512-Zr7KR4hgKUpWAwb1f3o5ygT04MzqVrGEGXGLnj15YQDJErYu/BGg+wmFlIDOdJp0PmB0lLvxFIOXZgFRrdjR0w=="
+      },
+      "node_modules/@esbuild/linux-s390x": {
+        "version": "0.25.12",
+        "integrity": "sha512-MsKncOcgTNvdtiISc/jZs/Zf8d0cl/t3gYWX8J9ubBnVOwlk65UIEEvgBORTiljloIWnBzLs4qhzPkJcitIzIg=="
+      },
+      "node_modules/@esbuild/linux-x64": {
+        "version": "0.25.12",
+        "integrity": "sha512-uqZMTLr/zR/ed4jIGnwSLkaHmPjOjJvnm6TVVitAa08SLS9Z0VM8wIRx7gWbJB5/J54YuIMInDquWyYvQLZkgw=="
+      },
+      "node_modules/@esbuild/netbsd-arm64": {
+        "version": "0.25.12",
+        "integrity": "sha512-xXwcTq4GhRM7J9A8Gv5boanHhRa/Q9KLVmcyXHCTaM4wKfIpWkdXiMog/KsnxzJ0A1+nD+zoecuzqPmCRyBGjg=="
+      },
+      "node_modules/@esbuild/netbsd-x64": {
+        "version": "0.25.12",
+        "integrity": "sha512-Ld5pTlzPy3YwGec4OuHh1aCVCRvOXdH8DgRjfDy/oumVovmuSzWfnSJg+VtakB9Cm0gxNO9BzWkj6mtO1FMXkQ=="
+      },
+      "node_modules/@esbuild/openbsd-arm64": {
+        "version": "0.25.12",
+        "integrity": "sha512-fF96T6KsBo/pkQI950FARU9apGNTSlZGsv1jZBAlcLL1MLjLNIWPBkj5NlSz8aAzYKg+eNqknrUJ24QBybeR5A=="
+      },
+      "node_modules/@esbuild/openbsd-x64": {
+        "version": "0.25.12",
+        "integrity": "sha512-MZyXUkZHjQxUvzK7rN8DJ3SRmrVrke8ZyRusHlP+kuwqTcfWLyqMOE3sScPPyeIXN/mDJIfGXvcMqCgYKekoQw=="
+      },
+      "node_modules/@esbuild/openharmony-arm64": {
+        "version": "0.25.12",
+        "integrity": "sha512-rm0YWsqUSRrjncSXGA7Zv78Nbnw4XL6/dzr20cyrQf7ZmRcsovpcRBdhD43Nuk3y7XIoW2OxMVvwuRvk9XdASg=="
+      },
+      "node_modules/@esbuild/sunos-x64": {
+        "version": "0.25.12",
+        "integrity": "sha512-3wGSCDyuTHQUzt0nV7bocDy72r2lI33QL3gkDNGkod22EsYl04sMf0qLb8luNKTOmgF/eDEDP5BFNwoBKH441w=="
+      },
+      "node_modules/@esbuild/win32-arm64": {
+        "version": "0.25.12",
+        "integrity": "sha512-rMmLrur64A7+DKlnSuwqUdRKyd3UE7oPJZmnljqEptesKM8wx9J8gx5u0+9Pq0fQQW8vqeKebwNXdfOyP+8Bsg=="
+      },
+      "node_modules/@esbuild/win32-ia32": {
+        "version": "0.25.12",
+        "integrity": "sha512-HkqnmmBoCbCwxUKKNPBixiWDGCpQGVsrQfJoVGYLPT41XWF8lHuE5N6WhVia2n4o5QK5M4tYr21827fNhi4byQ=="
+      },
+      "node_modules/@esbuild/win32-x64": {
+        "version": "0.25.12",
+        "integrity": "sha512-alJC0uCZpTFrSL0CCDjcgleBXPnCrEAhTBILpeAp7M/OFgoqtAetfBzX0xM00MUsVVPpVjlPuMbREqnZCXaTnA=="
+      },
+      "node_modules/playwright-core": {
+        "version": "1.62.1",
+        "integrity": "sha512-wPYSwEBJY9GHraISXqyqtx0na0LpO3XEX7jNDhntbex7tzUS7kLnZsOlFruFJB4Hi/rhDMjXGqHewDZ68nYZVw=="
+      },
+      "node_modules/fsevents": {
+        "version": "2.3.2",
+        "integrity": "sha512-xiqMQR4xAeHTuB9uWm+fFRcIOgKBMiOBP+eXiyT7jsgVCq1bkVygt00oASowB7EdtpOHaaPgKt812P9ab+DDKA=="
+      }
+    },
+    "capturePackagePaths": {
+      "node_modules/fsevents": "node_modules/playwright/node_modules/fsevents"
+    }
+  },
+  "browserDistribution": {
+    "comment": "Do not edit this file, use utils/roll_browser.js",
+    "browsers": [
+      {
+        "name": "chromium",
+        "revision": "1234",
+        "installByDefault": true,
+        "browserVersion": "151.0.7922.34",
+        "title": "Chrome for Testing"
+      },
+      {
+        "name": "chromium-headless-shell",
+        "revision": "1234",
+        "installByDefault": true,
+        "browserVersion": "151.0.7922.34",
+        "title": "Chrome Headless Shell"
+      },
+      {
+        "name": "chromium-tip-of-tree",
+        "revision": "1433",
+        "installByDefault": false,
+        "browserVersion": "151.0.7893.0",
+        "title": "Chrome Canary for Testing"
+      },
+      {
+        "name": "chromium-tip-of-tree-headless-shell",
+        "revision": "1433",
+        "installByDefault": false,
+        "browserVersion": "151.0.7893.0",
+        "title": "Chrome Canary Headless Shell"
+      },
+      {
+        "name": "firefox",
+        "revision": "1538",
+        "installByDefault": true,
+        "browserVersion": "153.0",
+        "title": "Firefox"
+      },
+      {
+        "name": "firefox-beta",
+        "revision": "1526",
+        "installByDefault": false,
+        "browserVersion": "152.0b1",
+        "title": "Firefox Beta"
+      },
+      {
+        "name": "webkit",
+        "revision": "2336",
+        "installByDefault": true,
+        "revisionOverrides": {
+          "mac14": "2251",
+          "mac14-arm64": "2251",
+          "ubuntu20.04-x64": "2092",
+          "ubuntu20.04-arm64": "2092"
+        },
+        "browserVersion": "26.5",
+        "title": "WebKit"
+      },
+      {
+        "name": "ffmpeg",
+        "revision": "1011",
+        "installByDefault": true
+      },
+      {
+        "name": "winldd",
+        "revision": "1007",
+        "installByDefault": false
+      },
+      {
+        "name": "android",
+        "revision": "1001",
+        "installByDefault": false
+      }
+    ]
+  },
+  "coverage": {
+    "cases": 164,
+    "seeds": [
+      1,
+      17,
+      42,
+      123,
+      1024,
+      65537,
+      1234567,
+      4294967294
+    ],
+    "sampleRates": [
+      44100,
+      48000
+    ],
+    "browsers": {
+      "chromium": "151.0.7922.34",
+      "webkit": "26.5"
+    }
+  },
+  "facts": {
+    "recordedAtCapture": [
+      "baseline contents: source revision/hash, creation time, seeds, cases, browser versions and measurements"
+    ],
+    "establishedRetrospectively": [
+      "capture harness and package files from d858041",
+      "locked dependency graph for isolated runner",
+      "browser distribution metadata from installed playwright-core 1.62.1"
+    ],
+    "unavailable": [
+      "original raw PCM and listening clips",
+      "original OS, architecture and executable identity"
+    ]
+  }
+}

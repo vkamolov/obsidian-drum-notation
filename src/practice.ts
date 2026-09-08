@@ -201,7 +201,7 @@ export class DrumTransportSessionStore {
     return cloneSession(stored.session);
   }
 
-  set(key: string, session: DrumTransportSession): void {
+  set(key: string, session: DrumTransportSession): undefined {
     const normalized = normalizeSession(session);
     const stored = this.entries.get(key);
 
