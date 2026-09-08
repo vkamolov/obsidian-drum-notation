@@ -59,11 +59,14 @@ describe("literal grace source timing", () => {
     ["flam", 1, [0.965, 1]],
     ["drag", 1, [0.945, 0.972, 1]],
     ["flam", 0.01, [0, 0.01]],
-    ["drag", 0.01, [0, 0.01]]
+    // A partial clamp keeps both drag strokes distinct; at 0.01 they both collapse to 0 and dedupe.
+    ["drag", 0.04, [0, 0.012, 0.04]]
   ] as const)("schedules %s at %s with source-boundary clamping", async (articulation, time, expected) => {
     const mock = synthContext(), synth = new DrumSynth(mock.context, () => 0.5); await synth.start();
     synth.scheduleHits([{instrument: instrument("snare"), articulation, velocity: 0.7}], time);
     const starts = [...new Set(mock.sources.flatMap(source => source.start.mock.calls.map(call => call[0])))];
-    expect(starts).toEqual(expected); synth.stop();
+    expect(starts).toEqual(expected);
+    expect(starts.every(start => start >= 0)).toBe(true);
+    synth.stop();
   });
 });
