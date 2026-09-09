@@ -55,7 +55,6 @@ export interface DrumTransportSession {
   mutedInstrumentIds: string[];
   selection: PracticeSelection;
   selectionModeOpen: boolean;
-  practiceViewOpen: boolean;
   currentBarIndex: number;
   tempoRamp: TempoRampSessionState;
   tempoRampRunMetrics: PracticeRunMetrics | null;
@@ -282,7 +281,6 @@ function normalizeSession(session: DrumTransportSession): DrumTransportSession {
     selection: {
       barIndexes: [...new Set(session.selection.barIndexes)].sort((left, right) => left - right)
     },
-    practiceViewOpen: Boolean(session.practiceViewOpen),
     currentBarIndex: Math.max(0, Math.round(session.currentBarIndex)),
     tempoRamp: {
       config: tempoRampConfig,
@@ -346,7 +344,6 @@ function sessionsEqual(left: DrumTransportSession, right: DrumTransportSession):
     left.clickSubdivision === right.clickSubdivision &&
     left.gapClickMode === right.gapClickMode &&
     left.selectionModeOpen === right.selectionModeOpen &&
-    left.practiceViewOpen === right.practiceViewOpen &&
     left.currentBarIndex === right.currentBarIndex &&
     left.tempoRamp.armed === right.tempoRamp.armed &&
     left.tempoRamp.progress.completedPasses === right.tempoRamp.progress.completedPasses &&

@@ -24,7 +24,9 @@ printed-score import).
 
 The [playback remediation record](technical-review-remediation-plan.md) tracks the
 shared shutdown, cached navigation, grace timing and reproducible sound evidence
-corrections under the pre-pilot maintenance exception.
+corrections under the pre-pilot maintenance exception. The
+[Focus view implementation record](focus-view-implementation.md) covers safe score
+refitting, consolidated practice controls and the playground-only Focus toggle.
 
 ## Planning principles
 
@@ -73,7 +75,7 @@ walkthrough and examples.
 > therefore gates **new notation/navigation scope and expanded advanced editing** directly.
 > The agreed pre-pilot exception permits behavioral/sound references, synthesis resource cleanup,
 > playback scheduling and session-accounting corrections, explicit edit failures, accessible
-> dialogs, shared practice coordination, and a session-local Practice view using existing tools.
+> dialogs, shared practice coordination, and a playground-only Focus view with existing practice tools in their dedicated menus.
 > A measured web-font packaging experiment may also proceed independently. This maintenance and
 > practice-UI work must not defer the evidence needed to choose Track A or Track B.
 > If twenty charts is the barrier, shrink the sample and amend the protocol *before* sampling —

@@ -18,6 +18,7 @@ test("Back restores the same cached Chromium page and a usable paused session", 
     window.addEventListener("pageshow", event => {state.persisted = event.persisted;});
   });
   await startGoal(page);
+  await page.locator("#pg-focus-view").click();
   const before = await page.evaluate(() => (window as unknown as {navigationProbe: {identity: string}}).navigationProbe.identity);
   await page.goto("/importer/privacy.html");
   await page.goBack({waitUntil: "commit"});
@@ -29,6 +30,7 @@ test("Back restores the same cached Chromium page and a usable paused session", 
     expect(restored.persisted).toBe(true);
   }
   if (restored.persisted) {
+    await expect(page.locator("#pg-focus-view")).toHaveAttribute("aria-pressed", "true");
     const label = page.locator(".drum-notation__practice-label");
     await expect(label).toContainText("Practice paused");
     const paused = await label.textContent();
@@ -39,16 +41,19 @@ test("Back restores the same cached Chromium page and a usable paused session", 
     await page.locator("#pg-stop").click();
   }
   await page.reload();
+  await expect(page.locator("#pg-focus-view")).toHaveAttribute("aria-pressed", "false");
   expect(await page.evaluate(() => (window as unknown as {navigationProbe: {identity: string}}).navigationProbe.identity)).not.toBe(before);
   await expect(page.locator("#pg-play")).toBeEnabled();
 });
 
 test("cached lifecycle branch remains reusable over repeated cycles", async ({page}) => {
   await startGoal(page);
+  await page.locator("#pg-focus-view").click();
   for (let cycle = 0; cycle < 3; cycle++) {
     await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent("pagehide", {persisted: true})));
     await expect(page.locator(".drum-notation__practice-label")).toContainText("Practice paused");
     await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent("pageshow", {persisted: true})));
+    await expect(page.locator("#pg-focus-view")).toHaveAttribute("aria-pressed", "true");
     await expect(page.locator("#pg-play")).toBeEnabled();
     await page.locator("#pg-play").click();
     await expect(page.locator(".drum-notation__practice-label")).toContainText("Practice goal");

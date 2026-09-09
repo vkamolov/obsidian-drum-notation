@@ -187,8 +187,6 @@
 }
 
 .drum-notation__controls {
-  min-width: 0;
-  max-width: 100%;
   display: inline-flex;
   flex: 0 0 auto;
   flex-wrap: wrap;
@@ -198,7 +196,10 @@
 }
 
 .drum-notation__speed {
+  width: 4.1rem;
   height: 1.7rem;
+  min-width: 4.1rem;
+  padding: 0 0.25rem;
   border: 1px solid var(--drum-border);
   border-radius: 5px;
   color: var(--drum-ink-symbol);
@@ -219,7 +220,25 @@
   white-space: nowrap;
 }
 
+/* Practice is icon-only and keeps the shared toolbar button size; only the labelled
+   variant (Exit) widens to fit its text. */
+.drum-notation .drum-notation__button.drum-notation__practice-entry {
+  gap: 0.3rem;
+  font-size: var(--font-smallest);
+  white-space: nowrap;
+}
 
+.drum-notation .drum-notation__button.drum-notation__practice-entry--labeled {
+  width: auto;
+  min-width: 0;
+  padding-inline: 0.48rem;
+}
+
+.drum-notation .drum-notation__practice-entry svg {
+  flex: 0 0 auto;
+  width: 0.95rem;
+  height: 0.95rem;
+}
 
 .drum-notation .drum-notation__button {
   --icon-color: var(--drum-control-color);
@@ -332,6 +351,37 @@
   border: 1px solid var(--drum-border);
   border-radius: 6px;
   background: var(--background-primary);
+}
+
+.drum-notation.is-practice-view {
+  gap: 0.75rem;
+  padding: 0.8rem;
+  border-color: color-mix(in srgb, var(--drum-accent) 45%, var(--drum-border));
+}
+
+.drum-notation.is-practice-view .drum-notation__practice-secondary {
+  display: none;
+}
+
+.drum-notation.is-practice-view .drum-notation__button {
+  width: 2.75rem;
+  height: 2.75rem;
+}
+
+.drum-notation.is-practice-view .drum-notation__speed {
+  width: auto;
+  min-height: 2.75rem;
+}
+
+/* Keep a 44px target in Practice view for the icon-only entry as well as the labelled one. */
+.drum-notation.is-practice-view .drum-notation__practice-entry {
+  width: auto;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+}
+
+.drum-notation.is-practice-view .drum-notation__score-viewport {
+  min-height: 12rem;
 }
 
 .drum-notation__score {

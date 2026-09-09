@@ -59,7 +59,7 @@
         </section>
 
         <section class="pg-toolbar-row pg-toolbar-row--actions" aria-label="Playback, editing, and export">
-          <div class="pg-action-group" aria-label="Playback">
+          <div class="pg-action-group pg-action-group--playback" aria-label="Playback">
             <div class="pg-action-group__label">Playback</div>
             <div class="pg-action-group__controls">
               <button id="pg-play" class="pg-btn pg-btn--accent" type="button">Play</button>
@@ -81,11 +81,8 @@
                 <button id="pg-mute" class="pg-btn" type="button" aria-haspopup="menu" aria-expanded="false">Mute</button>
                 <div id="pg-mute-menu" class="pg-mute-menu" role="menu" hidden></div>
               </div>
-              <div class="pg-practice-control">
-                <button id="pg-practice" class="pg-btn pg-btn--practice" type="button" aria-haspopup="menu" aria-expanded="false" aria-pressed="false">Practice</button>
-                <button id="pg-exit-practice" class="pg-btn pg-btn--practice-exit" type="button" hidden>Exit</button>
-                <div id="pg-practice-menu" class="pg-metronome-menu pg-practice-menu" role="menu" hidden></div>
-              </div>
+              <button id="pg-focus-view" class="pg-btn pg-btn--focus" type="button" aria-pressed="false">Focus view</button>
+              <span id="pg-focus-reason" class="pg-focus-reason" hidden></span>
             </div>
           </div>
 
@@ -205,7 +202,7 @@
       </section>
 
       <section class="pg-pane pg-pane--preview">
-        <div class="pg-pane__head">preview</div>
+        <div class="pg-pane__head"><span class="pg-preview-label">preview</span><span id="pg-focus-title"></span></div>
         <div class="pg-preview-scroll">
           <div id="pg-preview" class="drum-notation drum-notation--legend-color"></div>
           <div id="pg-edit-root" hidden></div>

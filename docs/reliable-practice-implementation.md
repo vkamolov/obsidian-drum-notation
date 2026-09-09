@@ -1,5 +1,8 @@
 # Reliable playback and daily practice implementation
 
+The original Practice-menu/view UI described below is superseded by the
+[Focus view implementation](focus-view-implementation.md). Playback, session and pilot gates are unchanged.
+
 Approved scope: the seven-stage implementation plan from 2026-09-07. Pilot thresholds,
 sample mix and advanced-notation gates are unchanged. Implementation branch:
 `codex/reliable-practice`; original source revision: `4c65f4a781c8cb0a19310d0079d0da2c9f844116`.

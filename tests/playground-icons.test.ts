@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
-import { PRACTICE_ICON_ID } from "../src/practice-icon";
 
 // The playground inlines its own Lucide glyphs instead of pulling the icon set in, so a call
 // asking for an id the table does not carry silently renders an empty svg: a blank slot where
@@ -15,10 +14,9 @@ function availableIconIds(): Set<string> {
     ICONS_SOURCE.indexOf("export function createIconSvg")
   );
   const ids = new Set<string>();
-  for (const match of table.matchAll(/^ {2}(?:\[(\w+)\]|"([^"]+)"|([A-Za-z0-9_-]+))\s*:/gm)) {
-    const [, computed, quoted, bare] = match;
-    if (computed === "PRACTICE_ICON_ID") ids.add(PRACTICE_ICON_ID);
-    else if (quoted ?? bare) ids.add(quoted ?? bare);
+  for (const match of table.matchAll(/^ {2}(?:"([^"]+)"|([A-Za-z0-9_-]+))\s*:/gm)) {
+    const [, quoted, bare] = match;
+    if (quoted ?? bare) ids.add(quoted ?? bare);
   }
   return ids;
 }
@@ -51,6 +49,6 @@ describe("playground icon table", () => {
   it("finds the call sites and the table, so an empty scan cannot pass silently", () => {
     expect(availableIconIds().size).toBeGreaterThan(5);
     expect(requestedIconIds().size).toBeGreaterThan(5);
-    expect(availableIconIds()).toContain(PRACTICE_ICON_ID);
+    expect(availableIconIds()).toContain("maximize-2");
   });
 });

@@ -765,8 +765,7 @@ body.pg-verify-workspace-maximized .pg-verify-resizer::before {
 .pg-mute-control,
 .pg-metronome-control,
 .pg-loop-control,
-.pg-speed-control,
-.pg-practice-control {
+.pg-speed-control {
   position: relative;
 }
 
@@ -777,8 +776,7 @@ body.pg-verify-workspace-maximized .pg-verify-resizer::before {
 .pg-mute-menu,
 .pg-metronome-menu,
 .pg-loop-menu,
-.pg-speed-menu,
-.pg-practice-menu {
+.pg-speed-menu {
   position: absolute;
   z-index: 20;
   top: calc(100% + 0.35rem);
@@ -795,20 +793,11 @@ body.pg-verify-workspace-maximized .pg-verify-resizer::before {
 .pg-mute-menu[hidden],
 .pg-metronome-menu[hidden],
 .pg-loop-menu[hidden],
-.pg-speed-menu[hidden],
-.pg-practice-menu[hidden] {
+.pg-speed-menu[hidden] {
   display: none;
 }
 
-.pg-practice-menu {
-  min-width: 17rem;
-  max-height: min(34rem, 76vh);
-  overflow-y: auto;
-}
 
-.pg-btn--practice-exit[hidden] {
-  display: none;
-}
 
 .pg-speed-menu {
   min-width: 15rem;
@@ -924,41 +913,45 @@ body.pg-verifying .pg-main {
   grid-template-columns: minmax(15rem, 0.8fr) minmax(0, 1fr) minmax(0, 1.35fr);
 }
 
-body.pg-practice-view {
-  grid-template-rows: auto minmax(0, 1fr);
+body.pg-focus-view {
+  display: grid;
+  height: 100vh;
+  grid-template-rows: auto minmax(0, 1fr) auto;
 }
 
-body.pg-practice-view .pg-toolbar-row--setup,
-body.pg-practice-view .pg-mode-switch,
-body.pg-practice-view .pg-action-group--editing,
-body.pg-practice-view .pg-action-group--export,
-body.pg-practice-view .pg-pane--source,
-body.pg-practice-view .pg-pane--editor,
-body.pg-practice-view .pg-footer {
+body.pg-focus-view .pg-toolbar-row--setup,
+body.pg-focus-view .pg-mode-switch,
+body.pg-focus-view .pg-action-group--editing,
+body.pg-focus-view .pg-action-group--export,
+body.pg-focus-view .pg-pane--source,
+body.pg-focus-view .pg-pane--editor {
   display: none;
 }
 
-body.pg-practice-view .pg-main {
+body.pg-focus-view .pg-main {
   grid-row: 2;
   grid-template-columns: minmax(0, 1fr);
 }
 
-body.pg-practice-view .pg-pane--preview {
+body.pg-focus-view .pg-pane--preview {
   min-height: 0;
 }
 
-body.pg-practice-view .pg-action-group {
+body.pg-focus-view .pg-action-group {
   min-height: 0;
   padding: 0;
   border-left: 0;
 }
 
-body.pg-practice-view .pg-action-group__controls .pg-btn {
+body.pg-focus-view .pg-action-group__controls .pg-btn {
   min-width: 2.75rem;
   min-height: 2.75rem;
 }
 
-body.pg-practice-view .pg-preview-scroll {
+body.pg-focus-view .pg-footer { grid-row: 3; }
+
+body.pg-focus-view .pg-preview-scroll {
+  overflow: auto;
   padding: 1rem clamp(0.5rem, 3vw, 2rem);
 }
 
@@ -1623,3 +1616,25 @@ body.pg-verify-workspace-maximized .pg-footer {
     max-height: none;
   }
 }
+
+/* Keep ordinary toolbar geometry; only this button extends its hit target. */
+.pg-btn--focus { position: relative; }
+.pg-btn--focus::before {
+  content: "";
+  position: absolute;
+  inset: 50% auto auto 50%;
+  transform: translate(-50%, -50%);
+  width: max(100%, 44px);
+  height: max(100%, 44px);
+}
+.pg-btn--focus[aria-disabled="true"] { opacity: 0.55; cursor: not-allowed; }
+.pg-focus-reason { flex-basis: 100%; grid-column: 1 / -1; font-size: 0.8rem; }
+.pg-focus-reason[hidden] { display: none; }
+body.pg-focus-view .pg-toolbar-row--actions { grid-template-columns: minmax(0, 1fr); }
+body.pg-focus-view .pg-action-group__controls .pg-btn { min-height: 44px; min-width: 44px; }
+body.pg-focus-view .pg-footer > :not(.pg-issues),
+body.pg-focus-view .pg-discovery-tip:not(.drum-notation__tip--practice) { display: none; }
+
+#pg-focus-title { display: none; overflow-wrap: anywhere; }
+body.pg-focus-view #pg-focus-title { display: inline; }
+body.pg-focus-view .pg-preview-label { display: none; }

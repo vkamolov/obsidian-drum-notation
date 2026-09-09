@@ -156,7 +156,6 @@ import {
   RepeatBarDialogResult
 } from "../../src/editor-grid";
 import { createIconSvg } from "./icons";
-import { PRACTICE_ICON_ID } from "../../src/practice-icon";
 import {
   compareReportCore,
   detectRasterImageKind,
@@ -229,9 +228,8 @@ const metronomeBtn = $<HTMLButtonElement>("pg-metronome");
 const metronomeMenu = $<HTMLDivElement>("pg-metronome-menu");
 const muteBtn = $<HTMLButtonElement>("pg-mute");
 const muteMenu = $<HTMLDivElement>("pg-mute-menu");
-const practiceBtn = $<HTMLButtonElement>("pg-practice");
-const exitPracticeBtn = $<HTMLButtonElement>("pg-exit-practice");
-const practiceMenu = $<HTMLDivElement>("pg-practice-menu");
+const focusBtn = $<HTMLButtonElement>("pg-focus-view");
+const focusReason = $<HTMLSpanElement>("pg-focus-reason");
 const editBtn = $<HTMLButtonElement>("pg-edit");
 const editRoot = $<HTMLDivElement>("pg-edit-root");
 const copyBlockBtn = $<HTMLButtonElement>("pg-copy-block");
@@ -356,7 +354,7 @@ let keepScreenAwakeDuringPlayback = true;
 const mutedInstrumentIds = new Set<string>();
 let practiceSelection: PracticeSelection = { barIndexes: [] };
 let selectionModeOpen = false;
-let practiceViewOpen = false;
+let focusViewOpen = false;
 let gridEditor: GridEditorHandle | null = null;
 let isApplyingGridEdit = false;
 let audioRecoveryWarning: string | null = null;
@@ -496,6 +494,60 @@ function createPlaybackBackend(audioContext: AudioContext): DrumPlaybackBackend 
 }
 
 /* ---------- rendering ---------- */
+// Pane layout is class-only: no width transitions and no preview reparenting.
+// If either changes, re-establish observation and measure after the final layout.
+let renderedGeometry: { block: DrumBlock; width: number } | null = null;
+let pendingRefit: number | null = null;
+const previewWidth = (): number => Math.round((preview.parentElement ?? preview).clientWidth);
+function cancelScoreRefit(): void {
+  if (pendingRefit !== null) window.clearTimeout(pendingRefit);
+  pendingRefit = null;
+}
+
+function scoreFocusKey(element: Element): string | null {
+  if (element.matches(".pg-bar-selector")) return `bars:${element.getAttribute("data-bar-indexes")}`;
+  if (!element.matches(".drum-notation__interactive-note")) return null;
+  const slots = element.getAttribute("data-slot-indices") ?? element.getAttribute("data-slot-index");
+  return `note:${slots}:${element.getAttribute("data-drum-instrument-labels") ?? ""}`;
+}
+
+function refitScore(): void {
+  cancelScoreRefit();
+  const block = currentBlock;
+  const score = scoreEl;
+  const width = previewWidth();
+  if (gridEditor || !block || !score || !width || !score.isConnected || !block.rows.length) return;
+  if (renderedGeometry?.block === block && renderedGeometry.width === width) return;
+  const scroll = capturePreviewScroll();
+  const focused = activeDocument.activeElement;
+  const ownsFocus = focused !== null && score.contains(focused);
+  const key = focused ? scoreFocusKey(focused) : null;
+  const matching = key === null ? [] : [...score.querySelectorAll("[tabindex], button")].filter(el => scoreFocusKey(el) === key);
+  const occurrence = focused ? matching.indexOf(focused) : -1;
+  const cursorWasActive = cursorEl?.classList.contains("is-active");
+  const notesWereHighlighted = highlightedNotes.some(element => element.classList.contains("is-playing"));
+  preview.querySelectorAll(".drum-notation__legend").forEach(el => el.remove());
+  score.empty();
+  lastRenderError = null;
+  drawScore(block, score);
+  if (lastRenderError === null) renderedGeometry = { block, width };
+  if (cursorWasActive || notesWereHighlighted) moveCursor(currentSlotIndex);
+  if (activePlaybackBarIndex !== null) showRepeatProgressForBar(block, activePlaybackBarIndex);
+  if (ownsFocus) {
+    const replacement = key === null ? undefined : [...score.querySelectorAll<HTMLElement | SVGElement>("[tabindex], button")]
+      .filter(el => scoreFocusKey(el) === key)[Math.max(0, occurrence)];
+    score.setAttribute("tabindex", "-1");
+    score.setAttribute("aria-label", "Drum notation score");
+    (replacement ?? score).focus({ preventScroll: true });
+  }
+  restorePreviewScroll(scroll);
+}
+
+function queueScoreRefit(): void {
+  cancelScoreRefit();
+  pendingRefit = window.setTimeout(refitScore, 150);
+}
+
 function renderPreview(): void {
   const scrollSnapshot = capturePreviewScroll();
   const parsed = parseDrumBlockWithWarnings(editor.value);
@@ -587,6 +639,7 @@ function renderPreview(): void {
   speedBtn.disabled = !hasRows;
   metronomeBtn.disabled = block.slots.length === 0;
   muteBtn.disabled = !hasRows;
+  syncFocusButton();
   const structuralCapability = getStructuralEditCapability(block);
   editBtn.disabled = !hasRows || !structuralCapability.ok;
   const editDescription = structuralCapability.ok
@@ -623,6 +676,7 @@ function renderPreview(): void {
   }
   applyEditHighlight();
   restorePreviewScroll(scrollSnapshot);
+  if (lastRenderError === null) renderedGeometry = { block, width: previewWidth() };
 }
 
 function getAdvancedClickStatus(): string | null {
@@ -2226,9 +2280,7 @@ function syncPlaybackControls(block: DrumBlock): void {
 
   speedBtn.textContent = tempoRamp.armed
     ? `${formatTempo(effectiveTempo)} BPM ▲`
-    : exactTempoBpm !== null
-      ? `${formatTempo(effectiveTempo)} BPM`
-      : `${playbackSpeedPercent}%`;
+    : `${formatTempo(effectiveTempo)} BPM`;
   speedBtn.title = speedDescription;
   speedBtn.setAttribute("aria-label", speedDescription);
   const selectedCount = practiceSelection.barIndexes.length;
@@ -2444,7 +2496,6 @@ function setSpeedMenuOpen(open: boolean): void {
   speedMenu.hidden = !open;
   speedBtn.setAttribute("aria-expanded", open ? "true" : "false");
   if (open) {
-    setPracticeMenuOpen(false);
     setLoopMenuOpen(false);
     setMetronomeMenuOpen(false);
     setMuteMenuOpen(false);
@@ -2617,123 +2668,30 @@ function openTempoRampDialog(): void {
   });
 }
 
-function syncPracticeButton(): void {
-  const text = practiceBtn.createSpan({ cls: "pg-btn__label", text: "Practice" });
-  practiceBtn.replaceChildren(createIconSvg(PRACTICE_ICON_ID), text);
-  practiceBtn.classList.toggle("is-active", practiceViewOpen);
-  practiceBtn.setAttribute("aria-pressed", practiceViewOpen ? "true" : "false");
-  practiceBtn.setAttribute("aria-label", "Open Practice tools");
-  exitPracticeBtn.hidden = !practiceViewOpen;
+function syncFocusButton(): void {
+  const reason = verificationActive
+    ? "Focus view is unavailable during verification. Use Expand comparison workspace."
+    : gridEditor ? "Finish editing to use Focus view." : "";
+  focusBtn.classList.toggle("is-active", focusViewOpen);
+  focusBtn.setAttribute("aria-pressed", String(focusViewOpen));
+  focusBtn.setAttribute("aria-disabled", String(Boolean(reason)));
+  focusReason.textContent = reason;
+  focusReason.hidden = !reason;
+  if (reason) focusBtn.setAttribute("aria-describedby", "pg-focus-reason");
+  else focusBtn.removeAttribute("aria-describedby");
 }
 
-function setPracticeViewOpen(open: boolean): void {
-  if (practiceViewOpen === open) return;
-  if (open && verificationActive) {
-    exitVerificationModeToDraft();
-  }
-  if (open && gridEditor) {
-    exitEditMode();
-  }
-  practiceViewOpen = open;
-  activeDocument.body.classList.toggle("pg-practice-view", open);
-  syncPracticeButton();
-  setPracticeMenuOpen(false);
-}
-
-function renderPracticeMenu(): void {
-  practiceMenu.empty();
-  const selectedCount = practiceSelection.barIndexes.length;
-  const addItem = (
-    label: string,
-    checked: boolean | null,
-    onActivate: () => void,
-    disabled = false
-  ) => {
-    const item = practiceMenu.createEl("button", {
-      cls: "pg-metronome-menu__item",
-      attr: {
-        type: "button",
-        role: checked === null ? "menuitem" : "menuitemcheckbox",
-        ...(checked === null ? {} : { "aria-checked": checked ? "true" : "false" })
-      }
-    });
-    item.createSpan({ cls: "pg-metronome-menu__check", text: checked === true ? "✓" : "" });
-    item.createSpan({ text: label });
-    item.disabled = disabled;
-    item.addEventListener("click", () => {
-      setPracticeMenuOpen(false);
-      onActivate();
-    });
-  };
-
-  addItem(practiceViewOpen ? "Exit Practice view" : "Enter Practice view", practiceViewOpen, () => {
-    setPracticeViewOpen(!practiceViewOpen);
-  });
-
-  practiceMenu.createDiv({ cls: "pg-metronome-menu__label", text: "Target and goals" });
-  addItem(selectionModeOpen ? "Done selecting bars" : `Select practice bars${selectedCount ? ` · ${selectedCount} selected` : ""}`, selectionModeOpen, () => {
-    setSelectionModeOpen(!selectionModeOpen);
-  });
-  addItem("Clear selected bars", null, clearPracticeSelection, selectedCount === 0);
-  addItem("Practice repetitions…", null, openRepetitionGoalDialog);
-  addItem("Tempo ramp…", null, openTempoRampDialog);
-  addItem(player ? "Tap tempo… · Stop playback first" : "Tap tempo…", null, openTapTempoDialog, player !== null);
-
-  practiceMenu.createDiv({ cls: "pg-metronome-menu__label", text: "Click and count-in" });
-  addItem(
-    `Click: ${getMetronomeModeLabel(metronomeMode)} · Count-in: ${getCountInModeLabel(countInMode)} · Subdivision: ${getClickSubdivisionLabel(clickSubdivision)}`,
-    null,
-    () => setMetronomeMenuOpen(true)
-  );
-
-  if (repetitionGoal.armed && repetitionGoal.config) {
-    practiceMenu.createDiv({ cls: "pg-metronome-menu__label", text: "Current session" });
-    addItem(
-      `${player ? "Pause" : "Resume"} goal · ${repetitionGoal.progress.completedPasses}/${repetitionGoal.config.totalPasses}`,
-      player !== null,
-      () => player ? stopPlayback() : void startRepetitionGoal(true, true)
-    );
-  } else if (tempoRamp.armed && tempoRamp.config) {
-    practiceMenu.createDiv({ cls: "pg-metronome-menu__label", text: "Current session" });
-    addItem(
-      `${player ? "Pause" : "Resume"} ramp · ${currentBlock ? getCurrentEffectiveTempo(currentBlock) : tempoRamp.config.startBpm} BPM`,
-      player !== null,
-      () => player ? stopPlayback() : void startArmedTempoRamp(true, true),
-      currentBlock === null
-    );
-  }
-  if (repetitionGoal.runMetrics && !repetitionGoal.progress.completed) {
-    addItem("Finish session and view summary", null, () => {
-      finishRepetitionGoalEarly();
-      openPracticeSummaryDialog();
-    });
-  } else if (tempoRampRunMetrics && tempoRamp.armed && !tempoRamp.progress.completed) {
-    addItem("Finish tempo ramp and view summary", null, () => {
-      finishTempoRampSessionEarly();
-      openPracticeSummaryDialog();
-    });
-  } else if (completedSummary) {
-    addItem("View practice summary", null, openPracticeSummaryDialog);
-  }
-}
-
-function setPracticeMenuOpen(open: boolean): void {
-  practiceMenu.hidden = !open;
-  practiceBtn.setAttribute("aria-expanded", open ? "true" : "false");
-  if (open) {
-    setLoopMenuOpen(false);
-    setSpeedMenuOpen(false);
-    setMetronomeMenuOpen(false);
-    setMuteMenuOpen(false);
-    renderPracticeMenu();
-    const focusFirstItem = () => {
-      if (!practiceMenu.hidden && !practiceMenu.contains(activeDocument.activeElement)) {
-        practiceMenu.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
-      }
-    };
-    focusFirstItem();
-    window.requestAnimationFrame(focusFirstItem);
-  }
+function setFocusViewOpen(open: boolean): void {
+  if (open && (verificationActive || gridEditor)) return;
+  if (focusViewOpen === open) return;
+  focusViewOpen = open;
+  activeDocument.body.classList.toggle("pg-focus-view", open);
+  syncFocusButton();
+  setLoopMenuOpen(false);
+  setSpeedMenuOpen(false);
+  setMetronomeMenuOpen(false);
+  setMuteMenuOpen(false);
+  refitScore();
 }
 
 function renderLoopMenu(): void {
@@ -2824,7 +2782,6 @@ function setLoopMenuOpen(open: boolean): void {
   loopMenu.hidden = !open;
   loopAllBtn.setAttribute("aria-expanded", open ? "true" : "false");
   if (open) {
-    setPracticeMenuOpen(false);
     setSpeedMenuOpen(false);
     setMetronomeMenuOpen(false);
     setMuteMenuOpen(false);
@@ -3067,7 +3024,6 @@ function setMetronomeMenuOpen(open: boolean): void {
   metronomeMenu.hidden = !open;
   metronomeBtn.setAttribute("aria-expanded", open ? "true" : "false");
   if (open) {
-    setPracticeMenuOpen(false);
     setSpeedMenuOpen(false);
     setLoopMenuOpen(false);
     setMuteMenuOpen(false);
@@ -3154,7 +3110,6 @@ function setMuteMenuOpen(open: boolean): void {
   muteMenu.hidden = !open;
   muteBtn.setAttribute("aria-expanded", open ? "true" : "false");
   if (open) {
-    setPracticeMenuOpen(false);
     setSpeedMenuOpen(false);
     setLoopMenuOpen(false);
     setMetronomeMenuOpen(false);
@@ -3207,6 +3162,7 @@ function syncControls(block: DrumBlock): void {
   const [beats, beatValue] = block.timeSignature.split("/");
 
   titleInput.value = getTitle(block);
+  $("pg-focus-title").textContent = getTitle(block);
   tempoInput.value = String(block.tempo);
   timeTopInput.value = beats || "4";
   timeBottomInput.value = beatValue || "4";
@@ -3285,6 +3241,7 @@ function withTitle(block: DrumBlock, title: string): DrumBlock {
 
 /* ---------- edit mode (grid editor) ---------- */
 function enterEditMode(): void {
+  setFocusViewOpen(false);
   if (gridEditor || !currentBlock || currentBlock.slots.length === 0) {
     return;
   }
@@ -3331,6 +3288,7 @@ function enterEditMode(): void {
     writeClipboardText
   });
 
+  syncFocusButton();
   if (scoreEl) {
     renderBarSelectors(currentBlock, scoreEl);
   }
@@ -3339,6 +3297,7 @@ function enterEditMode(): void {
 function exitEditMode(): void {
   gridEditor?.destroy();
   gridEditor = null;
+  syncFocusButton();
   selectEditSlot(null);
   clearBarSelectors();
   activeDocument.body.classList.remove("pg-editing");
@@ -3714,9 +3673,10 @@ function enterVerificationMode(): void {
   if (verificationActive) {
     return;
   }
-  setPracticeViewOpen(false);
+  setFocusViewOpen(false);
   playgroundDraftSnapshot = editor.value;
   verificationActive = true;
+  syncFocusButton();
   activeDocument.body.classList.add("pg-verifying");
   verifyPanel.hidden = false;
   verifyDivider.hidden = false;
@@ -4573,7 +4533,7 @@ function init(): void {
   decorateButton(loopBtn, "repeat-1");
   decorateButton(loopAllBtn, "repeat");
   decorateButton(editBtn, "pencil");
-  syncPracticeButton();
+  syncFocusButton();
   syncMetronomeButton();
   syncMuteButton();
 
@@ -4617,13 +4577,12 @@ function init(): void {
             : (activeIndex + 1) % items.length;
     items[nextIndex]?.focus();
   });
-  practiceBtn.addEventListener("click", (event) => {
+  focusBtn.replaceChildren(createIconSvg("maximize-2"), activeDocument.createTextNode("Focus view"));
+  focusBtn.addEventListener("click", (event) => {
     event.stopPropagation();
-    setPracticeMenuOpen(practiceMenu.hidden);
+    focusBtn.focus({ preventScroll: true });
+    setFocusViewOpen(!focusViewOpen);
   });
-  exitPracticeBtn.addEventListener("click", () => setPracticeViewOpen(false));
-  practiceMenu.addEventListener("click", (event) => event.stopPropagation());
-  practiceMenu.addEventListener("keydown", handleMenuArrowNavigation);
   speedBtn.addEventListener("click", (event) => {
     event.stopPropagation();
     setSpeedMenuOpen(speedMenu.hidden);
@@ -4641,7 +4600,6 @@ function init(): void {
   });
   muteMenu.addEventListener("click", (event) => event.stopPropagation());
   activeDocument.addEventListener("click", () => {
-    setPracticeMenuOpen(false);
     setLoopMenuOpen(false);
     setSpeedMenuOpen(false);
     setMetronomeMenuOpen(false);
@@ -4649,17 +4607,13 @@ function init(): void {
   });
   activeDocument.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
-      const returnFocusToPractice = !practiceMenu.hidden && practiceMenu.contains(activeDocument.activeElement);
       const returnFocusToLoop = !loopMenu.hidden && loopMenu.contains(activeDocument.activeElement);
       const returnFocusToSpeed = !speedMenu.hidden && speedMenu.contains(activeDocument.activeElement);
-      setPracticeMenuOpen(false);
       setLoopMenuOpen(false);
       setSpeedMenuOpen(false);
       setMetronomeMenuOpen(false);
       setMuteMenuOpen(false);
-      if (returnFocusToPractice) {
-        practiceBtn.focus();
-      } else if (returnFocusToLoop) {
+      if (returnFocusToLoop) {
         loopAllBtn.focus();
       } else if (returnFocusToSpeed) {
         speedBtn.focus();
@@ -4830,6 +4784,7 @@ function init(): void {
   window.addEventListener("pageshow", (event: PageTransitionEvent) => {
     if (!event.persisted) return;
     settleTrackedRun();
+    syncFocusButton();
     if (currentBlock) syncPlaybackControls(currentBlock);
     refreshPracticeStatus();
   });
@@ -4858,22 +4813,18 @@ function init(): void {
   });
   window.addEventListener("resize", reconcileVerificationPanelHeight);
 
-  // Refit the score to the pane width (debounced; skip no-op width changes).
-  let lastWidth = 0;
-  const refit = debounce(() => {
-    if (!gridEditor && currentBlock && currentBlock.rows.length > 0 && scoreEl) {
-      renderPreview();
-    }
-  }, 150);
-  const observer = new ResizeObserver((entries) => {
-    const width = Math.round(entries[0]?.contentRect.width ?? 0);
-    if (width === 0 || width === lastWidth) {
-      return;
-    }
-    lastWidth = width;
-    refit();
+  let observedWidth = 0;
+  const observer = new ResizeObserver(() => {
+    const width = previewWidth();
+    if (!width || width === observedWidth) return;
+    observedWidth = width;
+    queueScoreRefit();
   });
   observer.observe(preview.parentElement ?? preview);
+  window.addEventListener("pagehide", (event: PageTransitionEvent) => {
+    cancelScoreRefit();
+    if (!event.persisted) observer.disconnect();
+  });
   const verificationPanelObserver = new ResizeObserver(reconcileVerificationPanelHeight);
   verificationPanelObserver.observe(verifyPanel);
 

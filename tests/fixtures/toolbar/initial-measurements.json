@@ -1,0 +1,970 @@
+[
+  {
+    "file": "chromium-theme-dark.json",
+    "browser": "151.0.7922.34",
+    "theme": "theme-dark",
+    "viewport": {
+      "width": 1280,
+      "height": 900
+    },
+    "sampling": "No reversal detected at 32px sample spacing; narrower excursions can escape detection. Monotonicity is not proven.",
+    "reports": [
+      {
+        "labels": [
+          "75%",
+          "90 BPM · 75%"
+        ],
+        "labelCost": 58,
+        "netChange": 25,
+        "variants": [
+          {
+            "variant": "A",
+            "outer": {
+              "status": "transition bracketed",
+              "threshold": 609,
+              "before": {
+                "width": 608,
+                "available": 585.21875,
+                "height": 89.578125,
+                "below": true,
+                "internal": false,
+                "overflow": false,
+                "labelOverflow": false
+              },
+              "after": {
+                "width": 609,
+                "available": 586.21875,
+                "height": 50.390625,
+                "below": false,
+                "internal": false,
+                "overflow": false,
+                "labelOverflow": false
+              }
+            },
+            "internal": {
+              "status": "never wrapped in range",
+              "threshold": null
+            }
+          },
+          {
+            "variant": "B",
+            "outer": {
+              "status": "transition bracketed",
+              "threshold": 667,
+              "before": {
+                "width": 666,
+                "available": 643.21875,
+                "height": 89.578125,
+                "below": true,
+                "internal": false,
+                "overflow": false,
+                "labelOverflow": false
+              },
+              "after": {
+                "width": 667,
+                "available": 644.21875,
+                "height": 50.390625,
+                "below": false,
+                "internal": false,
+                "overflow": false,
+                "labelOverflow": false
+              }
+            },
+            "internal": {
+              "status": "never wrapped in range",
+              "threshold": null
+            }
+          },
+          {
+            "variant": "C",
+            "outer": {
+              "status": "transition bracketed",
+              "threshold": 634,
+              "before": {
+                "width": 633,
+                "available": 610.21875,
+                "height": 89.578125,
+                "below": true,
+                "internal": false,
+                "overflow": false,
+                "labelOverflow": false
+              },
+              "after": {
+                "width": 634,
+                "available": 611.21875,
+                "height": 50.390625,
+                "below": false,
+                "internal": false,
+                "overflow": false,
+                "labelOverflow": false
+              }
+            },
+            "internal": {
+              "status": "transition bracketed",
+              "threshold": 366,
+              "before": {
+                "width": 365,
+                "available": 342.21875,
+                "height": 122.359375,
+                "below": true,
+                "internal": true,
+                "overflow": false,
+                "labelOverflow": false
+              },
+              "after": {
+                "width": 366,
+                "available": 343.21875,
+                "height": 89.578125,
+                "below": true,
+                "internal": false,
+                "overflow": false,
+                "labelOverflow": false
+              }
+            }
+          }
+        ]
+      },
+      {
+        "labels": [
+          "150%",
+          "388.5 BPM · 150%"
+        ],
+        "labelCost": 78,
+        "netChange": 45,
+        "variants": [
+          {
+            "variant": "A",
+            "outer": {
+              "status": "transition bracketed",
+              "threshold": 617,
+              "before": {
+                "width": 616,
+                "available": 593.21875,
+                "height": 89.578125,
+                "below": true,
+                "internal": false,
+                "overflow": false,
+                "labelOverflow": false
+              },
+              "after": {
+                "width": 617,
+                "available": 594.21875,
+                "height": 50.390625,
+                "below": false,
+                "internal": false,
+                "overflow": false,
+                "labelOverflow": false
+              }
+            },
+            "internal": {
+              "status": "never wrapped in range",
+              "threshold": null
+            }
+          },
+          {
+            "variant": "B",
+            "outer": {
+              "status": "transition bracketed",
+              "threshold": 695,
+              "before": {
+                "width": 694,
+                "available": 671.21875,
+                "height": 89.578125,
+                "below": true,
+                "internal": false,
+                "overflow": false,
+                "labelOverflow": false
+              },
+              "after": {
+                "width": 695,
+                "available": 672.21875,
+                "height": 50.390625,
+                "below": false,
+                "internal": false,
+                "overflow": false,
+                "labelOverflow": false
+              }
+            },
+            "internal": {
+              "status": "never wrapped in range",
+              "threshold": null
+            }
+          },
+          {
+            "variant": "C",
+            "outer": {
+              "status": "transition bracketed",
+              "threshold": 662,
+              "before": {
+                "width": 661,
+                "available": 638.21875,
+                "height": 89.578125,
+                "below": true,
+                "internal": false,
+                "overflow": false,
+                "labelOverflow": false
+              },
+              "after": {
+                "width": 662,
+                "available": 639.21875,
+                "height": 50.390625,
+                "below": false,
+                "internal": false,
+                "overflow": false,
+                "labelOverflow": false
+              }
+            },
+            "internal": {
+              "status": "transition bracketed",
+              "threshold": 394,
+              "before": {
+                "width": 393,
+                "available": 370.21875,
+                "height": 122.359375,
+                "below": true,
+                "internal": true,
+                "overflow": false,
+                "labelOverflow": false
+              },
+              "after": {
+                "width": 394,
+                "available": 371.21875,
+                "height": 89.578125,
+                "below": true,
+                "internal": false,
+                "overflow": false,
+                "labelOverflow": false
+              }
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "file": "chromium-theme-light.json",
+    "browser": "151.0.7922.34",
+    "theme": "theme-light",
+    "viewport": {
+      "width": 1280,
+      "height": 900
+    },
+    "sampling": "No reversal detected at 32px sample spacing; narrower excursions can escape detection. Monotonicity is not proven.",
+    "reports": [
+      {
+        "labels": [
+          "75%",
+          "90 BPM · 75%"
+        ],
+        "labelCost": 58,
+        "netChange": 25,
+        "variants": [
+          {
+            "variant": "A",
+            "outer": {
+              "status": "transition bracketed",
+              "threshold": 609,
+              "before": {
+                "width": 608,
+                "available": 585.21875,
+                "height": 89.578125,
+                "below": true,
+                "internal": false,
+                "overflow": false,
+                "labelOverflow": false
+              },
+              "after": {
+                "width": 609,
+                "available": 586.21875,
+                "height": 50.390625,
+                "below": false,
+                "internal": false,
+                "overflow": false,
+                "labelOverflow": false
+              }
+            },
+            "internal": {
+              "status": "never wrapped in range",
+              "threshold": null
+            }
+          },
+          {
+            "variant": "B",
+            "outer": {
+              "status": "transition bracketed",
+              "threshold": 667,
+              "before": {
+                "width": 666,
+                "available": 643.21875,
+                "height": 89.578125,
+                "below": true,
+                "internal": false,
+                "overflow": false,
+                "labelOverflow": false
+              },
+              "after": {
+                "width": 667,
+                "available": 644.21875,
+                "height": 50.390625,
+                "below": false,
+                "internal": false,
+                "overflow": false,
+                "labelOverflow": false
+              }
+            },
+            "internal": {
+              "status": "never wrapped in range",
+              "threshold": null
+            }
+          },
+          {
+            "variant": "C",
+            "outer": {
+              "status": "transition bracketed",
+              "threshold": 634,
+              "before": {
+                "width": 633,
+                "available": 610.21875,
+                "height": 89.578125,
+                "below": true,
+                "internal": false,
+                "overflow": false,
+                "labelOverflow": false
+              },
+              "after": {
+                "width": 634,
+                "available": 611.21875,
+                "height": 50.390625,
+                "below": false,
+                "internal": false,
+                "overflow": false,
+                "labelOverflow": false
+              }
+            },
+            "internal": {
+              "status": "transition bracketed",
+              "threshold": 366,
+              "before": {
+                "width": 365,
+                "available": 342.21875,
+                "height": 122.359375,
+                "below": true,
+                "internal": true,
+                "overflow": false,
+                "labelOverflow": false
+              },
+              "after": {
+                "width": 366,
+                "available": 343.21875,
+                "height": 89.578125,
+                "below": true,
+                "internal": false,
+                "overflow": false,
+                "labelOverflow": false
+              }
+            }
+          }
+        ]
+      },
+      {
+        "labels": [
+          "150%",
+          "388.5 BPM · 150%"
+        ],
+        "labelCost": 78,
+        "netChange": 45,
+        "variants": [
+          {
+            "variant": "A",
+            "outer": {
+              "status": "transition bracketed",
+              "threshold": 617,
+              "before": {
+                "width": 616,
+                "available": 593.21875,
+                "height": 89.578125,
+                "below": true,
+                "internal": false,
+                "overflow": false,
+                "labelOverflow": false
+              },
+              "after": {
+                "width": 617,
+                "available": 594.21875,
+                "height": 50.390625,
+                "below": false,
+                "internal": false,
+                "overflow": false,
+                "labelOverflow": false
+              }
+            },
+            "internal": {
+              "status": "never wrapped in range",
+              "threshold": null
+            }
+          },
+          {
+            "variant": "B",
+            "outer": {
+              "status": "transition bracketed",
+              "threshold": 695,
+              "before": {
+                "width": 694,
+                "available": 671.21875,
+                "height": 89.578125,
+                "below": true,
+                "internal": false,
+                "overflow": false,
+                "labelOverflow": false
+              },
+              "after": {
+                "width": 695,
+                "available": 672.21875,
+                "height": 50.390625,
+                "below": false,
+                "internal": false,
+                "overflow": false,
+                "labelOverflow": false
+              }
+            },
+            "internal": {
+              "status": "never wrapped in range",
+              "threshold": null
+            }
+          },
+          {
+            "variant": "C",
+            "outer": {
+              "status": "transition bracketed",
+              "threshold": 662,
+              "before": {
+                "width": 661,
+                "available": 638.21875,
+                "height": 89.578125,
+                "below": true,
+                "internal": false,
+                "overflow": false,
+                "labelOverflow": false
+              },
+              "after": {
+                "width": 662,
+                "available": 639.21875,
+                "height": 50.390625,
+                "below": false,
+                "internal": false,
+                "overflow": false,
+                "labelOverflow": false
+              }
+            },
+            "internal": {
+              "status": "transition bracketed",
+              "threshold": 394,
+              "before": {
+                "width": 393,
+                "available": 370.21875,
+                "height": 122.359375,
+                "below": true,
+                "internal": true,
+                "overflow": false,
+                "labelOverflow": false
+              },
+              "after": {
+                "width": 394,
+                "available": 371.21875,
+                "height": 89.578125,
+                "below": true,
+                "internal": false,
+                "overflow": false,
+                "labelOverflow": false
+              }
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "file": "webkit-theme-dark.json",
+    "browser": "26.5",
+    "theme": "theme-dark",
+    "viewport": {
+      "width": 1280,
+      "height": 900
+    },
+    "sampling": "No reversal detected at 32px sample spacing; narrower excursions can escape detection. Monotonicity is not proven.",
+    "reports": [
+      {
+        "labels": [
+          "75%",
+          "90 BPM · 75%"
+        ],
+        "labelCost": 58,
+        "netChange": 25,
+        "variants": [
+          {
+            "variant": "A",
+            "outer": {
+              "status": "transition bracketed",
+              "threshold": 609,
+              "before": {
+                "width": 608,
+                "available": 585.21875,
+                "height": 89.578125,
+                "below": true,
+                "internal": false,
+                "overflow": false,
+                "labelOverflow": false
+              },
+              "after": {
+                "width": 609,
+                "available": 586.21875,
+                "height": 50.390625,
+                "below": false,
+                "internal": false,
+                "overflow": false,
+                "labelOverflow": false
+              }
+            },
+            "internal": {
+              "status": "never wrapped in range",
+              "threshold": null
+            }
+          },
+          {
+            "variant": "B",
+            "outer": {
+              "status": "transition bracketed",
+              "threshold": 667,
+              "before": {
+                "width": 666,
+                "available": 643.21875,
+                "height": 89.578125,
+                "below": true,
+                "internal": false,
+                "overflow": false,
+                "labelOverflow": false
+              },
+              "after": {
+                "width": 667,
+                "available": 644.21875,
+                "height": 50.390625,
+                "below": false,
+                "internal": false,
+                "overflow": false,
+                "labelOverflow": false
+              }
+            },
+            "internal": {
+              "status": "never wrapped in range",
+              "threshold": null
+            }
+          },
+          {
+            "variant": "C",
+            "outer": {
+              "status": "transition bracketed",
+              "threshold": 634,
+              "before": {
+                "width": 633,
+                "available": 610.21875,
+                "height": 89.578125,
+                "below": true,
+                "internal": false,
+                "overflow": false,
+                "labelOverflow": false
+              },
+              "after": {
+                "width": 634,
+                "available": 611.21875,
+                "height": 50.390625,
+                "below": false,
+                "internal": false,
+                "overflow": false,
+                "labelOverflow": false
+              }
+            },
+            "internal": {
+              "status": "transition bracketed",
+              "threshold": 366,
+              "before": {
+                "width": 365,
+                "available": 342.21875,
+                "height": 122.359375,
+                "below": true,
+                "internal": true,
+                "overflow": false,
+                "labelOverflow": false
+              },
+              "after": {
+                "width": 366,
+                "available": 343.21875,
+                "height": 89.578125,
+                "below": true,
+                "internal": false,
+                "overflow": false,
+                "labelOverflow": false
+              }
+            }
+          }
+        ]
+      },
+      {
+        "labels": [
+          "150%",
+          "388.5 BPM · 150%"
+        ],
+        "labelCost": 78,
+        "netChange": 45,
+        "variants": [
+          {
+            "variant": "A",
+            "outer": {
+              "status": "transition bracketed",
+              "threshold": 617,
+              "before": {
+                "width": 616,
+                "available": 593.21875,
+                "height": 89.578125,
+                "below": true,
+                "internal": false,
+                "overflow": false,
+                "labelOverflow": false
+              },
+              "after": {
+                "width": 617,
+                "available": 594.21875,
+                "height": 50.390625,
+                "below": false,
+                "internal": false,
+                "overflow": false,
+                "labelOverflow": false
+              }
+            },
+            "internal": {
+              "status": "never wrapped in range",
+              "threshold": null
+            }
+          },
+          {
+            "variant": "B",
+            "outer": {
+              "status": "transition bracketed",
+              "threshold": 695,
+              "before": {
+                "width": 694,
+                "available": 671.21875,
+                "height": 89.578125,
+                "below": true,
+                "internal": false,
+                "overflow": false,
+                "labelOverflow": false
+              },
+              "after": {
+                "width": 695,
+                "available": 672.21875,
+                "height": 50.390625,
+                "below": false,
+                "internal": false,
+                "overflow": false,
+                "labelOverflow": false
+              }
+            },
+            "internal": {
+              "status": "never wrapped in range",
+              "threshold": null
+            }
+          },
+          {
+            "variant": "C",
+            "outer": {
+              "status": "transition bracketed",
+              "threshold": 662,
+              "before": {
+                "width": 661,
+                "available": 638.21875,
+                "height": 89.578125,
+                "below": true,
+                "internal": false,
+                "overflow": false,
+                "labelOverflow": false
+              },
+              "after": {
+                "width": 662,
+                "available": 639.21875,
+                "height": 50.390625,
+                "below": false,
+                "internal": false,
+                "overflow": false,
+                "labelOverflow": false
+              }
+            },
+            "internal": {
+              "status": "transition bracketed",
+              "threshold": 394,
+              "before": {
+                "width": 393,
+                "available": 370.21875,
+                "height": 122.359375,
+                "below": true,
+                "internal": true,
+                "overflow": false,
+                "labelOverflow": false
+              },
+              "after": {
+                "width": 394,
+                "available": 371.21875,
+                "height": 89.578125,
+                "below": true,
+                "internal": false,
+                "overflow": false,
+                "labelOverflow": false
+              }
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "file": "webkit-theme-light.json",
+    "browser": "26.5",
+    "theme": "theme-light",
+    "viewport": {
+      "width": 1280,
+      "height": 900
+    },
+    "sampling": "No reversal detected at 32px sample spacing; narrower excursions can escape detection. Monotonicity is not proven.",
+    "reports": [
+      {
+        "labels": [
+          "75%",
+          "90 BPM · 75%"
+        ],
+        "labelCost": 58,
+        "netChange": 25,
+        "variants": [
+          {
+            "variant": "A",
+            "outer": {
+              "status": "transition bracketed",
+              "threshold": 609,
+              "before": {
+                "width": 608,
+                "available": 585.21875,
+                "height": 89.578125,
+                "below": true,
+                "internal": false,
+                "overflow": false,
+                "labelOverflow": false
+              },
+              "after": {
+                "width": 609,
+                "available": 586.21875,
+                "height": 50.390625,
+                "below": false,
+                "internal": false,
+                "overflow": false,
+                "labelOverflow": false
+              }
+            },
+            "internal": {
+              "status": "never wrapped in range",
+              "threshold": null
+            }
+          },
+          {
+            "variant": "B",
+            "outer": {
+              "status": "transition bracketed",
+              "threshold": 667,
+              "before": {
+                "width": 666,
+                "available": 643.21875,
+                "height": 89.578125,
+                "below": true,
+                "internal": false,
+                "overflow": false,
+                "labelOverflow": false
+              },
+              "after": {
+                "width": 667,
+                "available": 644.21875,
+                "height": 50.390625,
+                "below": false,
+                "internal": false,
+                "overflow": false,
+                "labelOverflow": false
+              }
+            },
+            "internal": {
+              "status": "never wrapped in range",
+              "threshold": null
+            }
+          },
+          {
+            "variant": "C",
+            "outer": {
+              "status": "transition bracketed",
+              "threshold": 634,
+              "before": {
+                "width": 633,
+                "available": 610.21875,
+                "height": 89.578125,
+                "below": true,
+                "internal": false,
+                "overflow": false,
+                "labelOverflow": false
+              },
+              "after": {
+                "width": 634,
+                "available": 611.21875,
+                "height": 50.390625,
+                "below": false,
+                "internal": false,
+                "overflow": false,
+                "labelOverflow": false
+              }
+            },
+            "internal": {
+              "status": "transition bracketed",
+              "threshold": 366,
+              "before": {
+                "width": 365,
+                "available": 342.21875,
+                "height": 122.359375,
+                "below": true,
+                "internal": true,
+                "overflow": false,
+                "labelOverflow": false
+              },
+              "after": {
+                "width": 366,
+                "available": 343.21875,
+                "height": 89.578125,
+                "below": true,
+                "internal": false,
+                "overflow": false,
+                "labelOverflow": false
+              }
+            }
+          }
+        ]
+      },
+      {
+        "labels": [
+          "150%",
+          "388.5 BPM · 150%"
+        ],
+        "labelCost": 78,
+        "netChange": 45,
+        "variants": [
+          {
+            "variant": "A",
+            "outer": {
+              "status": "transition bracketed",
+              "threshold": 617,
+              "before": {
+                "width": 616,
+                "available": 593.21875,
+                "height": 89.578125,
+                "below": true,
+                "internal": false,
+                "overflow": false,
+                "labelOverflow": false
+              },
+              "after": {
+                "width": 617,
+                "available": 594.21875,
+                "height": 50.390625,
+                "below": false,
+                "internal": false,
+                "overflow": false,
+                "labelOverflow": false
+              }
+            },
+            "internal": {
+              "status": "never wrapped in range",
+              "threshold": null
+            }
+          },
+          {
+            "variant": "B",
+            "outer": {
+              "status": "transition bracketed",
+              "threshold": 695,
+              "before": {
+                "width": 694,
+                "available": 671.21875,
+                "height": 89.578125,
+                "below": true,
+                "internal": false,
+                "overflow": false,
+                "labelOverflow": false
+              },
+              "after": {
+                "width": 695,
+                "available": 672.21875,
+                "height": 50.390625,
+                "below": false,
+                "internal": false,
+                "overflow": false,
+                "labelOverflow": false
+              }
+            },
+            "internal": {
+              "status": "never wrapped in range",
+              "threshold": null
+            }
+          },
+          {
+            "variant": "C",
+            "outer": {
+              "status": "transition bracketed",
+              "threshold": 662,
+              "before": {
+                "width": 661,
+                "available": 638.21875,
+                "height": 89.578125,
+                "below": true,
+                "internal": false,
+                "overflow": false,
+                "labelOverflow": false
+              },
+              "after": {
+                "width": 662,
+                "available": 639.21875,
+                "height": 50.390625,
+                "below": false,
+                "internal": false,
+                "overflow": false,
+                "labelOverflow": false
+              }
+            },
+            "internal": {
+              "status": "transition bracketed",
+              "threshold": 394,
+              "before": {
+                "width": 393,
+                "available": 370.21875,
+                "height": 122.359375,
+                "below": true,
+                "internal": true,
+                "overflow": false,
+                "labelOverflow": false
+              },
+              "after": {
+                "width": 394,
+                "available": 371.21875,
+                "height": 89.578125,
+                "below": true,
+                "internal": false,
+                "overflow": false,
+                "labelOverflow": false
+              }
+            }
+          }
+        ]
+      }
+    ]
+  }
+]

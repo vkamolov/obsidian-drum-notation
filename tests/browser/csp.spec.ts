@@ -193,39 +193,6 @@ test("Obsidian speed-button labels fit inside their interactive background", asy
   expect(measurements[2].clientWidth).toBeLessThan(measurements[4].clientWidth);
 });
 
-test("Obsidian Practice labels fit and view controls remain scoped to one block", async ({ page }) => {
-  await page.goto("/");
-  const measurements = await page.evaluate(() => {
-    const roots = [false, true].map((focused) => {
-      const root = document.createElement("div");
-      root.className = `drum-notation${focused ? " is-practice-view" : ""}`;
-      for (const label of ["Practice", "Exit"]) {
-        const button = document.createElement("button");
-        button.className = "drum-notation__button drum-notation__practice-entry";
-        button.textContent = label;
-        button.hidden = label === "Exit" && !focused;
-        root.append(button);
-      }
-      document.body.append(root);
-      return root;
-    });
-    const results = roots.map((root) => [...root.querySelectorAll("button")].map((button) => ({
-      width: button.clientWidth,
-      contentWidth: button.scrollWidth,
-      height: button.getBoundingClientRect().height,
-      hidden: getComputedStyle(button).display === "none"
-    })));
-    roots.forEach((root) => root.remove());
-    return results;
-  });
-  expect(measurements[0][0].width).toBeGreaterThanOrEqual(measurements[0][0].contentWidth);
-  expect(measurements[0][1].hidden).toBe(true);
-  for (const button of measurements[1]) {
-    expect(button.hidden).toBe(false);
-    expect(button.width).toBeGreaterThanOrEqual(button.contentWidth);
-    expect(button.height).toBeGreaterThanOrEqual(44);
-  }
-});
 
 test("practice selection supports pointer, keyboard, responsive, and print workflows", async ({ page }) => {
   await page.setViewportSize({ width: 1200, height: 900 });
@@ -572,57 +539,35 @@ test("tap tempo and finite practice goals produce a page-session summary", async
   await expect(earlySummary).toContainText("Result: Finished early");
 });
 
-test("Practice entry exposes daily tools and a focused responsive score view", async ({ page }) => {
+test("Focus view uses one toggle and leaves practice tools in their existing menus", async ({ page }) => {
   await page.goto("/");
-  await page.locator("#pg-theme").click();
-  await expect(page.locator("body")).toHaveClass(/theme-dark/);
-  const practice = page.getByRole("button", { name: "Open Practice tools" });
-  await expect(practice).toBeVisible();
-  await expect(page.locator("#pg-exit-practice")).toBeHidden();
-  await practice.click();
-  const menu = page.locator("#pg-practice-menu");
-  await expect(menu.getByRole("menuitem", { name: "Practice repetitions…" })).toBeVisible();
-  await expect(menu.getByRole("menuitem", { name: "Tempo ramp…" })).toBeVisible();
-  await expect(menu.getByRole("menuitem", { name: "Tap tempo…" })).toBeVisible();
-  await expect(menu.getByRole("menuitem", { name: "Click: Off · Count-in: Off · Subdivision: Beat" })).toBeVisible();
-  await expect(menu.getByRole("menuitemcheckbox", { name: "Select practice bars" })).toBeVisible();
-  await menu.getByRole("menuitemcheckbox", { name: "Enter Practice view" }).click();
-
-  await expect(page.locator("body")).toHaveClass(/pg-practice-view/);
+  const focus = page.getByRole("button", { name: "Focus view", exact: true });
+  await expect(focus).toHaveAttribute("aria-pressed", "false");
+  await focus.click();
+  await expect(focus).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator(".pg-toolbar-row--setup")).toBeHidden();
   await expect(page.locator(".pg-pane--editor")).toBeHidden();
-  await expect(page.locator(".pg-pane--preview")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Exit" })).toBeVisible();
-  await expect(page.locator("#pg-speed")).toBeVisible();
-
-  for (const width of [390, 650, 1280]) {
+  await expect(focus).toBeFocused();
+  for (const width of [390, 650, 900, 1280]) {
     await page.setViewportSize({ width, height: 800 });
-    const sizes = await page.locator(".pg-action-group__controls .pg-btn:visible").evaluateAll((buttons) =>
-      buttons.map((button) => {
-        const bounds = button.getBoundingClientRect();
-        return { width: bounds.width, height: bounds.height };
-      })
-    );
-    expect(sizes.every((size) => size.width >= 44 && size.height >= 44)).toBe(true);
+    const layout = await page.locator(".pg-action-group--playback").evaluate(group => ({
+      group: group.getBoundingClientRect().width,
+      row: group.parentElement!.clientWidth,
+      buttons: [...group.querySelectorAll(".pg-btn")].map(el => ({ width: el.getBoundingClientRect().width, height: el.getBoundingClientRect().height }))
+    }));
+    expect(layout.group).toBeGreaterThan(layout.row * 0.9);
+    expect(layout.buttons.every(size => size.width >= 44 && size.height >= 44)).toBe(true);
   }
-
-  await page.setViewportSize({ width: 650, height: 900 });
-  await page.evaluate(() => {
-    document.body.style.zoom = "2";
-  });
-  await expect(page.locator(".pg-pane--preview")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Exit" })).toBeVisible();
-  await page.evaluate(() => {
-    document.body.style.zoom = "";
-  });
-
-  await practice.click();
-  await expect(page.getByRole("menuitemcheckbox", { name: "Exit Practice view" })).toBeVisible();
-  await page.keyboard.press("Escape");
-  await expect(practice).toBeFocused();
-  await page.getByRole("button", { name: "Exit" }).click();
+  await page.evaluate(() => { document.body.style.zoom = "2"; });
+  await expect(focus).toBeVisible();
+  await expect(page.locator("#pg-preview")).toBeVisible();
+  await page.evaluate(() => { document.body.style.zoom = ""; });
+  await focus.click();
   await expect(page.locator(".pg-pane--editor")).toBeVisible();
-  await expect(page.locator("#pg-exit-practice")).toBeHidden();
+  await expect(page.locator("#pg-exit-practice, #pg-practice-menu")).toHaveCount(0);
+  await page.locator("#pg-speed").click();
+  await expect(page.getByRole("menuitem", { name: "Tempo ramp…" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Tap tempo…" })).toBeVisible();
 });
 
 test("wake lock control is disabled when the API is unavailable", async ({ page }) => {
