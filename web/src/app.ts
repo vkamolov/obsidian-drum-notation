@@ -4788,11 +4788,12 @@ function init(): void {
     if (currentBlock) syncPlaybackControls(currentBlock);
     refreshPracticeStatus();
   });
-  const shutdownStatus = activeDocument.createElement("span");
-  shutdownStatus.setAttribute("role", "status");
-  shutdownStatus.setAttribute("aria-live", "polite");
+  // The transport row is the natural host; body is an unreachable fallback that keeps the
+  // element non-optional for the subscriber below without a type assertion.
+  const shutdownStatus = (playBtn.parentElement ?? activeDocument.body).createSpan({
+    attr: { role: "status", "aria-live": "polite" }
+  });
   shutdownStatus.hidden = true;
-  playBtn.parentElement?.append(shutdownStatus);
   const disabledBeforeDrain = new Map<HTMLButtonElement, boolean>();
   practiceController.subscribe(snapshot => {
     const draining = snapshot.lifecycle === "draining";
