@@ -35,6 +35,9 @@ jobs:
       - name: Typecheck web playground
         run: npm run web:typecheck
 
+      - name: Typecheck the plugin without ambient types
+        run: npm run check:strict-env
+
       - name: Verify agent plugin and security invariants
         run: |
           npm run check:agent-plugin

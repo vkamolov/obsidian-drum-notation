@@ -28,6 +28,7 @@
     "check:kit-reference": "node tools/generate-kit-reference.mjs --check",
     "check:notation-reference": "node tools/check-notation-reference.mjs",
     "check:third-party": "node tools/check-third-party.mjs",
+    "check:strict-env": "tsc -p tsconfig.strict-env.json --noEmit",
     "security:style-sinks": "node tools/check-style-sinks.mjs",
     "sound:capture": "node tools/sound-reference.mjs capture",
     "check:sound-provenance": "node tools/check-sound-provenance.mjs",

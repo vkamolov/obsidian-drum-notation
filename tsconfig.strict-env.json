@@ -1,0 +1,7 @@
+{
+  "//": "Typechecks the plugin without ambient @types packages, reproducing the environment Obsidian's automated source check runs in. tsconfig.json sets no `types` field, so @types/node is loaded and transitively widens `lib`; that masked `lib` lagging `target` until the checker reported four unsafe-any warnings. Run this alongside the ordinary typecheck so the divergence is caught here first.",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": []
+  }
+}
