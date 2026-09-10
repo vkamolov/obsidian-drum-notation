@@ -21,8 +21,9 @@ Implemented against `9ea4e3afe32a75b9d80fcb8bc4317dc767d28a23`.
   hides authoring panels, exposes the score title, and uses the whole actions row.
   Its ordinary visual size is unchanged; only its hit area expands to 44px.
   Focus primary controls are visibly at least 44px. The ordinary mobile grid stays.
-- Tempo displays effective BPM in the playground; Obsidian adds the percentage
-  in percentage mode. Obsidian controls are bounded so narrow blocks wrap rather
+- Tempo displays effective BPM on the toolbar in both hosts. Obsidian keeps the
+  selected percentage together with effective BPM in the Tempo menu, tooltip and
+  accessible label. Obsidian controls are bounded so narrow blocks wrap rather
   than overflow. No container queries or new breakpoint mechanism were added.
 
 ## Layout evidence
@@ -120,3 +121,23 @@ unchanged. `tests/toolbar-source.test.ts` is unchanged. No product code changed.
 The 1px allowance does not detect smaller overflow, and half-pixel sampling does
 not cover every fractional width or zoom. Existing native-host and publication
 gates remain outstanding as recorded above.
+
+## Compact Obsidian tempo label — 2026-09-10
+
+The Obsidian toolbar now displays only the effective tempo (`n BPM`) for fixed
+percentage and exact-tempo playback. An armed ramp retains `n BPM ▲`. The Tempo
+menu continues to show each percentage preset with its effective BPM, while the
+button tooltip and accessible label retain both values. This matches the
+playground and recovers toolbar width without hiding configuration context.
+
+The native Obsidian 1.13.7 fixture was rebuilt in a disposable vault. At a 390px
+block its controls width decreased from 359.016px to 312.406px, with no overflow;
+the 280px fixture remained safely wrapped. A browser regression at 340px requires
+Edit and Tempo to remain on the same controls row in Chromium and WebKit. The
+current containment sweeps still cover 1,241 integer and half-integer widths per
+label, engine and theme. Physical-device confirmation remains part of the manual
+release check.
+
+Refreshing the native evidence also corrected the capture path for Obsidian's
+first-open vault trust prompt and forces a Source-to-Reading transition after
+plugin enablement, preventing stale pre-plugin content from being captured.

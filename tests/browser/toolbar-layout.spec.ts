@@ -30,6 +30,40 @@ async function setup(page: Page, scenario: ToolbarCase, theme = 'theme-light') {
   await page.evaluate(() => document.fonts.ready.then(() => undefined));
 }
 
+test('compact tempo label keeps Edit with the mobile playback controls', async ({ page }) => {
+  const scenario = toolbarCases[0];
+  await setup(page, scenario);
+  await page.evaluate(() => document.body.classList.add('is-mobile'));
+  const layout = await page.evaluate(({ controls: expected, scenario }) => {
+    const root = document.querySelector<HTMLElement>('.drum-notation')!;
+    root.style.width = '340px';
+    const controls = root.querySelector<HTMLElement>('.drum-notation__controls')!;
+    const buttons = Array.from(controls.querySelectorAll<HTMLButtonElement>('button'));
+    const visibleButtons = buttons.filter(button => !button.hidden && button.getBoundingClientRect().height > 0);
+    const editIndex = expected.findIndex(control => control.label.startsWith('Visual edit mode'));
+    const edit = buttons[editIndex];
+    const speed = controls.querySelector<HTMLElement>('.drum-notation__speed')!;
+    const tops = visibleButtons.map(button => button.getBoundingClientRect().top);
+    const box = controls.getBoundingClientRect();
+    return {
+      speedText: speed.textContent,
+      speedDescription: speed.getAttribute('aria-label'),
+      rowCount: new Set(tops.map(top => Math.round(top))).size,
+      editTop: edit.getBoundingClientRect().top,
+      speedTop: speed.getBoundingClientRect().top,
+      overflow: visibleButtons.some(button => {
+        const rect = button.getBoundingClientRect();
+        return rect.left < box.left - 1 || rect.right > box.right + 1;
+      })
+    };
+  }, { controls: current.controls, scenario });
+  expect(layout.speedText).toBe('90 BPM');
+  expect(layout.speedDescription).toBe('Playback speed 75% · 90 BPM');
+  expect(layout.rowCount).toBe(1);
+  expect(Math.abs(layout.editTop - layout.speedTop)).toBeLessThanOrEqual(1);
+  expect(layout.overflow).toBe(false);
+});
+
 for (const theme of ['theme-light', 'theme-dark']) {
   test(`current native-derived toolbar containment (${theme})`, async ({ page, browser }, info) => {
     const reports = [];

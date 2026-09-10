@@ -1,8 +1,8 @@
 export interface ControlMetadata { label: string; classes: string; hidden: boolean; disabled: boolean }
 export interface ToolbarCase { writtenTempo: number; text: string; description: string }
 export const toolbarCases: ToolbarCase[] = [
-  { writtenTempo: 120, text: '90 BPM · 75%', description: 'Playback speed 75% · 90 BPM' },
-  { writtenTempo: 259, text: '388.5 BPM · 150%', description: 'Playback speed 150% · 388.5 BPM' },
+  { writtenTempo: 120, text: '90 BPM', description: 'Playback speed 75% · 90 BPM' },
+  { writtenTempo: 259, text: '388.5 BPM', description: 'Playback speed 150% · 388.5 BPM' },
 ];
 export interface LayoutSample { requested: number; measured: number; available: number; height: number }
 export interface LayoutReport { samples: LayoutSample[]; failures: { requested: number; issues: string[] }[]; runtimeMs: number }

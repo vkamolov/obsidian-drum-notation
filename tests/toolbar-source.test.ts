@@ -15,4 +15,12 @@ describe("Obsidian playback toolbar source invariants", () => {
   it("keeps the speed control sizing more specific than the generic icon button", () => {
     expect(styles).toContain(".drum-notation .drum-notation__button.drum-notation__speed");
   });
+
+  it("keeps the compact tempo button and detailed percentage menu", () => {
+    expect(mainSource).toContain('speedButton.setText(tempoRamp.armed');
+    expect(mainSource).toContain(': `${formatTempo(effectiveTempo)} BPM`);');
+    expect(mainSource).not.toContain(': `${formatTempo(effectiveTempo)} BPM · ${playbackSpeedPercent}%`);');
+    expect(mainSource).toContain('.setTitle(`${speed}% · ${formatTempo(getEffectivePlaybackTempo(block.tempo, speed))} BPM`)');
+    expect(mainSource).toContain('`Playback speed ${playbackSpeedPercent}% · ${formatTempo(effectiveTempo)} BPM`');
+  });
 });

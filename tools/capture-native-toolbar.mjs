@@ -41,13 +41,40 @@ try {
   browser = await chromium.connectOverCDP(endpoint);
   const context = browser.contexts()[0];
   const page = context.pages()[0] ?? await context.waitForEvent('page');
+  page.on('console', message => {
+    if (message.type() === 'error') console.error(`[native console] ${message.text()}`);
+  });
+  page.on('pageerror', error => console.error(`[native page] ${error.message}`));
   await page.waitForFunction(() => typeof app !== 'undefined' && app.workspace?.layoutReady && app.workspace.rootSplit);
+  const trustButton = page.getByRole('button', { name: /trust author/i }).first();
+  if (await trustButton.isVisible().catch(() => false)) await trustButton.click();
   await page.evaluate(async () => {
+    await app.plugins.loadManifests();
     await app.plugins.enablePlugin('drum-notation');
     await app.workspace.openLinkText('Fixture.md', '', false);
-    await app.workspace.getMostRecentLeaf().setViewState({ type: 'markdown', state: { file: 'Fixture.md', mode: 'preview' } });
+    const leaf = app.workspace.getMostRecentLeaf();
+    // A fresh workspace can render the note before the newly enabled plugin
+    // registers its code-block processor. Force a real view transition so the
+    // native fixture cannot time out against stale pre-plugin content.
+    await leaf.setViewState({ type: 'markdown', state: { file: 'Fixture.md', mode: 'source' } });
+    await leaf.setViewState({ type: 'markdown', state: { file: 'Fixture.md', mode: 'preview' } });
   });
-  await page.locator('.drum-notation__toolbar:visible').first().waitFor();
+  try {
+    await page.locator('.drum-notation__toolbar:visible').first().waitFor();
+  } catch (error) {
+    const diagnostics = await page.evaluate(() => ({
+      enabled: app.plugins.enabledPlugins?.has('drum-notation') ?? null,
+      loaded: Boolean(app.plugins.plugins?.['drum-notation']),
+      manifest: app.plugins.manifests?.['drum-notation'] ?? null,
+      activeFile: app.workspace.getActiveFile()?.path ?? null,
+      viewType: app.workspace.getMostRecentLeaf()?.view?.getViewType?.() ?? null,
+      codeBlocks: document.querySelectorAll('pre code').length,
+      renderedBlocks: document.querySelectorAll('.drum-notation').length,
+      bodyText: document.body.innerText.slice(0, 500)
+    }));
+    console.error(`[native capture diagnostics] ${JSON.stringify(diagnostics)}`);
+    throw error;
+  }
   const data = await page.evaluate(() => {
     const root = [...document.querySelectorAll('.drum-notation-host > .drum-notation')].find(el => el.getBoundingClientRect().height > 0);
     const toolbar = root.querySelector('.drum-notation__toolbar');

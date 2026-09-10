@@ -1070,9 +1070,7 @@ export default class DrumNotationPlugin extends Plugin {
           : `Playback speed ${playbackSpeedPercent}% · ${formatTempo(effectiveTempo)} BPM`;
       speedButton.setText(tempoRamp.armed
         ? `${formatTempo(effectiveTempo)} BPM ▲`
-        : exactTempoBpm !== null
-          ? `${formatTempo(effectiveTempo)} BPM`
-          : `${formatTempo(effectiveTempo)} BPM · ${playbackSpeedPercent}%`);
+        : `${formatTempo(effectiveTempo)} BPM`);
       speedButton.title = speedDescription;
       speedButton.setAttribute("aria-label", speedDescription);
       metronomeButton.disabled = block.slots.length === 0;

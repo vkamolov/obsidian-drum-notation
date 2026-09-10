@@ -5,11 +5,11 @@
     "method": "CDP, isolated temporary vault; no user-note content"
   },
   "files": {
-    "native-current.json": "796f50f0ad49be48f661bc374d42a666abf9538f9a088407881c445bea8c6f45",
+    "native-current.json": "5ecbe55d20ed15462f65407e43c477f28fb848dc5a0ca23be8eef60e247e962a",
     "host.css": "4f2c75ef1fd2ed2af863aa2725c646cdaada1123d5411ab98cd298c2f55b5ab4"
   },
   "currentAdapter": {
     "constructionHash": "59652d82a4d312469bc0f8454c25cf3c111b1be5984530439db475d301d26703",
-    "labelsHash": "787d7f4bddd497663da7f8ded86741586734f1e061ef4a23a2633667647153d7"
+    "labelsHash": "6b08cfa8d42f002c43b4af076f1b5a6f4a63ee3f2b6a63b9e7a7570baa7c1dd9"
   }
 }
