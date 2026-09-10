@@ -54,8 +54,7 @@ import {
   getBarRange,
   getSecondsPerSlot,
   getSlotVisualDurationSeconds,
-  getTimeSignatureSequence,
-  hasSystemRhythmOverrides
+  getTimeSignatureSequence
 } from "./src/music";
 import { ensureNotationFontsInDocument } from "./src/notation-fonts";
 import { getTitle, parseDrumBlockWithWarnings } from "./src/parser";
