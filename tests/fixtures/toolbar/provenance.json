@@ -1,20 +1,11 @@
 {
-  "original": {
-    "sourceRevision": "9ea4e3afe32a75b9d80fcb8bc4317dc767d28a23",
-    "mainSourceHash": "36e29dd5727a3345aec7e02152723266b564f4815a56dd9916253165bad1d272",
-    "pluginBuildHash": "46dca0452a2311db2c9768565a34621ed09c7a6f09e0c507f7497bf645633690",
-    "capture": "Native renderer of the preserved pre-change build in a disposable vault; captured before loading the candidate in that vault. Workspace edits had already begun.",
-    "historicalNumbers": "A is rendered again in each comparison; initial measurements are retained in initial-measurements.json."
-  },
   "host": {
     "version": "Obsidian 1.13.7",
     "styleSource": "Matching rules from app://obsidian.md/app.css for native toolbar elements, html and body, in light/dark modes. Font faces are not redistributed; the captured CSS font stack resolves on the test machine.",
     "method": "CDP, isolated temporary vault; no user-note content"
   },
   "files": {
-    "native-original.json": "f28f7ad554d66fb0c40615ea0770f45db5c50543f09224bc379d73c726ed87ea",
     "native-current.json": "796f50f0ad49be48f661bc374d42a666abf9538f9a088407881c445bea8c6f45",
-    "original.css": "8ff44ca48005ed6f8f690b007f11bcd26bfc83e70fa20b853afb5c68293195ce",
     "host.css": "4f2c75ef1fd2ed2af863aa2725c646cdaada1123d5411ab98cd298c2f55b5ab4"
   },
   "currentAdapter": {

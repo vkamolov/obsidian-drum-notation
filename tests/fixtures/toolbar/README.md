@@ -1,51 +1,56 @@
-# Native toolbar evidence
+# Current native toolbar fixture
 
-`native-original.json` was captured from the preserved build of source revision
-`9ea4e3afe32a75b9d80fcb8bc4317dc767d28a23`, using Obsidian 1.13.7 in an isolated
-vault. The original plugin ran before the candidate was loaded in that vault.
-Workspace implementation had already started; this is not a claim of a capture
-made before the first source edit. The original source remains recoverable from Git.
-`native-current.json` is a fresh native capture of the candidate, not hand-authored
-markup. Neither contains a user's note content.
+`native-current.json` was captured in a disposable Obsidian 1.13.7 vault after
+Practice navigation was removed. It contains no user-note content. `host.css`
+preserves matching host rules in light/dark modes. Font binaries are not copied;
+the captured font stack resolves on the test machine. These test-only inputs
+remain approximations of native behavior, not evidence for all platforms/themes.
 
-`original.css` preserves the old plugin rules. `host.css` preserves the matching
-Obsidian app.css rules for toolbar elements, html and body, including light/dark
-variants. These are test-only snapshots, outside both release entry points.
-Obsidian's font binaries are not copied. The recorded CSS font stack resolves
-against fonts on the test machine; browser fixtures cannot establish fidelity on
-another platform or a third-party Obsidian theme.
+The controls metadata describes a particular settings/content state: visual
+editing is disabled, and Create bar is intentionally hidden because a bar exists.
+Those labels are captured state, not universal product invariants. Tests match
+all controls by order, class-token sets and labels, including hidden controls.
+Speed text, accessible label and tooltip are deliberately substituted per case.
+Only the 259-BPM case changes subtitle text and aria-label; its `. Time: 4/4`
+suffix survives, and the tempo-independent `title` remains unchanged in both cases.
+The stored native capture is never rewritten for these substitutions.
 
-`provenance.json` records checksums and the adapter construction/label-source
-fingerprints. A change to either requires reviewing and recapturing the current
-fixture; do not simply update the expected hashes to silence the test. Layout CSS
-is intentionally read from the candidate on each comparison run.
+`provenance.json` protects current capture/host bytes and adapter construction and
+speed-label source fingerprints. Review structural/state changes and recapture
+when needed. Review formatting changes against substitutions and native output.
+Refresh host evidence when Obsidian or relevant host styles change. Do not update
+fingerprints simply to silence failures. Current plugin CSS is read directly;
+captured font defaults are applied to an ancestor, not the candidate root.
+`tests/toolbar-source.test.ts` remains an independent, unchanged source check.
 
 ## Commands
 
-- Build the plugin with `npm run build`.
-- Capture the candidate with `node tools/capture-native-toolbar.mjs --name current`.
-  The command creates a disposable vault and profile and closes its own process
-  group afterwards. It does not open or modify the user's vault. Temporary files
-  remain available for diagnosis.
-- For an app update installed separately from the Electron launcher, pass
-  `--app-package /absolute/path/to/obsidian-VERSION.asar`. Capture A and C with
-  the same app version; the integrity test rejects a mismatch. The package is
-  copied only into the disposable profile, never into the application bundle.
-- Pass `--plugin-dir /absolute/path/to/built/plugin` to capture a historical build.
-  Replacing the original requires explicit `--replace-original` and review.
-- Use `--capture-host-css` only when explicitly reviewing replacement host evidence.
-- Verify Reading view, multiple blocks, Live Preview, embeds, pop-outs and PDF
-  in a disposable vault with `node tools/capture-native-toolbar.mjs --verify-contexts`.
-  This writes `.artifacts/native-toolbar/contexts.json` without replacing captures.
-- Compare with `npx playwright test tests/browser/toolbar-layout.spec.ts`.
+- Build with `npm run build`, then capture with
+  `node tools/capture-native-toolbar.mjs` (current only).
+- `--name` and `--replace-original` are retired and fail before native launch.
+- `--plugin-dir /absolute/path/to/built/plugin` selects the reviewed build.
+- `--app-package /absolute/path/to/obsidian-VERSION.asar` copies an updated app
+  package into the disposable profile, never the application bundle.
+- `--capture-host-css` refreshes host evidence only with explicit review.
+- `--verify-contexts` checks Reading view, multiple blocks, Live Preview, embeds,
+  pop-outs and PDF in a disposable vault and writes `.artifacts/native-toolbar/contexts.json`.
+- Run `npx playwright test tests/browser/toolbar-layout.spec.ts` for current layout.
 
-Every comparison re-renders A (old DOM/CSS), B (A with only tempo label changed)
-and C (captured current DOM/current CSS) in separate documents, in the same browser
-and font environment. `initial-measurements.json` is historical evidence only;
-tests never compare current results against its pixel numbers. Reports and full
-per-width measurements go to `.artifacts/toolbar/` and Playwright attachments.
+The capture command owns and closes its disposable process group, never the
+user's vault. Temporary files remain for diagnosis. Review captures and integrity
+metadata together; an Obsidian upgrade need not match a historical host version.
 
-The 32px coarse checks plus 1px bisection do **not** prove monotonicity. A narrow
-excursion can escape sampling. Reports state this next to the results. Internal
-button wrapping is reported separately from title/controls separation: the old
-unbounded group can overflow instead of wrapping.
+## Durable check and retired experiment
+
+Each label/theme/engine sweep measures all 1,241 integer and half-integer widths
+from 280–900px in a single in-page loop, at a 1280px viewport. Identity, visibility,
+labels and positive geometry are required at every width before containment can
+pass. A complete unique sequence is mandatory. Reports record runtime, requested
+and measured widths, heights, fonts and browser environment in `.artifacts/toolbar/`.
+A 1 CSS px allowance is measurement tolerance, not a configurable layout budget.
+Half-pixel probes detect wrap changes causing overflow greater than 1px; they do
+not establish zero subpixel overflow or cover arbitrary fractions, zoom or themes.
+
+The completed A/B/C acceptance experiment is retired. Historical results and
+provenance are in `docs/evidence/toolbar/`; original DOM/CSS bytes are recoverable
+from commit `ade2907`. They are not active test inputs or future pixel expectations.

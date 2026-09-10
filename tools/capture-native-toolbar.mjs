@@ -2,17 +2,17 @@
 import { chromium } from '@playwright/test';
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, copyFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, copyFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve, join, basename } from 'node:path';
 
 const args = process.argv.slice(2);
+if (args.some(arg => /^(--name|--replace-original)(=|$)/.test(arg))) {
+  throw new Error('Retired capture arguments: --name and --replace-original are no longer supported; capture is current-only.');
+}
 const value = (key, fallback) => args.includes(key) ? args[args.indexOf(key) + 1] : fallback;
 const pluginDir = resolve(value('--plugin-dir', '.'));
-const name = value('--name', 'current');
-if (!['original', 'current'].includes(name)) throw new Error('--name must be original or current');
 const output = resolve(value('--output-dir', 'tests/fixtures/toolbar'));
-if (name === 'original' && existsSync(join(output, 'native-original.json')) && !args.includes('--replace-original')) throw new Error('Historical fixture exists; explicitly review replacement and pass --replace-original.');
 const executable = value('--executable', '/Applications/Obsidian.app/Contents/MacOS/Obsidian');
 const base = mkdtempSync(join(tmpdir(), 'drum-toolbar-'));
 const vault = join(base, 'vault');
@@ -62,7 +62,6 @@ try {
   });
   data.appPackageHash = appPackage ? createHash('sha256').update(readFileSync(appPackage)).digest('hex') : null;
   data.pluginHashes = Object.fromEntries(['main.js', 'styles.css', 'manifest.json'].map(file => [file, createHash('sha256').update(readFileSync(join(pluginDir, file))).digest('hex')]));
-  if (name === 'original') copyFileSync(join(pluginDir, 'styles.css'), join(output, 'original.css'));
   if (args.includes('--capture-host-css')) {
     const hostCss = await page.evaluate(() => {
       const root = [...document.querySelectorAll('.drum-notation-host > .drum-notation')].find(el => el.getBoundingClientRect().height > 0);
@@ -131,8 +130,8 @@ try {
     console.log(JSON.stringify(report));
   }
   if (!args.includes('--verify-contexts')) {
-  writeFileSync(join(output, `native-${name}.json`), JSON.stringify(data, null, 2) + '\n');
-  console.log(JSON.stringify({ captured: name, checks, printControlsHidden: data.printControlsHidden }));
+  writeFileSync(join(output, 'native-current.json'), JSON.stringify(data, null, 2) + '\n');
+  console.log(JSON.stringify({ captured: 'current', checks, printControlsHidden: data.printControlsHidden }));
   }
 } finally {
   if (browser) await Promise.race([browser.close(), new Promise(resolveTimeout => setTimeout(resolveTimeout, 2000))]);

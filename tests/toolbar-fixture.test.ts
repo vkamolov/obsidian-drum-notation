@@ -10,7 +10,7 @@ const construction = source.slice(source.indexOf('    const root = el.createDiv'
 const labels = source.slice(source.indexOf('      const speedDescription ='), source.indexOf('      metronomeButton.disabled ='));
 
 describe('native toolbar fixture provenance', () => {
-  it('preserves the historical fixture and stylesheet bytes', () => {
+  it('preserves the reviewed current capture and host stylesheet bytes', () => {
     for (const [file, checksum] of Object.entries(provenance.files)) {
       expect(hash(read(`tests/fixtures/toolbar/${file}`)), file).toBe(checksum);
     }
@@ -22,8 +22,6 @@ describe('native toolbar fixture provenance', () => {
     expect(hash(labels)).toBe(provenance.currentAdapter.labelsHash);
     const current = JSON.parse(read('tests/fixtures/toolbar/native-current.json'));
     expect(current.captureMethod).toContain('Native Obsidian');
-    const original = JSON.parse(read('tests/fixtures/toolbar/native-original.json'));
-    expect(current.obsidianVersion).toBe(original.obsidianVersion);
     expect(current.controls.some((button: {label: string}) => /Practice tools|Exit Practice view/.test(button.label))).toBe(false);
     expect(current.controls.some((button: {label: string}) => button.label === 'Loop options')).toBe(true);
   });

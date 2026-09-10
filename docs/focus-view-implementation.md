@@ -42,11 +42,19 @@ Same-run A/B/C comparisons in Chromium 151.0.7922.34 and WebKit 26.5, at a fixed
 | `150%` → `388.5 BPM · 150%` | 617px | 695px | 662px | +45px |
 
 These are minimum outer block widths for title and controls to share one row.
-The final toolbar satisfies `C ≤ max(A, B) + 1px`. The longer label does have a
+The accepted toolbar satisfied `C ≤ max(A, B) + 1px` in that experiment. The longer label does have a
 height cost in the affected width band; Practice removal offsets part of it.
 Internal button wrapping is measured separately and is not compared against the
 old overflowing group. Full reports live in `.artifacts/toolbar/`; tracked initial
 summaries are historical evidence, not future pixel expectations.
+
+The comparison gate is now retired. Preserved measurements and provenance are in
+[evidence/toolbar](evidence/toolbar/README.md); original fixture bytes are recoverable
+from `ade2907`. Current-only checks sweep 1,241 half-pixel widths from 280–900px,
+validate expected controls and accessible labels at every width, and reject
+overflow greater than the 1px measurement allowance. They impose no historical
+transition threshold or host-version equality. Browser replay still does not
+replace native-host verification.
 
 No reversal was detected at 32px sample spacing. This does not prove monotonicity:
 narrower excursions can escape sampling. Transition brackets are bisected to 1px.
@@ -91,3 +99,24 @@ Electron rejected the browser debugger’s `Page.printToPDF` command, although p
 media correctly hid controls. Physical mobile coverage, real-audio soak, draft
 release and Obsidian source checks remain publication work. Automated native
 checks and browser fixtures do not establish every third-party theme or platform. Pilot thresholds and scope are unchanged.
+
+## Toolbar-gate retirement verification — 2026-09-10
+
+The historical A/B/C gate and original fixtures are retired; their measurements
+and provenance survive under `docs/evidence/toolbar/`, with original bytes in
+`ade2907`. Current capture and host-style checksums and adapter fingerprints remain
+unchanged. `tests/toolbar-source.test.ts` is unchanged. No product code changed.
+
+- 708 unit tests passed, including report coverage and retired CLI argument checks.
+- Six affected Chromium/WebKit browser tests passed: light/dark containment sweeps
+  for both tempo labels, plus invalid-fixture checks. All eight sweeps completed
+  1,241 widths each (9,928 layout samples). In-page sweep times in the final run
+  ranged from 82.3 to 150.0 ms; the browser run took 7.2 seconds.
+- Plugin build, web build, web typecheck and a separate typecheck of the new test
+  helpers/spec passed. Web build retains its existing bundle-size warning.
+- Historical evidence files were preserved byte-for-byte, and diff whitespace
+  checks passed. No new native capture was required for controlled substitutions.
+
+The 1px allowance does not detect smaller overflow, and half-pixel sampling does
+not cover every fractional width or zoom. Existing native-host and publication
+gates remain outstanding as recorded above.
