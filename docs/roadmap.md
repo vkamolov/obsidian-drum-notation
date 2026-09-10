@@ -11,8 +11,8 @@ feedback. Completeness is not a reason.
 
 | | |
 |---|---|
-| **Published** | `1.11.0` — Practice Sessions and Logs |
-| **In development** | `1.11.1` — newest-first logs, practice-toolbar corrections and playback reliability remediation |
+| **Published** | `1.11.1` — practice-log ordering and toolbar corrections |
+| **Draft release** | `1.11.2` — playback reliability remediation and focused practice UI |
 | **Blocked on evidence** | `1.12.0` — scope undecidable until the chart pilot runs |
 | **Chart pilot** | `agent-plugin/drum-notation-importer/pilot/` — `status: not-started`, `completed: 0` |
 
@@ -91,7 +91,7 @@ Before scoping or implementing either pilot-dependent track:
    blocking features and explicitly deferred findings.
 5. Only then freeze the smallest coherent 1.12.0 scope from the selected track.
 
-## 1.11.x — Practice Sessions and Logs *(1.11.0 published; 1.11.1 patch in development)*
+## 1.11.x — Practice Sessions and Logs *(1.11.1 published; 1.11.2 draft)*
 
 Builds on the pass-tracking introduced by the tempo ramp trainer. The core lives in
 `src/practice-session.ts`.
@@ -107,9 +107,9 @@ Builds on the pass-tracking introduced by the tempo ramp trainer. The core lives
 
 Out of scope here: accuracy assessment, descending ramps, durable toolbar-state persistence.
 
-Implementation checkpoint as of 2026-08-28: 1.11.0 is published. The 1.11.1 patch keeps practice
-logs newest-first, adds a direct paused-session **Finish & summary** action, and corrects playback
-toolbar refresh and sizing without changing the practice-session model.
+Implementation checkpoint as of 2026-09-10: 1.11.1 is published. The 1.11.2 draft hardens playback
+timing, lifecycle handling and resource cleanup; makes edit failures explicit; consolidates practice
+coordination; and adds the playground Focus view without changing saved-log or notation formats.
 
 ## Reusable foundations already earned
 

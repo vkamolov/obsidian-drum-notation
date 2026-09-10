@@ -882,6 +882,9 @@ Use **Loop Bar** in the rendered view to loop the bar containing the current cur
 
 ## Recent Changes
 
+- `1.11.2` hardens playback timing, restoration and resource cleanup; makes
+  edit failures explicit; consolidates practice controls; and adds the
+  playground Focus view with compact effective-BPM labels.
 - `1.11.1` keeps practice logs newest-first, adds a direct paused-session
   **Finish & summary** action, and fixes playback-toolbar refresh and sizing.
 - `1.11.0` adds finite repetition goals, count-in cadence, exact-BPM tap tempo,
